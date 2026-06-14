@@ -1,0 +1,99 @@
+import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { SealCheck } from '@/components/icons/seal-check';
+
+const COLORS = {
+  canvas: '#f9f9fb',
+  primary: '#6c3bff',
+  green: '#18a962',
+  textPrimary: '#111122',
+  textSecondary: '#5a5a70',
+  onBrand: '#ffffff',
+};
+
+export default function ResetSuccessScreen() {
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+
+  return (
+    <View style={[styles.container, { paddingBottom: insets.bottom }]}>
+      <StatusBar style="dark" />
+
+      <View style={styles.message}>
+        <SealCheck size={172} color={COLORS.green} />
+
+        <View style={styles.block}>
+          <View style={styles.textBlock}>
+            <Text style={styles.title}>Password changed</Text>
+            <Text style={styles.subtitle}>You can now continue to dashboard</Text>
+          </View>
+
+          <Pressable
+            style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+            onPress={() => router.replace('/home')}>
+            <Text style={styles.buttonLabel}>Continue</Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.canvas,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  message: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 8,
+  },
+  block: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 24,
+  },
+  textBlock: {
+    width: 304,
+    alignItems: 'center',
+    gap: 6,
+  },
+  title: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 24,
+    lineHeight: 30.5,
+    letterSpacing: -0.26,
+    textAlign: 'center',
+    color: COLORS.textPrimary,
+  },
+  subtitle: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 17,
+    lineHeight: 21.9,
+    letterSpacing: -0.41,
+    textAlign: 'center',
+    color: COLORS.textSecondary,
+  },
+  button: {
+    width: '100%',
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonPressed: { opacity: 0.9 },
+  buttonLabel: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 17,
+    letterSpacing: -0.41,
+    color: COLORS.onBrand,
+  },
+});
