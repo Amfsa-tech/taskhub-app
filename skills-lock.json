@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "imprint": {
+      "source": "JavaScript-Mastery-Pro/skills",
+      "sourceType": "github",
+      "skillPath": "skills/imprint/SKILL.md",
+      "computedHash": "ee690f88ca7b099220f8f895b12ef84ed7a2e1a1ce988d92ccd82fac4cfe3e36"
+    }
+  }
+}

@@ -141,9 +141,14 @@ export default function ProfileScreen() {
   const router = useRouter();
 
   const handleMenuPress = (key: string) => {
-    // Wire individual destinations as those screens are built.
     if (key === 'edit-profile') {
       router.push('/edit-profile');
+    } else if (key === 'saved-taskers') {
+      router.push('/saved-taskers');
+    } else if (key === 'my-reviews') {
+      router.push('/my-reviews');
+    } else if (key === 'settings') {
+      router.push('/settings');
     } else if (key === 'logout') {
       router.replace('/login');
     }

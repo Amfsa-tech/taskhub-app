@@ -84,7 +84,7 @@ export default function PostDetailsScreen() {
                 value={location}
                 onChangeText={setLocation}
               />
-              <Pressable hitSlop={6} onPress={() => {}}>
+              <Pressable hitSlop={6} onPress={() => { }}>
                 <Text style={styles.useMap}>Use Map</Text>
               </Pressable>
             </View>
@@ -105,7 +105,7 @@ export default function PostDetailsScreen() {
         </ScrollView>
 
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-          <PrimaryButton label="Next - Set Budget" onPress={() => router.push('/post-review')} />
+          <PrimaryButton label="Next" onPress={() => router.push('/post-review')} />
         </View>
       </KeyboardAvoidingView>
     </View>

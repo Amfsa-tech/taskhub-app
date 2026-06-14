@@ -1,8 +1,9 @@
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { router, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useRef, useState } from 'react';
 import {
+  Alert,
   Dimensions,
   Pressable,
   ScrollView,
@@ -22,6 +23,8 @@ import RatingDot from '@/assets/icons/rating-dot.svg';
 import Shield from '@/assets/icons/shield.svg';
 import Star from '@/assets/icons/star.svg';
 import { InviteToBidModal } from '@/components/taskhub/invite-to-bid-modal';
+import { ReadyToHireModal } from '@/components/taskhub/ready-to-hire-modal';
+import { TaskActionsModal } from '@/components/taskhub/task-actions-modal';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -46,6 +49,7 @@ type Match = {
   distance: string;
   tags: string[];
   avatar: ImageSourcePropType;
+  price?: string;
 };
 
 const MATCHES: Match[] = [
@@ -57,6 +61,7 @@ const MATCHES: Match[] = [
     distance: '0.3km',
     tags: ['Printing', 'Assignment'],
     avatar: require('@/assets/images/chats/chat-1.png'),
+    price: '₦1,500',
   },
   {
     name: 'Tunde .O',
@@ -66,6 +71,7 @@ const MATCHES: Match[] = [
     distance: '0.3km',
     tags: ['Printing'],
     avatar: require('@/assets/images/chats/chat-2.jpg'),
+    price: '₦1,800',
   },
 ];
 
@@ -104,7 +110,7 @@ function Dot() {
   return <RatingDot width={6} height={6} />;
 }
 
-function MatchedCard({ match, onInvite }: { match: Match; onInvite: () => void }) {
+function MatchedCard({ match, onInvite, onHire }: { match: Match; onInvite: () => void, onHire: () => void }) {
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
@@ -145,7 +151,7 @@ function MatchedCard({ match, onInvite }: { match: Match; onInvite: () => void }
         <Pressable style={[styles.actionButton, styles.secondaryButton]} onPress={onInvite}>
           <Text style={styles.secondaryLabel}>Invite to Bid</Text>
         </Pressable>
-        <Pressable style={[styles.actionButton, styles.primaryButton]}>
+        <Pressable style={[styles.actionButton, styles.primaryButton]} onPress={onHire}>
           <Text style={styles.primaryLabel}>Hire Now</Text>
         </Pressable>
       </View>
@@ -153,7 +159,7 @@ function MatchedCard({ match, onInvite }: { match: Match; onInvite: () => void }
   );
 }
 
-function BidCard({ bid }: { bid: Bid }) {
+function BidCard({ bid, onAccept }: { bid: Bid; onAccept: () => void }) {
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
@@ -183,17 +189,17 @@ function BidCard({ bid }: { bid: Bid }) {
       </View>
 
       <View style={styles.bidActions}>
-        <Pressable style={[styles.actionButton, styles.secondaryButton]}>
+        <Pressable style={[styles.actionButton, styles.secondaryButton]} onPress={() => router.push({ pathname: '/chat', params: { name: bid.name } })}>
           <Text style={styles.secondaryLabel} numberOfLines={1}>
             Chat
           </Text>
         </Pressable>
-        <Pressable style={[styles.actionButton, styles.tertiaryButton]}>
+        <Pressable style={[styles.actionButton, styles.tertiaryButton]} onPress={() => router.push({ pathname: '/tasker-profile', params: { name: bid.name } })}>
           <Text style={styles.tertiaryLabel} numberOfLines={1}>
             Profile
           </Text>
         </Pressable>
-        <Pressable style={[styles.actionButton, styles.primaryButton]}>
+        <Pressable style={[styles.actionButton, styles.primaryButton]} onPress={onAccept} >
           <Text style={styles.primaryLabel} numberOfLines={1}>
             Accept Bid
           </Text>
@@ -209,6 +215,10 @@ export default function TaskDetailsScreen() {
   const pagerRef = useRef<ScrollView>(null);
   const [tab, setTab] = useState<'matches' | 'bids'>('matches');
   const [inviteName, setInviteName] = useState<string | null>(null);
+  const [hireName, setHireName] = useState<string | null>(null);
+  const [hireAvatar, setHireAvatar] = useState<ImageSourcePropType | null>(null);
+  const [hirePrice, setHirePrice] = useState<string | null>(null);
+  const [actionsVisible, setActionsVisible] = useState(false);
 
   const goTab = (next: 'matches' | 'bids') => {
     setTab(next);
@@ -232,7 +242,7 @@ export default function TaskDetailsScreen() {
             <ArrowLeft width={22} height={22} />
           </Pressable>
           <Text style={styles.headerTitle}>Task Details</Text>
-          <Pressable hitSlop={8} onPress={() => {}}>
+          <Pressable hitSlop={8} onPress={() => setActionsVisible(true)}>
             <Text style={styles.actionsLink}>Actions</Text>
           </Pressable>
         </View>
@@ -291,7 +301,7 @@ export default function TaskDetailsScreen() {
           contentContainerStyle={[styles.page, { paddingBottom: insets.bottom + 24 }]}
           showsVerticalScrollIndicator={false}>
           {MATCHES.map((m, i) => (
-            <MatchedCard key={`${m.name}-${i}`} match={m} onInvite={() => setInviteName(m.name)} />
+            <MatchedCard key={`${m.name}-${i}`} match={m} onInvite={() => setInviteName(m.name)} onHire={() => { setHireName(m.name); setHireAvatar(m.avatar); setHirePrice(m.price ?? null); }} />
           ))}
         </ScrollView>
 
@@ -300,7 +310,7 @@ export default function TaskDetailsScreen() {
           contentContainerStyle={[styles.page, { paddingBottom: insets.bottom + 24 }]}
           showsVerticalScrollIndicator={false}>
           {BIDS.map((b, i) => (
-            <BidCard key={`${b.name}-${i}`} bid={b} />
+            <BidCard key={`${b.name}-${i}`} bid={b} onAccept={() => { setHireName(b.name); setHireAvatar(b.avatar); setHirePrice(b.price); }} />
           ))}
         </ScrollView>
       </ScrollView>
@@ -309,6 +319,29 @@ export default function TaskDetailsScreen() {
         visible={inviteName !== null}
         taskerName={inviteName ?? ''}
         onClose={() => setInviteName(null)}
+      />
+      <ReadyToHireModal
+        visible={hireName !== null}
+        taskerName={hireName ?? ''}
+        taskerAvatar={hireAvatar ?? null}
+        taskerPrice={hirePrice}
+        onClose={() => setHireName(null)}
+      />
+      <TaskActionsModal
+        visible={actionsVisible}
+        onClose={() => setActionsVisible(false)}
+        onEdit={() => Alert.alert('Edit Task', 'Edit task functionality goes here.')}
+        onBoost={() => Alert.alert('Boost Task', 'Task boosted successfully!')}
+        onCancel={() =>
+          Alert.alert('Cancel Task', 'Are you sure you want to cancel this task?', [
+            { text: 'No', style: 'cancel' },
+            {
+              text: 'Yes',
+              onPress: () => Alert.alert('Task Cancelled', 'Task has been cancelled successfully!'),
+            },
+          ])
+        }
+        onReport={() => router.push('/report-issue')}
       />
     </View>
   );
