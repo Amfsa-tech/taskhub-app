@@ -274,12 +274,12 @@ export default function TaskDetailsScreen() {
         {/* Tabs */}
         <View style={styles.tabBudget}>
           <View>
-            <Text style={[styles.tabText, tab === 'matches' && styles.tabTextActive]}>
+            <Text style={[styles.budgetText]}>
               Budget
             </Text>
           </View>
           <View>
-            <Text style={[styles.tabText, tab === 'bids' && styles.tabTextActive]}>Price</Text>
+            <Text style={[styles.priceText]}>{hirePrice}</Text>
           </View>
         </View>
 
@@ -430,12 +430,25 @@ const styles = StyleSheet.create({
   tabBudget: {
     marginTop: 24,
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     gap: 16,
-    backgroundColor: COLORS.sunken,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  budgetText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    letterSpacing: -0.24,
+    color: COLORS.textSecondary,
+  },
+  priceText: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 20,
+    letterSpacing: -0.24,
+    color: COLORS.textPrimary,
   },
   tabs: {
     marginTop: 24,

@@ -1,18 +1,27 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import BadgeGraduation from '@/assets/icons/badge-graduation.svg';
 import BadgeHouse from '@/assets/icons/badge-house.svg';
 import BadgePackage from '@/assets/icons/badge-package.svg';
 import CaretRight from '@/assets/icons/caret-right-muted.svg';
+import CaretRightPurple from '@/assets/icons/caret-right.svg'; // Assuming this exists or we can just use CaretRight with color if it's an icon, let's use text for chevron or just a simple svg
 import Clock from '@/assets/icons/clock.svg';
 import Lightning from '@/assets/icons/lightning.svg';
 import MapPin from '@/assets/icons/map-pin.svg';
+import Star from '@/assets/icons/star-fill.svg'; // Assuming we have a star icon, if not we'll use emoji or similar. Let's see if there is one. Wait, let's just use Text '⭐'.
 
 const COLORS = {
   surface: '#ffffff',
+  sunken: '#f2f2f7',
   textPrimary: '#111122',
   textSecondary: '#5a5a70',
   bids: '#aa7fff',
+  brand: '#6c3bff',
+  brandLight: '#f3eeff',
+  success: '#15803d',
+  successLight: '#f0fdf4',
+  warning: '#b45309',
+  warningLight: '#fffbea',
 };
 
 export type BadgeKind = 'campus' | 'urgent' | 'local' | 'errand';
@@ -34,6 +43,29 @@ export type Task = {
   bids: string;
   location: string;
   date: string;
+};
+
+export type InProgressTask = {
+  id: string;
+  status: 'awaiting_payment' | 'in_progress';
+  price: string;
+  title: string;
+  location: string;
+  date: string;
+};
+
+export type CompletedTask = {
+  id: string;
+  completedAt: string;
+  price: string;
+  title: string;
+  tasker: {
+    name: string;
+    avatar: string;
+    rating: number;
+    jobs: number;
+  };
+  reviewStatus: 'none' | 'reviewed';
 };
 
 export const SAMPLE_TASKS: Task[] = [
@@ -60,6 +92,54 @@ export const SAMPLE_TASKS: Task[] = [
     bids: '5 Bids',
     location: 'Ikorodu',
     date: '18 May',
+  },
+];
+
+export const SAMPLE_IN_PROGRESS_TASKS: InProgressTask[] = [
+  {
+    id: '1',
+    status: 'awaiting_payment',
+    price: '₦20,000',
+    title: 'Fix my Laptop Screen',
+    location: 'UI Main gate',
+    date: '18 May',
+  },
+  {
+    id: '2',
+    status: 'in_progress',
+    price: '₦1,000',
+    title: 'Print My Assignment',
+    location: 'UI Main gate',
+    date: '18 May',
+  },
+];
+
+export const SAMPLE_COMPLETED_TASKS: CompletedTask[] = [
+  {
+    id: '1',
+    completedAt: 'May 10, 2026',
+    price: '₦1,000',
+    title: 'Print My Assignment',
+    tasker: {
+      name: 'Chioma. A',
+      avatar: 'https://i.pravatar.cc/150?img=47',
+      rating: 4.9,
+      jobs: 127,
+    },
+    reviewStatus: 'none',
+  },
+  {
+    id: '2',
+    completedAt: 'May 10, 2026',
+    price: '₦20,000',
+    title: 'Fix my Laptop Screen',
+    tasker: {
+      name: 'Chioma. A',
+      avatar: 'https://i.pravatar.cc/150?img=47',
+      rating: 4.9,
+      jobs: 127,
+    },
+    reviewStatus: 'reviewed',
   },
 ];
 
@@ -105,6 +185,92 @@ export function TaskCard({ task, onPress }: { task: Task; onPress?: () => void }
           </View>
         </View>
         <CaretRight width={8} height={16} />
+      </View>
+    </Pressable>
+  );
+}
+
+export function InProgressTaskCard({ task, onPress }: { task: InProgressTask; onPress?: () => void }) {
+  const isAwaiting = task.status === 'awaiting_payment';
+  
+  return (
+    <Pressable style={styles.card} onPress={onPress}>
+      <View style={styles.row}>
+        <View style={[styles.badge, { backgroundColor: isAwaiting ? COLORS.warningLight : '#eff6ff' }]}>
+          <Text style={[styles.badgeText, { color: isAwaiting ? COLORS.warning : '#1d4ed8' }]}>
+            {isAwaiting ? 'Awaiting Payment Release' : 'In Progress'}
+          </Text>
+        </View>
+        <Text style={styles.price}>{task.price}</Text>
+      </View>
+
+      <View style={styles.row}>
+        <Text style={styles.title}>{task.title}</Text>
+      </View>
+
+      <View style={styles.row}>
+        <View style={styles.meta}>
+          <View style={styles.metaItem}>
+            <MapPin width={16} height={16} />
+            <Text style={styles.metaText}>{task.location}</Text>
+          </View>
+          <View style={styles.metaItem}>
+            <Clock width={16} height={16} />
+            <Text style={styles.metaText}>{task.date}</Text>
+          </View>
+        </View>
+        <View style={styles.trackAction}>
+          <Text style={styles.trackText}>Track</Text>
+          <Text style={{color: COLORS.brand, fontSize: 16, marginTop: -2}}>{'>'}</Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+export function CompletedTaskCard({ task, onPress }: { task: CompletedTask; onPress?: () => void }) {
+  return (
+    <Pressable style={styles.card} onPress={onPress}>
+      <View style={styles.row}>
+        <View style={[styles.badge, { backgroundColor: COLORS.successLight }]}>
+          <Text style={[styles.badgeText, { color: COLORS.success }]}>Completed · {task.completedAt}</Text>
+        </View>
+        <Text style={styles.price}>{task.price}</Text>
+      </View>
+
+      <View style={styles.row}>
+        <Text style={styles.title}>{task.title}</Text>
+      </View>
+
+      {/* Tasker Info */}
+      <View style={styles.taskerBlock}>
+        <Image source={{ uri: task.tasker.avatar }} style={styles.avatar} />
+        <View style={styles.taskerInfo}>
+          <Text style={styles.taskerName}>{task.tasker.name}</Text>
+          <View style={styles.taskerStats}>
+            <Text style={styles.star}>⭐</Text>
+            <Text style={styles.statsText}>{task.tasker.rating} • {task.tasker.jobs} Jobs</Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Actions */}
+      <View style={styles.actionsRow}>
+        {task.reviewStatus === 'none' ? (
+          <Pressable style={[styles.btn, styles.btnReview]}>
+            <Text style={[styles.btnText, { color: '#ffffff' }]}>Leave review</Text>
+          </Pressable>
+        ) : (
+          <Pressable style={[styles.btn, styles.btnReviewed]}>
+            <Text style={[styles.btnText, { color: COLORS.success }]}>Reviewed</Text>
+          </Pressable>
+        )}
+        <Pressable style={[styles.btn, styles.btnHireAgain]}>
+          <Text style={[styles.btnText, { color: COLORS.brand }]}>Hire Again</Text>
+        </Pressable>
+        <Pressable style={[styles.btn, styles.btnReceipt]}>
+          <Text style={[styles.btnText, { color: COLORS.textPrimary }]}>Receipt</Text>
+        </Pressable>
       </View>
     </Pressable>
   );
@@ -176,5 +342,81 @@ const styles = StyleSheet.create({
     fontSize: 13,
     letterSpacing: -0.08,
     color: COLORS.textSecondary,
+  },
+  trackAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  trackText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 14,
+    color: COLORS.brand,
+  },
+  taskerBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: COLORS.sunken,
+    padding: 12,
+    borderRadius: 12,
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#e5e5e5',
+  },
+  taskerInfo: {
+    gap: 2,
+  },
+  taskerName: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 16,
+    color: COLORS.textPrimary,
+  },
+  taskerStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  star: {
+    fontSize: 12,
+  },
+  statsText: {
+    fontFamily: 'Geist_400Regular',
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  btn: {
+    flex: 1,
+    height: 36,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 14,
+  },
+  btnReview: {
+    backgroundColor: COLORS.brand,
+  },
+  btnReviewed: {
+    backgroundColor: COLORS.successLight,
+  },
+  btnHireAgain: {
+    backgroundColor: COLORS.brandLight,
+  },
+  btnReceipt: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: '#e5e5e5',
   },
 });
