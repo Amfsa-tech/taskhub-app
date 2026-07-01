@@ -15,6 +15,8 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
+import { LocationProvider } from '@/context/LocationContext';
+
 export const unstable_settings = {
   anchor: '(tabs)',
 };
@@ -42,35 +44,40 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="splash" options={{ headerShown: false }} />
-          <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-          <Stack.Screen name="purpose" options={{ headerShown: false }} />
-          <Stack.Screen name="login" options={{ headerShown: false }} />
-          <Stack.Screen name="create-account" options={{ headerShown: false }} />
-          <Stack.Screen name="otp" options={{ headerShown: false }} />
-          <Stack.Screen name="purpose-selection" options={{ headerShown: false }} />
-          <Stack.Screen name="location-university" options={{ headerShown: false }} />
-          <Stack.Screen name="location-permission" options={{ headerShown: false }} />
-          <Stack.Screen name="success" options={{ headerShown: false }} />
-          <Stack.Screen name="login-form" options={{ headerShown: false }} />
-          <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
-          <Stack.Screen name="forgot-password-sent" options={{ headerShown: false }} />
-          <Stack.Screen name="create-new-password" options={{ headerShown: false }} />
-          <Stack.Screen name="reset-success" options={{ headerShown: false }} />
-          <Stack.Screen name="task-agreement" options={{ headerShown: false }} />
-          <Stack.Screen name="my-reviews" options={{ headerShown: false }} />
-          <Stack.Screen name="settings" options={{ headerShown: false }} />
-          <Stack.Screen name="change-password" options={{ headerShown: false }} />
-          <Stack.Screen name="change-password-success" options={{ headerShown: false }} />
-          <Stack.Screen name="saved-taskers" options={{ headerShown: false }} />
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="screens" options={{ headerShown: false }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-        </Stack>
-        <StatusBar style="auto" />
-      </ThemeProvider>
+      <LocationProvider>
+        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="splash" options={{ headerShown: false }} />
+            <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+            <Stack.Screen name="purpose" options={{ headerShown: false }} />
+            <Stack.Screen name="login" options={{ headerShown: false }} />
+            <Stack.Screen name="create-account" options={{ headerShown: false }} />
+            <Stack.Screen name="otp" options={{ headerShown: false }} />
+            <Stack.Screen name="purpose-selection" options={{ headerShown: false }} />
+            <Stack.Screen name="location-university" options={{ headerShown: false }} />
+            <Stack.Screen name="location-permission" options={{ headerShown: false }} />
+            <Stack.Screen name="location-confirm" options={{ headerShown: false }} />
+            <Stack.Screen name="location-map" options={{ headerShown: false }} />
+            <Stack.Screen name="success" options={{ headerShown: false }} />
+            <Stack.Screen name="login-form" options={{ headerShown: false }} />
+            <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
+            <Stack.Screen name="forgot-password-sent" options={{ headerShown: false }} />
+            <Stack.Screen name="create-new-password" options={{ headerShown: false }} />
+            <Stack.Screen name="reset-success" options={{ headerShown: false }} />
+            <Stack.Screen name="task-agreement" options={{ headerShown: false }} />
+            <Stack.Screen name="my-reviews" options={{ headerShown: false }} />
+            <Stack.Screen name="settings" options={{ headerShown: false }} />
+            <Stack.Screen name="change-password" options={{ headerShown: false }} />
+            <Stack.Screen name="change-password-success" options={{ headerShown: false }} />
+            <Stack.Screen name="saved-taskers" options={{ headerShown: false }} />
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="screens" options={{ headerShown: false }} />
+            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+            <Stack.Screen name="location-selector-modal" options={{ presentation: 'modal', headerShown: false }} />
+          </Stack>
+          <StatusBar style="auto" />
+        </ThemeProvider>
+      </LocationProvider>
     </SafeAreaProvider>
   );
 }

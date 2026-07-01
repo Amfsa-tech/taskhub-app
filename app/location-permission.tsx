@@ -1,7 +1,9 @@
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Location from 'expo-location';
 
 import { Package } from '@/components/icons/package';
 
@@ -19,8 +21,29 @@ const COLORS = {
 export default function LocationPermissionScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const [loading, setLoading] = useState(false);
 
-  const finish = () => router.replace('/success');
+  const requestPermission = async () => {
+    setLoading(true);
+    try {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission denied', 'Location permission is required to find nearby taskers automatically.');
+        setLoading(false);
+        return;
+      }
+      
+      // Navigate to confirm location screen
+      router.push('/location-confirm');
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Error', 'An error occurred while requesting location permissions.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const skip = () => router.push('/location-map');
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -29,21 +52,22 @@ export default function LocationPermissionScreen() {
       <View style={styles.content}>
         {/* Heading */}
         <View style={styles.heading}>
-          <Text style={styles.title}>Use your location to find nearby taskers?</Text>
+          <Text style={styles.title}>Enable Location</Text>
           <Text style={styles.subtitle}>
-            We use this only to show nearby taskers and tasks. Your exact location is never shared.
+            Help us find taskers near you and improve service accuracy. Your exact location is never shared without your permission.
           </Text>
         </View>
 
         {/* Allow Location card */}
         <Pressable
           style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-          onPress={finish}>
+          onPress={requestPermission}
+          disabled={loading}>
           <View style={styles.cardIcon}>
             <Package size={24} color={COLORS.onBrand} />
           </View>
           <View style={styles.cardText}>
-            <Text style={styles.cardTitle}>Allow Location</Text>
+            <Text style={styles.cardTitle}>{loading ? 'Requesting...' : 'Allow Location'}</Text>
             <Text style={styles.cardSubtitle}>Best experience - find nearby taskers</Text>
           </View>
         </Pressable>
@@ -51,8 +75,8 @@ export default function LocationPermissionScreen() {
 
       {/* Footer */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-        <Pressable hitSlop={8} onPress={finish} style={styles.skipRow}>
-          <Text style={styles.skipLabel}>Skip for now</Text>
+        <Pressable hitSlop={8} onPress={skip} style={styles.skipRow}>
+          <Text style={styles.skipLabel}>Not Now</Text>
         </Pressable>
       </View>
     </View>
