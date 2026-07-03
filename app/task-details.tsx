@@ -272,6 +272,18 @@ export default function TaskDetailsScreen() {
         </View>
 
         {/* Tabs */}
+        <View style={styles.tabBudget}>
+          <View>
+            <Text style={[styles.budgetText]}>
+              Budget
+            </Text>
+          </View>
+          <View>
+            <Text style={[styles.priceText]}>{hirePrice}</Text>
+          </View>
+        </View>
+
+        {/* Tabs */}
         <View style={styles.tabs}>
           <Pressable
             style={[styles.tab, tab === 'matches' && styles.tabActive]}
@@ -414,6 +426,29 @@ const styles = StyleSheet.create({
     fontSize: 13,
     letterSpacing: -0.08,
     color: COLORS.textSecondary,
+  },
+  tabBudget: {
+    marginTop: 24,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 16,
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  budgetText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    letterSpacing: -0.24,
+    color: COLORS.textSecondary,
+  },
+  priceText: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 20,
+    letterSpacing: -0.24,
+    color: COLORS.textPrimary,
   },
   tabs: {
     marginTop: 24,

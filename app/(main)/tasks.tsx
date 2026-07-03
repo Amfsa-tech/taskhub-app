@@ -14,7 +14,14 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import NavPlus from '@/assets/icons/nav-plus.svg';
-import { SAMPLE_TASKS, TaskCard } from '@/components/taskhub/task-card';
+import {
+  CompletedTaskCard,
+  InProgressTaskCard,
+  SAMPLE_COMPLETED_TASKS,
+  SAMPLE_IN_PROGRESS_TASKS,
+  SAMPLE_TASKS,
+  TaskCard,
+} from '@/components/taskhub/task-card';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -27,22 +34,23 @@ const COLORS = {
   textSecondary: '#5a5a70',
 };
 
-type TaskTab = 'active' | 'completed';
+type TaskTab = 'posted' | 'in_progress' | 'completed';
 
 export default function TasksScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const pagerRef = useRef<ScrollView>(null);
-  const [tab, setTab] = useState<TaskTab>('active');
+  const [tab, setTab] = useState<TaskTab>('posted');
 
   const goTab = (next: TaskTab) => {
     setTab(next);
-    pagerRef.current?.scrollTo({ x: next === 'completed' ? SCREEN_WIDTH : 0, animated: true });
+    const idx = next === 'posted' ? 0 : next === 'in_progress' ? 1 : 2;
+    pagerRef.current?.scrollTo({ x: idx * SCREEN_WIDTH, animated: true });
   };
 
   const onPagerScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-    const next: TaskTab = idx === 1 ? 'completed' : 'active';
+    const next: TaskTab = idx === 0 ? 'posted' : idx === 1 ? 'in_progress' : 'completed';
     if (next !== tab) setTab(next);
   };
 
@@ -59,12 +67,17 @@ export default function TasksScreen() {
           </Pressable>
         </View>
 
-        {/* Active / Completed tabs */}
+        {/* Posted / In progress / Completed tabs */}
         <View style={styles.tabs}>
           <Pressable
-            style={[styles.tab, tab === 'active' && styles.tabActive]}
-            onPress={() => goTab('active')}>
-            <Text style={[styles.tabText, tab === 'active' && styles.tabTextActive]}>Active (5)</Text>
+            style={[styles.tab, tab === 'posted' && styles.tabActive]}
+            onPress={() => goTab('posted')}>
+            <Text style={[styles.tabText, tab === 'posted' && styles.tabTextActive]}>Posted</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.tab, tab === 'in_progress' && styles.tabActive]}
+            onPress={() => goTab('in_progress')}>
+            <Text style={[styles.tabText, tab === 'in_progress' && styles.tabTextActive]}>In progress</Text>
           </Pressable>
           <Pressable
             style={[styles.tab, tab === 'completed' && styles.tabActive]}
@@ -101,9 +114,38 @@ export default function TasksScreen() {
           style={{ width: SCREEN_WIDTH }}
           contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
           showsVerticalScrollIndicator={false}>
-          <View style={styles.empty}>
-            <Text style={styles.emptyText}>No completed tasks yet.</Text>
-          </View>
+          {SAMPLE_IN_PROGRESS_TASKS.length > 0 ? (
+            SAMPLE_IN_PROGRESS_TASKS.map((task) => (
+              <InProgressTaskCard
+                key={task.id}
+                task={task}
+                onPress={() => router.push('/task-details')}
+              />
+            ))
+          ) : (
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>No tasks in progress.</Text>
+            </View>
+          )}
+        </ScrollView>
+
+        <ScrollView
+          style={{ width: SCREEN_WIDTH }}
+          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
+          showsVerticalScrollIndicator={false}>
+          {SAMPLE_COMPLETED_TASKS.length > 0 ? (
+            SAMPLE_COMPLETED_TASKS.map((task) => (
+              <CompletedTaskCard
+                key={task.id}
+                task={task}
+                onPress={() => router.push('/task-details')}
+              />
+            ))
+          ) : (
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>No completed tasks yet.</Text>
+            </View>
+          )}
         </ScrollView>
       </ScrollView>
     </View>

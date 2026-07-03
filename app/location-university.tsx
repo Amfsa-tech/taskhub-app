@@ -110,7 +110,7 @@ export default function LocationUniversityScreen() {
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
         <Pressable
           style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-          onPress={() => router.replace('/success')}>
+          onPress={() => router.push('/location-permission')}>
           <Text style={styles.buttonLabel}>Continue</Text>
         </Pressable>
       </View>

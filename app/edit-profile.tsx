@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Camera from '@/assets/icons/camera.svg';
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
+import { useLocation } from '@/context/LocationContext';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -48,11 +49,11 @@ const FIELDS: Field[] = [
 export default function EditProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { selectedLocation } = useLocation();
 
   const [values, setValues] = useState({
     fullName: 'Elliot Eniola',
     phone: '+234 812 345 6789',
-    location: 'Ibadan Nigeria',
     bio: '',
   });
 
@@ -100,22 +101,40 @@ export default function EditProfileScreen() {
 
           {/* Fields */}
           <View style={styles.fields}>
-            {FIELDS.map((field) => (
-              <View key={field.key} style={styles.field}>
-                <Text style={styles.fieldLabel}>{field.label}</Text>
-                <View style={styles.input}>
-                  <TextInput
-                    style={styles.inputText}
-                    value={values[field.key]}
-                    onChangeText={setField(field.key)}
-                    placeholder={field.placeholder}
-                    placeholderTextColor={COLORS.placeholder}
-                    keyboardType={field.keyboardType ?? 'default'}
-                    autoCorrect={false}
-                  />
+            {FIELDS.map((field) => {
+              if (field.key === 'location') {
+                return (
+                  <View key={field.key} style={styles.field}>
+                    <Text style={styles.fieldLabel}>{field.label}</Text>
+                    <Pressable 
+                      style={styles.input} 
+                      onPress={() => router.push('/location-selector-modal')}
+                    >
+                      <Text style={[styles.inputText, { color: selectedLocation ? COLORS.textPrimary : COLORS.placeholder }]}>
+                        {selectedLocation || field.placeholder}
+                      </Text>
+                    </Pressable>
+                  </View>
+                );
+              }
+
+              return (
+                <View key={field.key} style={styles.field}>
+                  <Text style={styles.fieldLabel}>{field.label}</Text>
+                  <View style={styles.input}>
+                    <TextInput
+                      style={styles.inputText}
+                      value={values[field.key as keyof typeof values]}
+                      onChangeText={setField(field.key as keyof typeof values)}
+                      placeholder={field.placeholder}
+                      placeholderTextColor={COLORS.placeholder}
+                      keyboardType={field.keyboardType ?? 'default'}
+                      autoCorrect={false}
+                    />
+                  </View>
                 </View>
-              </View>
-            ))}
+              );
+            })}
 
             {/* Bio */}
             <View style={styles.field}>

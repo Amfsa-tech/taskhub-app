@@ -26,6 +26,7 @@ import Sparkle from '@/assets/icons/sparkle.svg';
 import Star from '@/assets/icons/star.svg';
 import VerificationRing from '@/assets/icons/verification-ring.svg';
 import { ActiveTasks } from '@/components/taskhub/active-tasks';
+import { useLocation } from '@/context/LocationContext';
 
 // Colours pulled directly from the Figma design tokens (light theme).
 const COLORS = {
@@ -109,6 +110,7 @@ function TaskerCard({ tasker }: { tasker: Tasker }) {
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { selectedLocation, isLoadingLocation } = useLocation();
 
   return (
     <View style={styles.container}>
@@ -118,11 +120,22 @@ export default function HomeScreen() {
       <View style={[styles.topBar, { paddingTop: insets.top + 12 }]}>
         <View style={styles.userInfo}>
           <Text style={styles.greeting}>Hi, Elliot</Text>
-          <View style={styles.locationRow}>
+          <Pressable 
+            style={styles.locationRow} 
+            hitSlop={8} 
+            onPress={() => router.push('/location-selector-modal')}
+          >
             <MapPin width={18} height={18} />
-            <Text style={styles.locationText}>UI Main gate</Text>
+            <Text style={styles.locationText} numberOfLines={1}>
+              {isLoadingLocation 
+                ? 'Loading...' 
+                : ((selectedLocation || 'UI Main gate').length > 10 
+                    ? (selectedLocation || 'UI Main gate').substring(0, 10) + '...' 
+                    : (selectedLocation || 'UI Main gate'))
+              }
+            </Text>
             <CaretDown width={12} height={18} />
-          </View>
+          </Pressable>
         </View>
         <Pressable
           style={styles.bellButton}
@@ -240,12 +253,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    flexShrink: 1,
+    paddingRight: 16,
   },
   locationText: {
     fontFamily: 'Geist_500Medium',
     fontSize: 15,
     letterSpacing: -0.24,
     color: COLORS.textSecondary,
+    flexShrink: 1,
   },
   bellButton: {
     width: 44,
