@@ -1,8 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useMutation } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -17,6 +20,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft } from '@/components/icons/arrow-left';
 import { Eye } from '@/components/icons/eye';
 import { GoogleLogo } from '@/components/icons/google-logo';
+import { ApiError } from '@/lib/api/client';
+import { useAuth } from '@/lib/auth/auth-context';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -35,11 +40,39 @@ const COLORS = {
 export default function LoginFormScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const enterApp = () => router.replace('/home');
+  const loginMutation = useMutation({
+    mutationFn: () =>
+      signIn('user', { emailAddress: email.trim().toLowerCase(), password }),
+    onSuccess: () => router.replace('/home'),
+    onError: (err) => {
+      if (err instanceof ApiError && err.emailVerificationRequired) {
+        // Account exists but isn't verified — route to the OTP screen.
+        router.push({ pathname: '/otp', params: { email: email.trim().toLowerCase() } });
+        return;
+      }
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+    },
+  });
+
+  const submit = () => {
+    setError(null);
+    if (!email.trim() || !password) {
+      setError('Please enter your email and password.');
+      return;
+    }
+    loginMutation.mutate();
+  };
+
+  const socialUnavailable = () =>
+    Alert.alert('Coming soon', 'Social sign-in is not available yet.');
+
+  const isSubmitting = loginMutation.isPending;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -106,11 +139,22 @@ export default function LoginFormScreen() {
             <Text style={styles.forgot}>Forgot Password?</Text>
           </Pressable>
 
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+
           {/* Login */}
           <Pressable
-            style={({ pressed }) => [styles.button, pressed && styles.pressed]}
-            onPress={enterApp}>
-            <Text style={styles.buttonLabel}>Login</Text>
+            style={({ pressed }) => [
+              styles.button,
+              pressed && styles.pressed,
+              isSubmitting && styles.buttonDisabled,
+            ]}
+            onPress={submit}
+            disabled={isSubmitting}>
+            {isSubmitting ? (
+              <ActivityIndicator color={COLORS.onBrand} />
+            ) : (
+              <Text style={styles.buttonLabel}>Login</Text>
+            )}
           </Pressable>
 
           {/* Divider */}
@@ -124,13 +168,13 @@ export default function LoginFormScreen() {
           <View style={styles.social}>
             <Pressable
               style={({ pressed }) => [styles.socialButton, styles.googleButton, pressed && styles.pressed]}
-              onPress={enterApp}>
+              onPress={socialUnavailable}>
               <GoogleLogo size={20} />
               <Text style={styles.googleLabel}>Continue with Google</Text>
             </Pressable>
             <Pressable
               style={({ pressed }) => [styles.socialButton, styles.appleButton, pressed && styles.pressed]}
-              onPress={enterApp}>
+              onPress={socialUnavailable}>
               <Ionicons name="logo-apple" size={20} color={COLORS.onBrand} />
               <Text style={styles.appleLabel}>Continue with Apple</Text>
             </Pressable>
@@ -216,6 +260,13 @@ const styles = StyleSheet.create({
     letterSpacing: -0.41,
     color: COLORS.primary,
   },
+  error: {
+    marginTop: 12,
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    letterSpacing: -0.24,
+    color: '#dc2626',
+  },
   button: {
     marginTop: 24,
     height: 48,
@@ -224,6 +275,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  buttonDisabled: { opacity: 0.6 },
   pressed: { opacity: 0.9 },
   buttonLabel: {
     fontFamily: 'Geist_500Medium',
