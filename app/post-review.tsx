@@ -4,6 +4,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { StepsHeader } from '@/components/taskhub/steps-header';
+import { useTasks } from '@/context/TaskContext';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -12,15 +13,37 @@ const COLORS = {
   textSecondary: '#5a5a70',
 };
 
-const SUMMARY: { label: string; value: string; emphasized?: boolean }[] = [
-  { label: 'Service', value: 'Printing & Photocopy, Assignment' },
-  { label: 'Location', value: 'UI, Ibadan' },
-  { label: 'Budget', value: '₦4,000', emphasized: true },
-  { label: 'Title', value: 'Printing & Photocopy, Assignment' },
-];
-
 export default function PostReviewScreen() {
   const router = useRouter();
+  const { draftTask, addTask } = useTasks();
+
+  const taskTitle = draftTask?.title || 'Printing & Photocopy, Assignment';
+  const taskLocation = draftTask?.location || 'UI, Ibadan';
+  const rawBudget = draftTask?.budget || '4,000';
+  const taskBudget = rawBudget.startsWith('₦') ? rawBudget : `₦${rawBudget}`;
+  const taskService = draftTask?.service || 'Printing & Photocopy, Assignment';
+
+  const handlePostTask = () => {
+    const taskId = addTask({
+      title: taskTitle,
+      description: draftTask?.description || '',
+      location: taskLocation,
+      budget: taskBudget,
+      category: draftTask?.category || 'campus',
+      service: taskService,
+    });
+    router.replace({
+      pathname: '/post-success',
+      params: { taskId },
+    });
+  };
+
+  const SUMMARY = [
+    { label: 'Service', value: taskService },
+    { label: 'Location', value: taskLocation },
+    { label: 'Budget', value: taskBudget, emphasized: true },
+    { label: 'Title', value: taskTitle },
+  ];
 
   return (
     <View style={styles.container}>
@@ -45,7 +68,7 @@ export default function PostReviewScreen() {
         </View>
 
         <View style={styles.buttonWrap}>
-          <PrimaryButton label="Post Task" onPress={() => router.replace('/post-success')} />
+          <PrimaryButton label="Post Task" onPress={handlePostTask} />
         </View>
       </ScrollView>
     </View>

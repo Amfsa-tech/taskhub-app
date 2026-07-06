@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PencilLine from '@/assets/icons/pencil-line.svg';
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
+import { useTasks } from '@/context/TaskContext';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -14,16 +15,48 @@ const COLORS = {
   textSecondary: '#5a5a70',
 };
 
-const DETAILS = [
-  { label: 'Category', value: 'Local Service' },
-  { label: 'Location', value: 'UI, Ibadan' },
-  { label: 'Suggested Budget', value: '₦4,000', emphasized: true },
-  { label: 'Service', value: 'Plumber' },
-];
-
 export default function ReviewTaskScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { draftTask, addTask } = useTasks();
+
+  // Fallback to plumber example from the mockup if no draft exists
+  const taskTitle = draftTask?.title || 'Need a plumber in Yaba';
+  const taskCategory = draftTask?.category === 'campus' ? 'Campus Task' : 
+                       draftTask?.category === 'local' ? 'Local Service' :
+                       draftTask?.category === 'errands' ? 'Errands & Deliveries' :
+                       draftTask?.category === 'digital' ? 'Digital / Remote' : 'Local Service';
+  const taskLocation = draftTask?.location || 'UI, Ibadan';
+  const rawBudget = draftTask?.budget || '4,000';
+  const taskBudget = rawBudget.startsWith('₦') ? rawBudget : `₦${rawBudget}`;
+  const taskService = draftTask?.service || 'Plumber';
+  const taskDescription = draftTask?.description || 'Need a plumber to fix leaks in Yaba area.';
+
+  const handlePostTaskNow = () => {
+    const taskId = addTask({
+      title: taskTitle,
+      description: taskDescription,
+      location: taskLocation,
+      budget: taskBudget,
+      category: draftTask?.category || 'local',
+      service: taskService,
+    });
+    router.replace({
+      pathname: '/post-success',
+      params: { taskId },
+    });
+  };
+
+  const handleEditDetails = () => {
+    router.push('/post-details');
+  };
+
+  const DETAILS = [
+    { label: 'Category', value: taskCategory },
+    { label: 'Location', value: taskLocation },
+    { label: 'Suggested Budget', value: taskBudget, emphasized: true },
+    { label: 'Service', value: taskService },
+  ];
 
   return (
     <View style={styles.container}>
@@ -31,7 +64,7 @@ export default function ReviewTaskScreen() {
       <ScreenHeader title="Review Task" />
 
       <View style={styles.body}>
-        <Text style={styles.title}>Need a plumber in Yaba</Text>
+        <Text style={styles.title}>{taskTitle}</Text>
 
         <View style={styles.summary}>
           {DETAILS.map((d) => (
@@ -46,12 +79,12 @@ export default function ReviewTaskScreen() {
       </View>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-        <PrimaryButton label="Post Task Now" onPress={() => router.push('/post-success')} />
+        <PrimaryButton label="Post Task Now" onPress={handlePostTaskNow} />
         <PrimaryButton
           label="Edit Details"
           variant="secondary"
           leftIcon={<PencilLine width={18} height={18} />}
-          onPress={() => router.back()}
+          onPress={handleEditDetails}
         />
       </View>
     </View>

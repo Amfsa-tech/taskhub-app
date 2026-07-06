@@ -28,8 +28,8 @@ export default function VoiceOrganizingScreen() {
       <View style={styles.center}>
         <Spinner />
         <View style={styles.text}>
-          <Text style={styles.title}>Organizing your task</Text>
-          <Text style={styles.subtitle}>This might take a minute...</Text>
+          <Text style={styles.title}>Organizing you Task</Text>
+          <Text style={styles.subtitle}>This takes just a moment</Text>
         </View>
       </View>
     </View>

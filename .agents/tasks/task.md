@@ -1,0 +1,2 @@
+- `[x]` Update `app/chat.tsx` (add flowState tracking, render task header, render conditional cards, buttons, and styles)
+- `[x]` Verify typecheck

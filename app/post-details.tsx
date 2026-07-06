@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { StepsHeader } from '@/components/taskhub/steps-header';
+import { useTasks } from '@/context/TaskContext';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -29,10 +30,22 @@ const COLORS = {
 export default function PostDetailsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [location, setLocation] = useState('');
-  const [budget, setBudget] = useState('');
+  const { draftTask, updateDraftTask } = useTasks();
+
+  const [title, setTitle] = useState(draftTask?.title || '');
+  const [description, setDescription] = useState(draftTask?.description || '');
+  const [location, setLocation] = useState(draftTask?.location || '');
+  const [budget, setBudget] = useState(draftTask?.budget || '');
+
+  const handleNext = () => {
+    updateDraftTask({
+      title,
+      description,
+      location,
+      budget,
+    });
+    router.push('/post-review');
+  };
 
   return (
     <View style={styles.container}>
@@ -99,13 +112,18 @@ export default function PostDetailsScreen() {
                 onChangeText={setBudget}
                 keyboardType="numeric"
               />
-              <Text style={styles.helper}>Suggested Price: ₦4,000</Text>
+              {draftTask?.category === 'local' && (
+                <Text style={styles.helper}>Suggested Price: ₦4,000</Text>
+              )}
+              {draftTask?.category === 'campus' && (
+                <Text style={styles.helper}>Suggested Price: ₦1,000</Text>
+              )}
             </View>
           </View>
         </ScrollView>
 
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-          <PrimaryButton label="Next" onPress={() => router.push('/post-review')} />
+          <PrimaryButton label="Next" onPress={handleNext} />
         </View>
       </KeyboardAvoidingView>
     </View>

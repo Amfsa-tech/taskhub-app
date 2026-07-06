@@ -1,12 +1,11 @@
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import ArrowRightThin from '@/assets/icons/arrow-right-thin.svg';
 import Eye from '@/assets/icons/eye.svg';
 import HouseGrey from '@/assets/icons/house-grey.svg';
-import SuccessCheck from '@/assets/icons/success-check.svg';
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 
 const COLORS = {
@@ -18,13 +17,33 @@ const COLORS = {
 export default function PostSuccessScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { taskId } = useLocalSearchParams<{ taskId: string }>();
+
+  const handleViewMatches = () => {
+    router.replace({
+      pathname: '/task-details',
+      params: { taskId },
+    });
+  };
+
+  const handleGoToTasks = () => {
+    router.replace('/tasks');
+  };
+
+  const handleBackHome = () => {
+    router.replace('/home');
+  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom + 16 }]}>
       <StatusBar style="dark" />
 
       <View style={styles.message}>
-        <SuccessCheck width={103} height={103} />
+        <Image
+          source={require('@/assets/images/party_popper_3d.png')}
+          style={styles.partyPopper}
+          resizeMode="contain"
+        />
         <View style={styles.confirmation}>
           <View style={styles.textBlock}>
             <Text style={styles.title}>Your task is live</Text>
@@ -37,17 +56,17 @@ export default function PostSuccessScreen() {
             <PrimaryButton
               label="View Matches"
               rightIcon={<Eye width={18} height={18} />}
-              onPress={() => router.replace('/home')}
+              onPress={handleViewMatches}
             />
             <PrimaryButton
               label="Go To my Tasks"
               variant="secondary"
               rightIcon={<ArrowRightThin width={18} height={18} />}
-              onPress={() => router.replace('/home')}
+              onPress={handleGoToTasks}
             />
           </View>
 
-          <Pressable style={styles.backHome} onPress={() => router.replace('/home')}>
+          <Pressable style={styles.backHome} onPress={handleBackHome}>
             <HouseGrey width={18} height={18} />
             <Text style={styles.backHomeText}>Back to Home</Text>
           </Pressable>
@@ -68,6 +87,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 32,
+  },
+  partyPopper: {
+    width: 140,
+    height: 140,
   },
   confirmation: {
     alignItems: 'center',

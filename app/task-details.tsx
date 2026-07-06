@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { router, useRouter } from 'expo-router';
+import { router, useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useRef, useState } from 'react';
 import {
@@ -22,9 +22,11 @@ import MapPin from '@/assets/icons/map-pin.svg';
 import RatingDot from '@/assets/icons/rating-dot.svg';
 import Shield from '@/assets/icons/shield.svg';
 import Star from '@/assets/icons/star.svg';
+import { CancelTaskModal } from '@/components/taskhub/cancel-task-modal';
 import { InviteToBidModal } from '@/components/taskhub/invite-to-bid-modal';
 import { ReadyToHireModal } from '@/components/taskhub/ready-to-hire-modal';
 import { TaskActionsModal } from '@/components/taskhub/task-actions-modal';
+import { useTasks } from '@/context/TaskContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -212,6 +214,11 @@ function BidCard({ bid, onAccept }: { bid: Bid; onAccept: () => void }) {
 export default function TaskDetailsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { taskId } = useLocalSearchParams<{ taskId: string }>();
+  const { tasks } = useTasks();
+
+  const task = tasks.find((t) => t.id === taskId) || tasks[0];
+
   const pagerRef = useRef<ScrollView>(null);
   const [tab, setTab] = useState<'matches' | 'bids'>('matches');
   const [inviteName, setInviteName] = useState<string | null>(null);
@@ -219,6 +226,7 @@ export default function TaskDetailsScreen() {
   const [hireAvatar, setHireAvatar] = useState<ImageSourcePropType | null>(null);
   const [hirePrice, setHirePrice] = useState<string | null>(null);
   const [actionsVisible, setActionsVisible] = useState(false);
+  const [cancelModalVisible, setCancelModalVisible] = useState(false);
 
   const goTab = (next: 'matches' | 'bids') => {
     setTab(next);
@@ -230,6 +238,43 @@ export default function TaskDetailsScreen() {
     const next = idx === 1 ? 'bids' : 'matches';
     if (next !== tab) setTab(next);
   };
+
+  // Adapting static lists dynamically based on task type
+  const adaptedMatches = MATCHES.map(match => {
+    if (task?.service === 'Plumber') {
+      return {
+        ...match,
+        tags: ['Plumbing', 'Local Service'],
+        price: '₦4,000',
+      };
+    } else if (task?.service === 'Laptop Repair') {
+      return {
+        ...match,
+        tags: ['Hardware', 'Laptop Repair'],
+        price: '₦20,000',
+      };
+    }
+    return match;
+  });
+
+  const adaptedBids = BIDS.map(bid => {
+    if (task?.service === 'Plumber') {
+      return {
+        ...bid,
+        price: '₦4,000',
+        message: 'I can fix leaks and plumbing tasks. I have my tools ready and am close by.',
+      };
+    } else if (task?.service === 'Laptop Repair') {
+      return {
+        ...bid,
+        price: '₦20,000',
+        message: 'I specialize in hardware and screen repairs. Bring it over or I can pick it up.',
+      };
+    }
+    return bid;
+  });
+
+  const displayBudget = hirePrice || task?.price || '₦1,000';
 
   return (
     <View style={styles.container}>
@@ -254,16 +299,16 @@ export default function TaskDetailsScreen() {
           <Text style={[styles.badgeText, { color: COLORS.successText }]}>Open</Text>
         </View>
 
-        <Text style={styles.title}>Printing & Photocopying, Assignment</Text>
+        <Text style={styles.title}>{task?.title || 'Printing & Photocopying, Assignment'}</Text>
 
         <View style={styles.meta}>
           <View style={styles.metaItem}>
             <MapPin width={16} height={16} />
-            <Text style={styles.metaText}>UI Main gate</Text>
+            <Text style={styles.metaText}>{task?.location || 'UI Main gate'}</Text>
           </View>
           <View style={styles.metaItem}>
             <Clock width={16} height={16} />
-            <Text style={styles.metaText}>18 May</Text>
+            <Text style={styles.metaText}>{task?.date || '18 May'}</Text>
           </View>
           <View style={styles.metaItem}>
             <Shield width={16} height={16} />
@@ -279,7 +324,7 @@ export default function TaskDetailsScreen() {
             </Text>
           </View>
           <View>
-            <Text style={[styles.priceText]}>{hirePrice}</Text>
+            <Text style={[styles.priceText]}>{displayBudget}</Text>
           </View>
         </View>
 
@@ -312,7 +357,7 @@ export default function TaskDetailsScreen() {
           style={{ width: SCREEN_WIDTH }}
           contentContainerStyle={[styles.page, { paddingBottom: insets.bottom + 24 }]}
           showsVerticalScrollIndicator={false}>
-          {MATCHES.map((m, i) => (
+          {adaptedMatches.map((m, i) => (
             <MatchedCard key={`${m.name}-${i}`} match={m} onInvite={() => setInviteName(m.name)} onHire={() => { setHireName(m.name); setHireAvatar(m.avatar); setHirePrice(m.price ?? null); }} />
           ))}
         </ScrollView>
@@ -321,7 +366,7 @@ export default function TaskDetailsScreen() {
           style={{ width: SCREEN_WIDTH }}
           contentContainerStyle={[styles.page, { paddingBottom: insets.bottom + 24 }]}
           showsVerticalScrollIndicator={false}>
-          {BIDS.map((b, i) => (
+          {adaptedBids.map((b, i) => (
             <BidCard key={`${b.name}-${i}`} bid={b} onAccept={() => { setHireName(b.name); setHireAvatar(b.avatar); setHirePrice(b.price); }} />
           ))}
         </ScrollView>
@@ -344,16 +389,21 @@ export default function TaskDetailsScreen() {
         onClose={() => setActionsVisible(false)}
         onEdit={() => Alert.alert('Edit Task', 'Edit task functionality goes here.')}
         onBoost={() => Alert.alert('Boost Task', 'Task boosted successfully!')}
-        onCancel={() =>
-          Alert.alert('Cancel Task', 'Are you sure you want to cancel this task?', [
-            { text: 'No', style: 'cancel' },
-            {
-              text: 'Yes',
-              onPress: () => Alert.alert('Task Cancelled', 'Task has been cancelled successfully!'),
-            },
-          ])
-        }
+        onCancel={() => {
+          setActionsVisible(false);
+          setTimeout(() => {
+            setCancelModalVisible(true);
+          }, 300);
+        }}
         onReport={() => router.push('/report-issue')}
+      />
+      <CancelTaskModal
+        visible={cancelModalVisible}
+        onClose={() => setCancelModalVisible(false)}
+        onConfirmCancel={(reason) => {
+          setCancelModalVisible(false);
+          Alert.alert('Task Cancelled', `Task has been cancelled successfully! Reason: ${reason}`);
+        }}
       />
     </View>
   );

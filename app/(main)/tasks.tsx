@@ -19,9 +19,9 @@ import {
   InProgressTaskCard,
   SAMPLE_COMPLETED_TASKS,
   SAMPLE_IN_PROGRESS_TASKS,
-  SAMPLE_TASKS,
   TaskCard,
 } from '@/components/taskhub/task-card';
+import { useTasks } from '@/context/TaskContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -41,6 +41,7 @@ export default function TasksScreen() {
   const router = useRouter();
   const pagerRef = useRef<ScrollView>(null);
   const [tab, setTab] = useState<TaskTab>('posted');
+  const { tasks } = useTasks();
 
   const goTab = (next: TaskTab) => {
     setTab(next);
@@ -101,11 +102,11 @@ export default function TasksScreen() {
           style={{ width: SCREEN_WIDTH }}
           contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
           showsVerticalScrollIndicator={false}>
-          {SAMPLE_TASKS.map((task, i) => (
+          {tasks.map((task) => (
             <TaskCard
-              key={`${task.title}-${i}`}
+              key={task.id}
               task={task}
-              onPress={() => router.push('/task-details')}
+              onPress={() => router.push({ pathname: '/task-details', params: { taskId: task.id } })}
             />
           ))}
         </ScrollView>
@@ -119,7 +120,7 @@ export default function TasksScreen() {
               <InProgressTaskCard
                 key={task.id}
                 task={task}
-                onPress={() => router.push('/task-details')}
+                onPress={() => router.push({ pathname: '/track-task', params: { taskId: task.id } })}
               />
             ))
           ) : (

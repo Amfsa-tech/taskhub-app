@@ -1,10 +1,13 @@
+import { useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PrimaryButton } from '@/components/taskhub/primary-button';
+
+const PopperImage = require('@/assets/images/party_popper_3d.png');
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -82,12 +85,159 @@ export default function TaskAgreementScreen() {
   const tasker = TASKERS_DATA[selectedName] || TASKERS_DATA['Chioma. A'];
   const price = params.taskerPrice || '₦1,500';
 
-  const handleSendAgreement = () => {
-    Alert.alert('Success', 'Agreement sent to the tasker successfully!', [
-      { text: 'OK', onPress: () => router.replace('/home') },
-    ]);
-  };
+  // Dynamic pricing calculation
+  const amountNum = parseInt(price.replace(/[^0-9]/g, ''), 10) || 4000;
+  const formattedAmount = `₦${amountNum.toLocaleString()}`;
+  const platformFeeNum = Math.round(amountNum * 0.1);
+  const formattedFee = `₦${platformFeeNum.toLocaleString()}`;
+  const totalNum = amountNum + platformFeeNum;
+  const formattedTotal = `₦${totalNum.toLocaleString()}`;
 
+  const [step, setStep] = useState<'agreement' | 'confirmed' | 'payment' | 'processing' | 'payment-success' | 'hired'>('agreement');
+
+  useEffect(() => {
+    let t: any;
+    if (step === 'confirmed') {
+      t = setTimeout(() => {
+        setStep('payment');
+      }, 2000);
+    } else if (step === 'processing') {
+      t = setTimeout(() => {
+        setStep('payment-success');
+      }, 2000);
+    } else if (step === 'payment-success') {
+      t = setTimeout(() => {
+        setStep('hired');
+      }, 1500);
+    }
+    return () => clearTimeout(t);
+  }, [step]);
+
+  // Render different views based on flow step
+  if (step === 'confirmed') {
+    return (
+      <View style={styles.fullscreenCenter}>
+        <StatusBar style="dark" />
+        <View style={styles.scallopedBadge}>
+          <Ionicons name="checkmark-sharp" size={64} color="#ffffff" />
+        </View>
+        <Text style={styles.confirmedTitle}>Agreement Confirmed</Text>
+        <Text style={styles.confirmedSubtitle}>Proceeding to payment...</Text>
+      </View>
+    );
+  }
+
+  if (step === 'processing') {
+    return (
+      <View style={styles.fullscreenCenter}>
+        <StatusBar style="dark" />
+        <ActivityIndicator size="large" color="#12b76a" />
+        <Text style={styles.confirmedTitle}>Processing Payment</Text>
+        <Text style={styles.confirmedSubtitle}>Please wait a moment</Text>
+      </View>
+    );
+  }
+
+  if (step === 'payment-success') {
+    return (
+      <View style={styles.fullscreenCenter}>
+        <StatusBar style="dark" />
+        <View style={styles.successCheckBadge}>
+          <Ionicons name="checkmark-sharp" size={24} color="#ffffff" />
+        </View>
+        <Text style={styles.confirmedTitle}>Payment Successful</Text>
+      </View>
+    );
+  }
+
+  if (step === 'hired') {
+    return (
+      <View style={styles.fullscreenCenter}>
+        <StatusBar style="dark" />
+        <Image source={PopperImage} style={styles.popperImage} contentFit="contain" />
+        <Text style={styles.confirmedTitle}>Tasker Hired Successfully</Text>
+        <Text style={styles.hiredSubtitle}>
+          Tasker has been hired and payment is securely held in escrow.
+        </Text>
+        <View style={styles.hiredButtons}>
+          <PrimaryButton label="Track my Task" onPress={() => router.replace('/home')} />
+          <Pressable
+            style={({ pressed }) => [styles.myTasksButton, pressed && styles.pressed]}
+            onPress={() => router.replace('/tasks')}>
+            <Text style={styles.myTasksLabel}>Go To my Tasks</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  if (step === 'payment') {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <StatusBar style="dark" />
+
+        {/* Payment Top Bar */}
+        <View style={styles.topBar}>
+          <Pressable hitSlop={8} onPress={() => setStep('agreement')} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
+          </Pressable>
+          <Text style={styles.headerTitle}>Payment</Text>
+          <Pressable hitSlop={8} style={styles.backButton}>
+            <Ionicons name="headset-outline" size={24} color={COLORS.textPrimary} />
+          </Pressable>
+        </View>
+
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}>
+          {/* Payment Summary Card */}
+          <View style={styles.card}>
+            <SectionHeader title="Payment Summary" />
+            <View style={styles.cardBody}>
+              <DetailRow label="Task" value="Printing & Photocopying, Assignment" />
+              <DetailRow label="Tasker" value={selectedName} />
+              <DetailRow label="Task Amount" value={formattedAmount} />
+              <DetailRow label="Platform Fee" value={formattedFee} />
+              <View style={styles.divider} />
+              <View style={styles.priceRow}>
+                <Text style={styles.priceLabel}>Total</Text>
+                <Text style={styles.priceValue}>{formattedTotal}</Text>
+              </View>
+            </View>
+            {/* Escrow Protected Banner */}
+            <View style={styles.escrowBanner}>
+              <Ionicons name="shield-checkmark" size={20} color="#0d6639" />
+              <Text style={styles.escrowText}>
+                Escrow Protected — your payment is only released when the task is complete.
+              </Text>
+            </View>
+          </View>
+
+          {/* Choose Payment Method */}
+          <Text style={styles.sectionTitle}>Choose Payment Method</Text>
+          <View style={styles.walletRow}>
+            <View style={styles.walletIconWrap}>
+              <Ionicons name="wallet-outline" size={20} color={COLORS.brand} />
+            </View>
+            <View style={styles.walletInfo}>
+              <Text style={styles.walletLabel}>Wallet</Text>
+              <Text style={styles.walletBalance}>₦15,000</Text>
+            </View>
+            <View style={styles.radioOutline}>
+              <View style={styles.radioDot} />
+            </View>
+          </View>
+        </ScrollView>
+
+        <View style={[styles.bottomPayBar, { paddingBottom: insets.bottom + 16 }]}>
+          <PrimaryButton label={`Pay ${formattedTotal} from wallet`} onPress={() => setStep('processing')} />
+        </View>
+      </View>
+    );
+  }
+
+  // Step 'agreement'
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar style="dark" />
@@ -174,7 +324,7 @@ export default function TaskAgreementScreen() {
 
         {/* Action Buttons */}
         <View style={styles.buttonContainer}>
-          <PrimaryButton label="Send Agreement to Tasker" onPress={handleSendAgreement} />
+          <PrimaryButton label="Send Agreement to Tasker" onPress={() => setStep('confirmed')} />
 
           <Pressable
             style={({ pressed }) => [styles.editButton, pressed && styles.pressed]}
@@ -258,7 +408,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Geist_500Medium',
     fontSize: 15,
     color: COLORS.textSecondary,
-    width: 80,
+    width: 100,
   },
   rowValue: {
     flex: 1,
@@ -402,5 +552,157 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.9,
+  },
+  // Fullscreen loaders & success layouts
+  fullscreenCenter: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    gap: 16,
+  },
+  scallopedBadge: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#12b76a',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+    shadowColor: '#12b76a',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 4,
+  },
+  confirmedTitle: {
+    fontFamily: 'Geist_700Bold',
+    fontSize: 24,
+    color: COLORS.textPrimary,
+    textAlign: 'center',
+  },
+  confirmedSubtitle: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 16,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+  },
+  escrowBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: '#edfaf3',
+    borderColor: '#d2f4e1',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 8,
+  },
+  escrowText: {
+    flex: 1,
+    fontFamily: 'Geist_500Medium',
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#0d6639',
+  },
+  sectionTitle: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 17,
+    color: COLORS.textPrimary,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  walletRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderWidth: 1.5,
+    borderColor: COLORS.brand,
+    borderRadius: 16,
+    padding: 16,
+    gap: 12,
+  },
+  walletIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: '#f3eeff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  walletInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  walletLabel: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 16,
+    color: COLORS.textPrimary,
+  },
+  walletBalance: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 14,
+    color: COLORS.textSecondary,
+  },
+  radioOutline: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: COLORS.brand,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: COLORS.brand,
+  },
+  bottomPayBar: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    backgroundColor: '#ffffff',
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  successCheckBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#12b76a',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  popperImage: {
+    width: 120,
+    height: 120,
+    marginBottom: 8,
+  },
+  hiredSubtitle: {
+    fontFamily: 'Geist_400Regular',
+    fontSize: 16,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    paddingHorizontal: 24,
+    lineHeight: 22,
+  },
+  hiredButtons: {
+    width: '100%',
+    gap: 8,
+    marginTop: 16,
+  },
+  myTasksButton: {
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: COLORS.sunken,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  myTasksLabel: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 17,
+    color: COLORS.brand,
   },
 });

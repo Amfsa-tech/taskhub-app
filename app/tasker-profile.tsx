@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -75,7 +77,7 @@ function StarRow({ count }: { count: number }) {
   return (
     <View style={styles.starRow}>
       {Array.from({ length: count }).map((_, i) => (
-        <Star key={i} width={18} height={18} />
+        <Star key={i} width={18} height={18} fill="#f59e0b" color="#f59e0b" />
       ))}
     </View>
   );
@@ -102,6 +104,9 @@ export default function TaskerProfileScreen() {
   const params = useLocalSearchParams<{ name?: string }>();
   const name = params.name ?? 'Chioma. A';
   const firstName = name.split(/[.\s]/).filter(Boolean)[0] ?? name;
+
+  const [activeTab, setActiveTab] = useState<'about' | 'reviews'>('about');
+  const [selectedImage, setSelectedImage] = useState<ImageSourcePropType | null>(null);
 
   return (
     <View style={styles.container}>
@@ -133,7 +138,7 @@ export default function TaskerProfileScreen() {
           <Text style={styles.name}>{name}</Text>
           <View style={styles.metaRow}>
             <View style={styles.metaItem}>
-              <Star width={18} height={18} />
+              <Star width={18} height={18} fill="#f59e0b" color="#f59e0b" />
               <Text style={styles.metaText}>4.9</Text>
             </View>
             <RatingDot width={6} height={6} />
@@ -157,27 +162,76 @@ export default function TaskerProfileScreen() {
           ))}
         </View>
 
-        {/* Services */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Services</Text>
-          <View style={styles.chips}>
-            {SERVICES.map((service) => (
-              <View key={service} style={styles.chip}>
-                <Text style={styles.chipText}>{service}</Text>
-              </View>
-            ))}
-          </View>
+        {/* Segmented Control Tab Container */}
+        <View style={styles.tabContainer}>
+          <Pressable
+            style={[styles.tabButton, activeTab === 'about' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('about')}>
+            <Text style={[styles.tabButtonText, activeTab === 'about' && styles.tabButtonTextActive]}>
+              About
+            </Text>
+          </Pressable>
+          <Pressable
+            style={[styles.tabButton, activeTab === 'reviews' && styles.tabButtonActive]}
+            onPress={() => setActiveTab('reviews')}>
+            <Text style={[styles.tabButtonText, activeTab === 'reviews' && styles.tabButtonTextActive]}>
+              Reviews
+            </Text>
+          </Pressable>
         </View>
 
-        {/* Reviews */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Reviews</Text>
-          <View style={styles.reviewList}>
-            {REVIEWS.map((review) => (
-              <ReviewCard key={review.id} review={review} />
-            ))}
+        {/* Conditional Content Rendering */}
+        {activeTab === 'about' ? (
+          <>
+            {/* About me */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>About me</Text>
+              <Text style={styles.aboutText}>
+                I can print and deliver within 30 minutes. I'm close to Zik Hall.
+              </Text>
+            </View>
+
+            {/* Services */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Services</Text>
+              <View style={styles.chips}>
+                {SERVICES.map((service) => (
+                  <View key={service} style={styles.chip}>
+                    <Text style={styles.chipText}>{service}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            {/* Gallery */}
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Gallery</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.galleryRow}>
+                <Pressable onPress={() => setSelectedImage(AVATAR)}>
+                  <Image source={AVATAR} style={styles.galleryImage} contentFit="cover" />
+                </Pressable>
+                <Pressable onPress={() => setSelectedImage(AVATAR)}>
+                  <Image source={AVATAR} style={styles.galleryImage} contentFit="cover" />
+                </Pressable>
+                <Pressable onPress={() => setSelectedImage(AVATAR)}>
+                  <Image source={AVATAR} style={styles.galleryImage} contentFit="cover" />
+                </Pressable>
+                <Pressable onPress={() => setSelectedImage(AVATAR)}>
+                  <Image source={AVATAR} style={styles.galleryImage} contentFit="cover" />
+                </Pressable>
+              </ScrollView>
+            </View>
+          </>
+        ) : (
+          /* Reviews List Tab Content */
+          <View style={styles.section}>
+            <View style={styles.reviewList}>
+              {REVIEWS.map((review) => (
+                <ReviewCard key={review.id} review={review} />
+              ))}
+            </View>
           </View>
-        </View>
+        )}
       </ScrollView>
 
       {/* Footer */}
@@ -187,6 +241,22 @@ export default function TaskerProfileScreen() {
         </Pressable>
         <PrimaryButton label={`Hire ${firstName}`} onPress={() => {}} style={styles.hireButton} />
       </View>
+
+      {/* Lightbox Image Modal overlay */}
+      <Modal visible={selectedImage !== null} transparent animationType="fade" onRequestClose={() => setSelectedImage(null)}>
+        <View style={styles.lightboxContainer}>
+          <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setSelectedImage(null)} />
+          {selectedImage && (
+            <Image source={selectedImage} style={styles.lightboxImage} contentFit="contain" />
+          )}
+          <Pressable style={[styles.closeButton, { top: insets.top + 16 }]} onPress={() => setSelectedImage(null)}>
+            <View style={styles.crossContainer}>
+              <View style={[styles.crossLine, { transform: [{ rotate: '45deg' }] }]} />
+              <View style={[styles.crossLine, { transform: [{ rotate: '-45deg' }] }]} />
+            </View>
+          </Pressable>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -282,6 +352,38 @@ const styles = StyleSheet.create({
     letterSpacing: -0.08,
     color: COLORS.textSecondary,
   },
+  // Tab Layout
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.sunken,
+    borderRadius: 12,
+    padding: 4,
+    marginTop: 8,
+  },
+  tabButton: {
+    flex: 1,
+    height: 40,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabButtonActive: {
+    backgroundColor: COLORS.surface,
+    shadowColor: '#111122',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  tabButtonText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    color: COLORS.textSecondary,
+  },
+  tabButtonTextActive: {
+    fontFamily: 'Geist_600SemiBold',
+    color: COLORS.textPrimary,
+  },
   // Sections
   section: { gap: 16 },
   sectionTitle: {
@@ -290,6 +392,13 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     letterSpacing: -0.41,
     color: COLORS.textPrimary,
+  },
+  aboutText: {
+    fontFamily: 'Geist_400Regular',
+    fontSize: 15,
+    lineHeight: 20,
+    letterSpacing: -0.24,
+    color: COLORS.textSecondary,
   },
   chips: {
     flexDirection: 'row',
@@ -307,6 +416,14 @@ const styles = StyleSheet.create({
     fontSize: 15,
     letterSpacing: -0.24,
     color: COLORS.brand,
+  },
+  galleryRow: {
+    gap: 8,
+  },
+  galleryImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
   },
   // Reviews
   reviewList: { gap: 8 },
@@ -376,5 +493,40 @@ const styles = StyleSheet.create({
   hireButton: {
     flex: 1,
     width: undefined,
+  },
+  // Lightbox
+  lightboxContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(17, 17, 34, 0.85)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lightboxImage: {
+    width: '100%',
+    height: '70%',
+  },
+  closeButton: {
+    position: 'absolute',
+    right: 24,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  crossContainer: {
+    width: 20,
+    height: 20,
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  crossLine: {
+    position: 'absolute',
+    width: 14,
+    height: 2,
+    backgroundColor: '#ffffff',
+    borderRadius: 1,
   },
 });
