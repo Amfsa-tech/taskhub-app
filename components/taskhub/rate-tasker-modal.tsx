@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
-import { Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const COLORS = {
@@ -53,77 +53,84 @@ export function RateTaskerModal({ visible, onClose, taskerName, taskerAvatar, on
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <Pressable style={styles.backdrop} onPress={handleClose}>
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + 24 }]} onStartShouldSetResponder={() => true}>
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.title}>Rate {firstName}</Text>
-            <Pressable style={styles.closeBtn} onPress={handleClose} hitSlop={8}>
-              <Ionicons name="close" size={24} color={COLORS.textPrimary} />
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoid}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <Pressable style={styles.backdrop} onPress={handleClose}>
+          <View style={[styles.sheet, { paddingBottom: insets.bottom + 24 }]} onStartShouldSetResponder={() => true}>
+            {/* Header */}
+            <View style={styles.header}>
+              <Text style={styles.title}>Rate {firstName}</Text>
+              <Pressable style={styles.closeBtn} onPress={handleClose} hitSlop={8}>
+                <Ionicons name="close" size={24} color={COLORS.textPrimary} />
+              </Pressable>
+            </View>
+
+            {/* Tasker Avatar */}
+            <View style={styles.avatarContainer}>
+              <Image source={{ uri: taskerAvatar }} style={styles.avatar} />
+            </View>
+
+            {/* Stars Rating Row */}
+            <View style={styles.starsRow}>
+              {[1, 2, 3, 4, 5].map((index) => {
+                const active = rating >= index;
+                return (
+                  <Pressable
+                    key={index}
+                    onPress={() => handleStarPress(index)}
+                    hitSlop={8}
+                    style={styles.starPressable}>
+                    <Ionicons
+                      name={active ? 'star' : 'star-outline'}
+                      size={36}
+                      color={active ? COLORS.starActive : COLORS.starInactive}
+                    />
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {/* Experience Input */}
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.input}
+                placeholder="Share your Experience (optional)..."
+                placeholderTextColor="#a0a0ba"
+                value={comment}
+                onChangeText={setComment}
+                multiline
+                numberOfLines={4}
+              />
+            </View>
+
+            {/* Submit Button */}
+            <Pressable
+              style={[
+                styles.submitBtn,
+                rating === 0 ? styles.submitBtnDisabled : styles.submitBtnEnabled,
+              ]}
+              onPress={handleSubmit}
+              disabled={rating === 0}>
+              <Text
+                style={[
+                  styles.submitBtnText,
+                  { color: rating === 0 ? COLORS.disabledText : '#ffffff' },
+                ]}>
+                Submit Review
+              </Text>
             </Pressable>
           </View>
-
-          {/* Tasker Avatar */}
-          <View style={styles.avatarContainer}>
-            <Image source={{ uri: taskerAvatar }} style={styles.avatar} />
-          </View>
-
-          {/* Stars Rating Row */}
-          <View style={styles.starsRow}>
-            {[1, 2, 3, 4, 5].map((index) => {
-              const active = rating >= index;
-              return (
-                <Pressable
-                  key={index}
-                  onPress={() => handleStarPress(index)}
-                  hitSlop={8}
-                  style={styles.starPressable}>
-                  <Ionicons
-                    name={active ? 'star' : 'star-outline'}
-                    size={36}
-                    color={active ? COLORS.starActive : COLORS.starInactive}
-                  />
-                </Pressable>
-              );
-            })}
-          </View>
-
-          {/* Experience Input */}
-          <View style={styles.inputContainer}>
-            <TextInput
-              style={styles.input}
-              placeholder="Share your Experience (optional)..."
-              placeholderTextColor="#a0a0ba"
-              value={comment}
-              onChangeText={setComment}
-              multiline
-              numberOfLines={4}
-            />
-          </View>
-
-          {/* Submit Button */}
-          <Pressable
-            style={[
-              styles.submitBtn,
-              rating === 0 ? styles.submitBtnDisabled : styles.submitBtnEnabled,
-            ]}
-            onPress={handleSubmit}
-            disabled={rating === 0}>
-            <Text
-              style={[
-                styles.submitBtnText,
-                { color: rating === 0 ? COLORS.disabledText : '#ffffff' },
-              ]}>
-              Submit Review
-            </Text>
-          </Pressable>
-        </View>
-      </Pressable>
+        </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardAvoid: {
+    flex: 1,
+  },
   backdrop: {
     flex: 1,
     backgroundColor: COLORS.backdrop,
