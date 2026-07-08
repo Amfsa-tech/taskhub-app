@@ -79,7 +79,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 export default function TaskAgreementScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ taskerName: string; taskerPrice: string }>();
+  const params = useLocalSearchParams<{ taskerName: string; taskerPrice: string; step?: string }>();
 
   const selectedName = params.taskerName || 'Chioma. A';
   const tasker = TASKERS_DATA[selectedName] || TASKERS_DATA['Chioma. A'];
@@ -93,7 +93,9 @@ export default function TaskAgreementScreen() {
   const totalNum = amountNum + platformFeeNum;
   const formattedTotal = `₦${totalNum.toLocaleString()}`;
 
-  const [step, setStep] = useState<'agreement' | 'confirmed' | 'payment' | 'processing' | 'payment-success' | 'hired'>('agreement');
+  const [step, setStep] = useState<'agreement' | 'confirmed' | 'payment' | 'processing' | 'payment-success' | 'hired'>(
+    (params.step as any) || 'agreement'
+  );
 
   useEffect(() => {
     let t: any;
@@ -160,7 +162,7 @@ export default function TaskAgreementScreen() {
           Tasker has been hired and payment is securely held in escrow.
         </Text>
         <View style={styles.hiredButtons}>
-          <PrimaryButton label="Track my Task" onPress={() => router.replace('/home')} />
+          <PrimaryButton label="Track my Task" onPress={() => router.replace('/track-task')} />
           <Pressable
             style={({ pressed }) => [styles.myTasksButton, pressed && styles.pressed]}
             onPress={() => router.replace('/tasks')}>

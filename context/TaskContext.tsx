@@ -23,7 +23,9 @@ export type DraftTask = {
   budget: string;
   category?: string;
   service?: string;
+  inviteTasker?: string;
 };
+
 
 type TaskContextType = {
   tasks: Task[];

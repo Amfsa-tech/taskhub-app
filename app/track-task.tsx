@@ -6,6 +6,8 @@ import { StatusBar } from 'expo-status-bar';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PrimaryButton } from '@/components/taskhub/primary-button';
+import { RateTaskerModal } from '@/components/taskhub/rate-tasker-modal';
+
 
 const PopperImage = require('@/assets/images/party_popper_3d.png');
 const AVATAR = require('@/assets/images/taskers/tasker-1.png');
@@ -44,6 +46,8 @@ export default function TrackTaskScreen() {
   const router = useRouter();
   const [modalVisible, setModalVisible] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [rateModalVisible, setRateModalVisible] = useState(false);
+  const [hasReviewed, setHasReviewed] = useState(false);
 
   const handleReleaseAndComplete = () => {
     setModalVisible(false);
@@ -60,13 +64,31 @@ export default function TrackTaskScreen() {
           ₦4,400 is held safely in escrow until the task is completed
         </Text>
         <View style={styles.completedButtons}>
-          <PrimaryButton label="Go to Dashboard" onPress={() => router.replace('/home')} />
+          {!hasReviewed && (
+            <PrimaryButton label="Rate Chioma. A" onPress={() => setRateModalVisible(true)} />
+          )}
+          <PrimaryButton
+            label="Go to Dashboard"
+            variant={!hasReviewed ? "secondary" : "primary"}
+            onPress={() => router.replace('/home')}
+          />
           <Pressable
             style={({ pressed }) => [styles.myTasksButton, pressed && styles.pressed]}
             onPress={() => router.replace('/tasks')}>
             <Text style={styles.myTasksLabel}>Go To my Tasks</Text>
           </Pressable>
         </View>
+
+        <RateTaskerModal
+          visible={rateModalVisible}
+          onClose={() => setRateModalVisible(false)}
+          taskerName="Chioma. A"
+          taskerAvatar="https://i.pravatar.cc/150?img=47"
+          onSubmit={(rating, comment) => {
+            setHasReviewed(true);
+            setRateModalVisible(false);
+          }}
+        />
       </View>
     );
   }

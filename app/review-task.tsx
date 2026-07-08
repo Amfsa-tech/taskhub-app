@@ -41,11 +41,26 @@ export default function ReviewTaskScreen() {
       category: draftTask?.category || 'local',
       service: taskService,
     });
-    router.replace({
-      pathname: '/post-success',
-      params: { taskId },
-    });
+
+    if (draftTask?.inviteTasker) {
+      router.replace({
+        pathname: '/chat',
+        params: {
+          name: draftTask.inviteTasker,
+          showInviteBanner: 'true',
+          invitedTaskTitle: taskTitle,
+          taskTitle: taskTitle,
+          taskPrice: taskBudget,
+        },
+      });
+    } else {
+      router.replace({
+        pathname: '/post-success',
+        params: { taskId },
+      });
+    }
   };
+
 
   const handleEditDetails = () => {
     router.push('/post-details');

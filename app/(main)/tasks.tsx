@@ -14,6 +14,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import NavPlus from '@/assets/icons/nav-plus.svg';
+import { HireAgainModal } from '@/components/taskhub/hire-again-modal';
+import { RateTaskerModal } from '@/components/taskhub/rate-tasker-modal';
 import {
   CompletedTaskCard,
   InProgressTaskCard,
@@ -42,6 +44,19 @@ export default function TasksScreen() {
   const pagerRef = useRef<ScrollView>(null);
   const [tab, setTab] = useState<TaskTab>('posted');
   const { tasks } = useTasks();
+  const [hireModalVisible, setHireModalVisible] = useState(false);
+  const [selectedTaskerName, setSelectedTaskerName] = useState('');
+  const [rateModalVisible, setRateModalVisible] = useState(false);
+  const [selectedTaskerAvatar, setSelectedTaskerAvatar] = useState('');
+  const [selectedTaskId, setSelectedTaskId] = useState('');
+  const [completedTasks, setCompletedTasks] = useState(SAMPLE_COMPLETED_TASKS);
+
+  const handleReviewSubmit = (rating: number, comment: string) => {
+    setCompletedTasks((prev) =>
+      prev.map((t) => (t.id === selectedTaskId ? { ...t, reviewStatus: 'reviewed' } : t))
+    );
+    setRateModalVisible(false);
+  };
 
   const goTab = (next: TaskTab) => {
     setTab(next);
@@ -134,12 +149,25 @@ export default function TasksScreen() {
           style={{ width: SCREEN_WIDTH }}
           contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
           showsVerticalScrollIndicator={false}>
-          {SAMPLE_COMPLETED_TASKS.length > 0 ? (
-            SAMPLE_COMPLETED_TASKS.map((task) => (
+          {completedTasks.length > 0 ? (
+            completedTasks.map((task) => (
               <CompletedTaskCard
                 key={task.id}
                 task={task}
-                onPress={() => router.push('/task-details')}
+                onPress={() => router.push({ pathname: '/task-details', params: { taskId: task.id } })}
+                onHireAgain={() => {
+                  setSelectedTaskerName(task.tasker.name);
+                  setHireModalVisible(true);
+                }}
+                onLeaveReview={() => {
+                  setSelectedTaskId(task.id);
+                  setSelectedTaskerName(task.tasker.name);
+                  setSelectedTaskerAvatar(task.tasker.avatar);
+                  setRateModalVisible(true);
+                }}
+                onReceipt={() => {
+                  // Mock receipt action
+                }}
               />
             ))
           ) : (
@@ -149,6 +177,20 @@ export default function TasksScreen() {
           )}
         </ScrollView>
       </ScrollView>
+
+      <HireAgainModal
+        visible={hireModalVisible}
+        onClose={() => setHireModalVisible(false)}
+        taskerName={selectedTaskerName}
+      />
+
+      <RateTaskerModal
+        visible={rateModalVisible}
+        onClose={() => setRateModalVisible(false)}
+        taskerName={selectedTaskerName}
+        taskerAvatar={selectedTaskerAvatar}
+        onSubmit={handleReviewSubmit}
+      />
     </View>
   );
 }

@@ -111,9 +111,9 @@ function parseTaskWithAI(text: string) {
 export default function PostScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ voiceText?: string }>();
+  const params = useLocalSearchParams<{ voiceText?: string; inviteTasker?: string }>();
   const [prompt, setPrompt] = useState('');
-  const { setDraftTask, resetDraftTask } = useTasks();
+  const { setDraftTask, resetDraftTask, updateDraftTask } = useTasks();
 
   useEffect(() => {
     if (params.voiceText) {
@@ -121,17 +121,31 @@ export default function PostScreen() {
     }
   }, [params.voiceText]);
 
+  useEffect(() => {
+    if (params.inviteTasker) {
+      updateDraftTask({ inviteTasker: params.inviteTasker });
+    }
+  }, [params.inviteTasker]);
+
   const handleAiSubmit = () => {
     if (!prompt.trim()) return;
     const parsed = parseTaskWithAI(prompt);
-    setDraftTask(parsed);
+    setDraftTask({
+      ...parsed,
+      inviteTasker: params.inviteTasker,
+    });
     router.push('/voice-organizing');
   };
 
   const handleManualSubmit = () => {
+    const invite = params.inviteTasker;
     resetDraftTask();
+    if (invite) {
+      updateDraftTask({ inviteTasker: invite });
+    }
     router.push('/post-category');
   };
+
 
   return (
     <View style={styles.container}>

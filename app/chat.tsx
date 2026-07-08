@@ -36,8 +36,10 @@ const COLORS = {
 };
 
 type Message = { id: string; from: 'me' | 'them'; text: string; time: string };
+type SystemBubble = { id: string; type: 'system'; variant: 'blue' | 'yellow' | 'green'; text: string; time: string };
+type ChatItem = Message | SystemBubble;
 
-const INITIAL_MESSAGES: Message[] = [
+const INITIAL_MESSAGES: ChatItem[] = [
   { id: '1', from: 'them', text: 'Hi! I can handle your printing task.', time: '2:30PM' },
   { id: '2', from: 'me', text: ' Great! How quickly can you do it?', time: '2:30PM' },
   { id: '3', from: 'them', text: "Within 30 minutes. I'm near Zik Hall right now.", time: '2:30PM' },
@@ -45,7 +47,10 @@ const INITIAL_MESSAGES: Message[] = [
   { id: '5', from: 'them', text: "No problem. I'll head to the printing shop now.", time: '2:30PM' },
 ];
 
+const HIRE_QUICK_REPLIES = ["What's your rate?", 'How Long?', 'Thanks!'];
 const QUICK_REPLIES = ['On my way!', 'How Long?', 'Thanks!', 'You are welcome'];
+
+type HireStage = 'idle' | 'waiting' | 'accepted';
 
 function formatTime() {
   const d = new Date();
@@ -67,6 +72,22 @@ function Bubble({ message }: { message: Message }) {
         <Text style={[styles.bubbleTime, mine ? styles.bubbleTimeMine : styles.bubbleTimeTheirs]}>
           {message.time}
         </Text>
+      </View>
+    </View>
+  );
+}
+
+function InlineBadge({ variant, text, time }: { variant: 'blue' | 'yellow' | 'green'; text: string; time?: string }) {
+  const bgMap = { blue: '#eff6ff', yellow: '#fffbeb', green: '#f0fdf4' };
+  const borderMap = { blue: '#dbeafe', yellow: '#fef3c7', green: '#dcfce7' };
+  const textMap = { blue: '#1e40af', yellow: '#854d0e', green: '#166534' };
+  const iconColorMap = { blue: '#2563eb', yellow: '#d97706', green: '#12b76a' };
+  return (
+    <View style={styles.inlineBadgeWrapper}>
+      {time && <Text style={styles.statusTime}>{time}</Text>}
+      <View style={[styles.inlineBadge, { backgroundColor: bgMap[variant], borderColor: borderMap[variant] }]}>
+        <Ionicons name="shield-outline" size={18} color={iconColorMap[variant]} style={{ marginTop: 1 }} />
+        <Text style={[styles.inlineBadgeText, { color: textMap[variant] }]}>{text}</Text>
       </View>
     </View>
   );
@@ -103,32 +124,77 @@ function StatusCard({ type, text, time }: { type: 'blue' | 'yellow' | 'green'; t
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ name?: string }>();
+  const params = useLocalSearchParams<{
+    name?: string;
+    showInviteBanner?: string;
+    invitedTaskTitle?: string;
+    taskTitle?: string;
+    taskPrice?: string;
+  }>();
   const name = params.name ?? 'Chioma A.';
+  const isHireFlow = params.showInviteBanner === 'true';
 
-  const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
+  const [messages, setMessages] = useState<ChatItem[]>(
+    isHireFlow ? [] : INITIAL_MESSAGES
+  );
   const [draft, setDraft] = useState('');
+  const [hireStage, setHireStage] = useState<HireStage>('idle');
+  // legacy non-hire flow stage
   const [flowStage, setFlowStage] = useState(1);
   const scrollRef = useRef<ScrollView>(null);
 
-  // Stage 1 to 2 auto-transition after 3 seconds
+  // Stage 1 to 2 auto-transition after 3 seconds (non-hire flow)
   useEffect(() => {
-    if (flowStage === 1) {
-      const t = setTimeout(() => {
-        setFlowStage(2);
-      }, 3000);
+    if (!isHireFlow && flowStage === 1) {
+      const t = setTimeout(() => setFlowStage(2), 3000);
       return () => clearTimeout(t);
     }
-  }, [flowStage]);
+  }, [flowStage, isHireFlow]);
+
+  // When hire request is sent, simulate acceptance after 4s
+  useEffect(() => {
+    if (hireStage === 'waiting') {
+      const t = setTimeout(() => {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: String(prev.length + 1),
+            type: 'system',
+            variant: 'green',
+            text: `${name} accepted your hire request! You can now proceed to payment.`,
+            time: formatTime(),
+          } as SystemBubble,
+        ]);
+        setTimeout(() => setHireStage('accepted'), 400);
+      }, 4000);
+      return () => clearTimeout(t);
+    }
+  }, [hireStage, name]);
 
   const send = (text: string) => {
     const body = text.trim();
     if (!body) return;
     setMessages((prev) => [
       ...prev,
-      { id: String(prev.length + 1), from: 'me', text: body, time: formatTime() },
+      { id: String(prev.length + 1), from: 'me', text: body, time: formatTime() } as Message,
     ]);
     setDraft('');
+    requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+  };
+
+  const sendHireRequest = () => {
+    const time = formatTime();
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: String(prev.length + 1),
+        type: 'system',
+        variant: 'blue',
+        text: `Hire request sent to ${name}. Waiting for their response…`,
+        time,
+      } as SystemBubble,
+    ]);
+    setHireStage('waiting');
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
   };
 
@@ -155,10 +221,10 @@ export default function ChatScreen() {
       {/* Task Header details summary */}
       <Pressable style={styles.taskHeader} onPress={() => {}}>
         <View style={styles.taskHeaderLeft}>
-          <Text style={styles.taskHeaderTitle}>Deliver Package to Lekki</Text>
+          <Text style={styles.taskHeaderTitle}>{params.taskTitle || 'Deliver Package to Lekki'}</Text>
           <View style={styles.taskHeaderSubRow}>
             <Text style={styles.taskHeaderStatus}>Open</Text>
-            <Text style={styles.taskHeaderPrice}>₦1,000</Text>
+            <Text style={styles.taskHeaderPrice}>{params.taskPrice || '₦1,000'}</Text>
           </View>
         </View>
         <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />
@@ -175,14 +241,16 @@ export default function ChatScreen() {
           showsVerticalScrollIndicator={false}
           onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}>
           
-          {/* Status logs */}
-          <StatusCard
-            type="blue"
-            text="You have successfully hired tasker and task is currently in progress"
-            time="10:30pm"
-          />
+          {/* Non-hire flow: legacy status cards */}
+          {!isHireFlow && (
+            <StatusCard
+              type="blue"
+              text="You have successfully hired tasker and task is currently in progress"
+              time="10:30pm"
+            />
+          )}
 
-          {flowStage >= 2 && (
+          {!isHireFlow && flowStage >= 2 && (
             <StatusCard
               type="yellow"
               text="Tasker has completed task and is currently wait for you to confirm and release payment"
@@ -190,7 +258,7 @@ export default function ChatScreen() {
             />
           )}
 
-          {flowStage === 4 && (
+          {!isHireFlow && flowStage === 4 && (
             <StatusCard
               type="green"
               text="You have successfully released payment"
@@ -198,17 +266,80 @@ export default function ChatScreen() {
             />
           )}
 
-          {/* Chat conversations */}
-          {messages.map((m) => (
-            <Bubble key={m.id} message={m} />
-          ))}
+          {/* Chat + hire flow messages */}
+          {messages.map((item) => {
+            if ('type' in item && item.type === 'system') {
+              return (
+                <InlineBadge
+                  key={item.id}
+                  variant={item.variant}
+                  text={item.text}
+                  time={item.time}
+                />
+              );
+            }
+            return <Bubble key={item.id} message={item as Message} />;
+          })}
+
+          {/* Keep payments in TaskHub notice – shown in accepted state */}
+          {hireStage === 'accepted' && (
+            <InlineBadge
+              key="keep-payments"
+              variant="yellow"
+              text="Keep payments inside TaskHub for protection."
+            />
+          )}
         </ScrollView>
 
         {/* Composer area */}
         <View style={[styles.composer, { paddingBottom: insets.bottom + 16 }]}>
-          
-          {/* Contextual status button actions */}
-          {flowStage === 2 && (
+
+          {/* === HIRE FLOW BOTTOM AREA === */}
+          {isHireFlow && hireStage === 'idle' && (
+            <Pressable
+              style={({ pressed }) => [styles.bottomActionBtn, pressed && styles.pressed]}
+              onPress={sendHireRequest}>
+              <Text style={styles.bottomActionText}>Send Hire Request</Text>
+            </Pressable>
+          )}
+
+          {isHireFlow && hireStage === 'waiting' && (
+            <View style={styles.waitingFooter}>
+              <Text style={styles.waitingTitle}>Waiting for {name}….</Text>
+              <Text style={styles.waitingSubtitle}>
+                They'll accept or decline your hire request.
+              </Text>
+            </View>
+          )}
+
+          {isHireFlow && hireStage === 'accepted' && (
+            <View style={styles.acceptedFooter}>
+              <View style={styles.acceptedLeft}>
+                <Ionicons name="checkmark-circle" size={22} color="#12b76a" />
+                <View>
+                  <Text style={styles.acceptedTitle}>Hire Request accepted!</Text>
+                  <Text style={styles.acceptedSub}>You can now proceed to payment.</Text>
+                </View>
+              </View>
+              <Pressable
+                style={({ pressed }) => [styles.payNowBtn, pressed && styles.pressed]}
+                onPress={() =>
+                  router.push({
+                    pathname: '/task-agreement' as any,
+                    params: {
+                      step: 'payment',
+                      taskerPrice: params.taskPrice || '₦1,000',
+                      taskerName: name,
+                    },
+                  })
+                }>
+                <Text style={styles.payNowText}>Pay Now</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {/* === LEGACY NON-HIRE FLOW ACTIONS === */}
+          {!isHireFlow && flowStage === 2 && (
             <Pressable
               style={({ pressed }) => [styles.bottomActionBtn, pressed && styles.pressed]}
               onPress={() => setFlowStage(3)}>
@@ -216,7 +347,7 @@ export default function ChatScreen() {
             </Pressable>
           )}
 
-          {flowStage === 3 && (
+          {!isHireFlow && flowStage === 3 && (
             <Pressable
               style={({ pressed }) => [styles.bottomActionBtn, pressed && styles.pressed]}
               onPress={() => setFlowStage(4)}>
@@ -230,7 +361,7 @@ export default function ChatScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.chips}
             keyboardShouldPersistTaps="handled">
-            {QUICK_REPLIES.map((reply) => (
+            {(isHireFlow ? HIRE_QUICK_REPLIES : QUICK_REPLIES).map((reply) => (
               <Pressable key={reply} style={styles.chip} onPress={() => send(reply)}>
                 <Text style={styles.chipText}>{reply}</Text>
               </Pressable>
@@ -475,4 +606,102 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.9,
   },
+  inviteBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#fffbeb',
+    borderColor: '#fef3c7',
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+  },
+  inviteBannerText: {
+    flex: 1,
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    lineHeight: 20,
+    color: '#854d0e',
+  },
+  // Inline badge (hire flow system messages)
+  inlineBadgeWrapper: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  inlineBadge: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    width: '100%',
+  },
+  inlineBadgeText: {
+    flex: 1,
+    fontFamily: 'Geist_500Medium',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  // Waiting state footer
+  waitingFooter: {
+    paddingHorizontal: 16,
+    paddingBottom: 4,
+    gap: 4,
+  },
+  waitingTitle: {
+    fontFamily: 'Geist_700Bold',
+    fontSize: 16,
+    color: COLORS.textPrimary,
+  },
+  waitingSubtitle: {
+    fontFamily: 'Geist_400Regular',
+    fontSize: 14,
+    color: COLORS.textSecondary,
+  },
+  // Accepted state footer
+  acceptedFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f0fdf4',
+    borderColor: '#dcfce7',
+    borderWidth: 1,
+    borderRadius: 14,
+    marginHorizontal: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    gap: 12,
+  },
+  acceptedLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  acceptedTitle: {
+    fontFamily: 'Geist_700Bold',
+    fontSize: 14,
+    color: '#166534',
+  },
+  acceptedSub: {
+    fontFamily: 'Geist_400Regular',
+    fontSize: 12,
+    color: '#166534',
+    marginTop: 1,
+  },
+  payNowBtn: {
+    backgroundColor: '#12b76a',
+    borderRadius: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+  },
+  payNowText: {
+    fontFamily: 'Geist_700Bold',
+    fontSize: 14,
+    color: '#ffffff',
+  },
 });
+

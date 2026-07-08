@@ -32,11 +32,26 @@ export default function PostReviewScreen() {
       category: draftTask?.category || 'campus',
       service: taskService,
     });
-    router.replace({
-      pathname: '/post-success',
-      params: { taskId },
-    });
+
+    if (draftTask?.inviteTasker) {
+      router.replace({
+        pathname: '/chat',
+        params: {
+          name: draftTask.inviteTasker,
+          showInviteBanner: 'true',
+          invitedTaskTitle: taskTitle,
+          taskTitle: taskTitle,
+          taskPrice: taskBudget,
+        },
+      });
+    } else {
+      router.replace({
+        pathname: '/post-success',
+        params: { taskId },
+      });
+    }
   };
+
 
   const SUMMARY = [
     { label: 'Service', value: taskService },
