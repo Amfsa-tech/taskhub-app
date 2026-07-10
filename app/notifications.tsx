@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -91,9 +92,15 @@ const NOTIFICATIONS: Notification[] = [
   },
 ];
 
-function NotificationRow({ item }: { item: Notification }) {
+function NotificationRow({ item, onPress }: { item: Notification; onPress: () => void }) {
   return (
-    <Pressable style={[styles.row, item.unread && styles.rowUnread]}>
+    <Pressable
+      style={({ pressed }) => [
+        styles.row,
+        item.unread && styles.rowUnread,
+        pressed && styles.rowPressed,
+      ]}
+      onPress={onPress}>
       <View style={[styles.iconTile, { backgroundColor: item.iconBg }]}>{item.icon}</View>
       <View style={styles.content}>
         <View style={styles.topRow}>
@@ -113,9 +120,25 @@ function NotificationRow({ item }: { item: Notification }) {
 
 export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [items, setItems] = useState(NOTIFICATIONS);
 
   const readAll = () => setItems((prev) => prev.map((n) => ({ ...n, unread: false })));
+
+  const handlePress = (item: Notification) => {
+    // Mark as read
+    setItems((prev) =>
+      prev.map((n) => (n.id === item.id ? { ...n, unread: false } : n))
+    );
+    // Navigate to details
+    router.push({
+      pathname: '/notification-details',
+      params: {
+        title: item.title,
+        message: item.message,
+      },
+    });
+  };
 
   return (
     <View style={styles.container}>
@@ -136,7 +159,11 @@ export default function NotificationsScreen() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         showsVerticalScrollIndicator={false}>
         {items.map((item) => (
-          <NotificationRow key={item.id} item={item} />
+          <NotificationRow
+            key={item.id}
+            item={item}
+            onPress={() => handlePress(item)}
+          />
         ))}
       </ScrollView>
     </View>
@@ -166,6 +193,9 @@ const styles = StyleSheet.create({
   },
   rowUnread: {
     backgroundColor: COLORS.brandSubtle,
+  },
+  rowPressed: {
+    opacity: 0.7,
   },
   iconTile: {
     width: 48,

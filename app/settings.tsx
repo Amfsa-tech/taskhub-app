@@ -130,7 +130,7 @@ export default function SettingsScreen() {
               iconColor="#0d6639"
               label="Phone Number"
               value="+234*** ****12"
-              onPress={() => Alert.alert('Phone Number', 'Phone verification features.')}
+              onPress={() => router.push('/phone-number')}
             />
           </View>
         </View>
@@ -255,7 +255,7 @@ export default function SettingsScreen() {
               iconBg="#fff1f1"
               iconColor="#b01515"
               label="Blocked user"
-              onPress={() => Alert.alert('Privacy', 'Manage blocked users.')}
+              onPress={() => router.push('/blocked-users')}
             />
           </View>
         </View>
@@ -281,7 +281,7 @@ export default function SettingsScreen() {
               label="NIN Verification"
               value="Pending"
               valueColor="#d97706"
-              onPress={() => Alert.alert('Security', 'NIN Verification details.')}
+              onPress={() => router.push('/select-verification')}
             />
             <View style={styles.divider} />
             <SettingRow
@@ -289,7 +289,7 @@ export default function SettingsScreen() {
               iconBg="#eff6ff"
               iconColor="#1d4ed8"
               label="Device Sessions"
-              onPress={() => Alert.alert('Security', 'Active device sessions.')}
+              onPress={() => router.push('/device-sessions')}
             />
           </View>
         </View>
@@ -303,16 +303,16 @@ export default function SettingsScreen() {
               iconBg="#eff6ff"
               iconColor="#1d4ed8"
               label="Wallet"
-              onPress={() => Alert.alert('Payment', 'Wallet management.')}
+              onPress={() => router.push('/wallet')}
             />
             <View style={styles.divider} />
-            <SettingRow
+            {/* <SettingRow
               icon="receipt-outline"
               iconBg="#fff1f1"
               iconColor="#b01515"
               label="Payment History"
               onPress={() => Alert.alert('Payment', 'View payment receipts.')}
-            />
+            /> */}
           </View>
         </View>
 
@@ -348,7 +348,7 @@ export default function SettingsScreen() {
               iconBg="#eff6ff"
               iconColor="#1d4ed8"
               label="Help & Support"
-              onPress={() => Alert.alert('Help', 'Contact customer support.')}
+              onPress={() => router.push('/help-support')}
             />
             <View style={styles.divider} />
             <SettingRow

@@ -1,9 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Ionicons } from '@expo/vector-icons';
+import { useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
+  Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -12,11 +16,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Flag from '@/assets/icons/flag.svg';
-import ImageSquare from '@/assets/icons/image-square.svg';
 import PaperPlaneTilt from '@/assets/icons/paper-plane-tilt.svg';
+import PaperClip from '@/assets/icons/Paperclip.svg';
 import UserCircle from '@/assets/icons/user-circle.svg';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
 
@@ -73,6 +78,95 @@ function Bubble({ message }: { message: Message }) {
           {message.time}
         </Text>
       </View>
+    </View>
+  );
+}
+
+function AttachmentBubble({ message }: { message: any }) {
+  const mine = message.from === 'me';
+
+  const handleOpenLink = () => {
+    if (message.attachmentType === 'location') {
+      Alert.alert('Open Map', `Opening location in maps...`);
+    } else {
+      Alert.alert('Open File', `Opening attachment "${message.attachmentName}"...`);
+    }
+  };
+
+  return (
+    <View style={[styles.bubbleRow, mine ? styles.bubbleRowMine : styles.bubbleRowTheirs]}>
+      {message.attachmentType === 'location' ? (
+        <View style={styles.locationCard}>
+          <Pressable onPress={handleOpenLink}>
+            <Image
+              source={{ uri: message.attachmentUrl }}
+              style={styles.locationMapImage}
+              resizeMode="cover"
+            />
+          </Pressable>
+          <View style={styles.locationFooter}>
+            <View style={styles.locationTextCol}>
+              <View style={styles.locationHeaderRow}>
+                <Text style={styles.locationTitle}>
+                  {message.locationName === 'Home' || message.locationName === 'Office'
+                    ? message.locationName
+                    : 'Current Location'}
+                </Text>
+                <Pressable onPress={handleOpenLink} hitSlop={8}>
+                  <Ionicons name="open-outline" size={16} color={COLORS.brand} style={styles.openIcon} />
+                </Pressable>
+              </View>
+              <Text style={styles.locationSubtitle}>{message.text}</Text>
+            </View>
+          </View>
+          <Text style={[styles.bubbleTime, { paddingHorizontal: 12, paddingBottom: 8 }]}>
+            {message.time}
+          </Text>
+        </View>
+      ) : message.attachmentType === 'image' ? (
+        <View style={[styles.imageCard, mine ? styles.imageCardMine : styles.imageCardTheirs]}>
+          <Image
+            source={{ uri: message.attachmentUrl }}
+            style={styles.attachmentImage}
+            resizeMode="cover"
+          />
+          <Text style={[styles.bubbleTime, mine ? styles.bubbleTimeMine : styles.bubbleTimeTheirs, { marginTop: 4 }]}>
+            {message.time}
+          </Text>
+        </View>
+      ) : (
+        <Pressable
+          style={[styles.docCard, mine ? styles.docCardMine : styles.docCardTheirs]}
+          onPress={handleOpenLink}>
+          <View style={styles.docRow}>
+            <View style={styles.docIconBox}>
+              <Ionicons
+                name={
+                  message.attachmentName.endsWith('.pdf')
+                    ? 'document-text'
+                    : message.attachmentName.endsWith('.xlsx') || message.attachmentName.endsWith('.csv')
+                    ? 'grid'
+                    : 'document'
+                }
+                size={24}
+                color={COLORS.brand}
+              />
+            </View>
+            <View style={styles.docInfo}>
+              <Text style={[styles.docName, mine ? styles.docNameMine : styles.docNameTheirs]} numberOfLines={1}>
+                {message.attachmentName}
+              </Text>
+              <Text style={styles.docMeta}>
+                {message.attachmentName.split('.').pop()?.toUpperCase()}  •  1.2 MB
+              </Text>
+            </View>
+            <Ionicons name="arrow-down-circle-outline" size={20} color={mine ? '#ffffff' : COLORS.textSecondary} />
+          </View>
+          <Text style={[styles.bubbleTime, mine ? styles.bubbleTimeMine : styles.bubbleTimeTheirs, { marginTop: 6 }]}>
+            {message.time}
+          </Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -143,6 +237,14 @@ export default function ChatScreen() {
   const [flowStage, setFlowStage] = useState(1);
   const scrollRef = useRef<ScrollView>(null);
 
+  // Attachment & location share state
+  const [isAttachmentModalOpen, setIsAttachmentModalOpen] = useState(false);
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
+  const [isDocPickerOpen, setIsDocPickerOpen] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [isImagePickerOpen, setIsImagePickerOpen] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
+
   // Stage 1 to 2 auto-transition after 3 seconds (non-hire flow)
   useEffect(() => {
     if (!isHireFlow && flowStage === 1) {
@@ -198,6 +300,149 @@ export default function ChatScreen() {
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
   };
 
+  const handleShareCurrentLocation = async () => {
+    setIsLocating(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Denied',
+          'Permission to access location was denied. Sharing mock location instead.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                handleShareSavedLocation('Current Location', 'Zik hall, university of Ibadan', 7.4439, 3.9015);
+              }
+            }
+          ]
+        );
+        setIsLocating(false);
+        setIsLocationModalOpen(false);
+        return;
+      }
+
+      const locationData = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const { latitude, longitude } = locationData.coords;
+
+      const GEOAPIFY_API_KEY = process.env.EXPO_PUBLIC_GEOAPIFY_API_KEY || '';
+      let addressName = 'Coordinates: ' + latitude.toFixed(4) + ', ' + longitude.toFixed(4);
+
+      if (GEOAPIFY_API_KEY) {
+        try {
+          const res = await fetch(
+            `https://api.geoapify.com/v1/geocode/reverse?lat=${latitude}&lon=${longitude}&apiKey=${GEOAPIFY_API_KEY}`
+          );
+          const data = await res.json();
+          if (data.features && data.features.length > 0) {
+            addressName = data.features[0].properties.formatted;
+          }
+        } catch (e) {
+          console.warn('Reverse geocoding failed', e);
+        }
+      }
+
+      const staticMapUrl = GEOAPIFY_API_KEY
+        ? `https://maps.geoapify.com/v1/staticmap?style=osm-carto&width=600&height=300&center=lonlat:${longitude},${latitude}&zoom=15&marker=lonlat:${longitude},${latitude};color:%236c3bff;size:medium&apiKey=${GEOAPIFY_API_KEY}`
+        : 'https://i.postimg.cc/mDtbSgD3/mock-map.png';
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: String(prev.length + 1),
+          from: 'me',
+          time: formatTime(),
+          attachmentType: 'location',
+          attachmentUrl: staticMapUrl,
+          locationName: 'Current Location',
+          text: addressName,
+          lat: latitude,
+          lon: longitude,
+        } as any,
+      ]);
+
+      setIsLocationModalOpen(false);
+      requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+    } catch (err) {
+      console.warn('Failed to get current location', err);
+      handleShareSavedLocation('Current Location', 'Zik hall, university of Ibadan', 7.4439, 3.9015);
+    } finally {
+      setIsLocating(false);
+    }
+  };
+
+  const handleShareSavedLocation = (nameStr: string, address: string, lat: number, lon: number) => {
+    const GEOAPIFY_API_KEY = process.env.EXPO_PUBLIC_GEOAPIFY_API_KEY || '';
+    const staticMapUrl = GEOAPIFY_API_KEY
+      ? `https://maps.geoapify.com/v1/staticmap?style=osm-carto&width=600&height=300&center=lonlat:${lon},${lat}&zoom=15&marker=lonlat:${lon},${lat};color:%236c3bff;size:medium&apiKey=${GEOAPIFY_API_KEY}`
+      : 'https://i.postimg.cc/mDtbSgD3/mock-map.png';
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: String(prev.length + 1),
+        from: 'me',
+        time: formatTime(),
+        attachmentType: 'location',
+        attachmentUrl: staticMapUrl,
+        locationName: nameStr,
+        text: address,
+        lat,
+        lon,
+      } as any,
+    ]);
+
+    setIsLocationModalOpen(false);
+    requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+  };
+
+  const handlePickDocument = (fileName: string) => {
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: String(prev.length + 1),
+        from: 'me',
+        time: formatTime(),
+        attachmentType: 'document',
+        attachmentName: fileName,
+      } as any,
+    ]);
+    setIsDocPickerOpen(false);
+    requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+  };
+
+  const handleCapturePhoto = () => {
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: String(prev.length + 1),
+        from: 'me',
+        time: formatTime(),
+        attachmentType: 'image',
+        attachmentUrl: 'https://images.unsplash.com/photo-1542435503-956c469947f6?auto=format&fit=crop&w=400&q=80',
+      } as any,
+    ]);
+    setIsCameraOpen(false);
+    requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+  };
+
+  const handleSelectGalleryPhoto = (url: string) => {
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: String(prev.length + 1),
+        from: 'me',
+        time: formatTime(),
+        attachmentType: 'image',
+        attachmentUrl: url,
+      } as any,
+    ]);
+    setIsImagePickerOpen(false);
+    requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
@@ -219,7 +464,7 @@ export default function ChatScreen() {
       />
 
       {/* Task Header details summary */}
-      <Pressable style={styles.taskHeader} onPress={() => {}}>
+      <Pressable style={styles.taskHeader} onPress={() => { }}>
         <View style={styles.taskHeaderLeft}>
           <Text style={styles.taskHeaderTitle}>{params.taskTitle || 'Deliver Package to Lekki'}</Text>
           <View style={styles.taskHeaderSubRow}>
@@ -240,7 +485,7 @@ export default function ChatScreen() {
           contentContainerStyle={styles.messages}
           showsVerticalScrollIndicator={false}
           onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}>
-          
+
           {/* Non-hire flow: legacy status cards */}
           {!isHireFlow && (
             <StatusCard
@@ -278,6 +523,12 @@ export default function ChatScreen() {
                 />
               );
             }
+
+            const msg = item as any;
+            if (msg.attachmentType) {
+              return <AttachmentBubble key={msg.id} message={msg} />;
+            }
+
             return <Bubble key={item.id} message={item as Message} />;
           })}
 
@@ -307,7 +558,7 @@ export default function ChatScreen() {
             <View style={styles.waitingFooter}>
               <Text style={styles.waitingTitle}>Waiting for {name}….</Text>
               <Text style={styles.waitingSubtitle}>
-                They'll accept or decline your hire request.
+                They{"'"}ll accept or decline your hire request.
               </Text>
             </View>
           )}
@@ -370,8 +621,8 @@ export default function ChatScreen() {
 
           {/* Input row */}
           <View style={styles.inputRow}>
-            <Pressable style={styles.iconTile} onPress={() => {}}>
-              <ImageSquare width={24} height={24} />
+            <Pressable style={styles.iconTile} onPress={() => setIsAttachmentModalOpen(true)}>
+              <PaperClip width={24} height={24} />
             </Pressable>
             <View style={styles.inputField}>
               <TextInput
@@ -390,6 +641,224 @@ export default function ChatScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Send Attachment Modal */}
+      <Modal
+        visible={isAttachmentModalOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsAttachmentModalOpen(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setIsAttachmentModalOpen(false)}>
+          <View style={[styles.modalContent, { paddingBottom: insets.bottom + 24 }]}>
+            <Text style={styles.modalTitle}>Send Attachment</Text>
+            
+            <View style={styles.gridContainer}>
+              <Pressable
+                style={styles.gridItem}
+                onPress={() => {
+                  setIsAttachmentModalOpen(false);
+                  setIsCameraOpen(true);
+                }}>
+                <View style={[styles.gridIconBox, { backgroundColor: '#eff6ff' }]}>
+                  <Ionicons name="camera-outline" size={24} color="#1d4ed8" />
+                </View>
+                <Text style={styles.gridLabel}>Take Photo</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.gridItem}
+                onPress={() => {
+                  setIsAttachmentModalOpen(false);
+                  setIsImagePickerOpen(true);
+                }}>
+                <View style={[styles.gridIconBox, { backgroundColor: '#f3eeff' }]}>
+                  <Ionicons name="image-outline" size={24} color="#6c3bff" />
+                </View>
+                <Text style={styles.gridLabel}>Choose Photo</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.gridItem}
+                onPress={() => {
+                  setIsAttachmentModalOpen(false);
+                  setIsDocPickerOpen(true);
+                }}>
+                <View style={[styles.gridIconBox, { backgroundColor: '#fffbea' }]}>
+                  <Ionicons name="document-text-outline" size={24} color="#b45309" />
+                </View>
+                <Text style={styles.gridLabel}>Upload Document</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.gridItem}
+                onPress={() => {
+                  setIsAttachmentModalOpen(false);
+                  setIsLocationModalOpen(true);
+                }}>
+                <View style={[styles.gridIconBox, { backgroundColor: '#f0fdf4' }]}>
+                  <Ionicons name="map-outline" size={24} color="#15803d" />
+                </View>
+                <Text style={styles.gridLabel}>Share Location</Text>
+              </Pressable>
+            </View>
+
+            <Text style={styles.gridFooterText}>
+              Supports PDF, DOC, DOCX, PPT, XLS, ZIP, Images
+            </Text>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Share Location Modal */}
+      <Modal
+        visible={isLocationModalOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsLocationModalOpen(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setIsLocationModalOpen(false)}>
+          <View style={[styles.modalContent, { paddingBottom: insets.bottom + 24 }]}>
+            
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Share Location</Text>
+              <Pressable hitSlop={8} onPress={() => setIsLocationModalOpen(false)}>
+                <Ionicons name="close" size={24} color={COLORS.textPrimary} />
+              </Pressable>
+            </View>
+
+            <Pressable
+              style={styles.locationOptionRow}
+              onPress={handleShareCurrentLocation}>
+              <View style={[styles.locationOptionIcon, { backgroundColor: '#eff6ff' }]}>
+                {isLocating ? (
+                  <ActivityIndicator size="small" color="#1d4ed8" />
+                ) : (
+                  <Ionicons name="navigate-outline" size={20} color="#1d4ed8" />
+                )}
+              </View>
+              <View style={styles.locationOptionDetails}>
+                <Text style={styles.locationOptionTitle}>Current Location</Text>
+                <Text style={styles.locationOptionSubtitle}>
+                  {isLocating ? 'Determining your coordinates...' : 'Share where you are right now'}
+                </Text>
+              </View>
+            </Pressable>
+
+            <Text style={styles.savedLabel}>SAVED ADDRESSES</Text>
+
+            <Pressable
+              style={styles.locationOptionRow}
+              onPress={() => handleShareSavedLocation('Home', 'Block c , zik hall', 7.4439, 3.9015)}>
+              <View style={[styles.locationOptionIcon, { backgroundColor: '#f3eeff' }]}>
+                <Ionicons name="pin-outline" size={20} color={COLORS.brand} />
+              </View>
+              <View style={styles.locationOptionDetails}>
+                <Text style={styles.locationOptionTitle}>Home</Text>
+                <Text style={styles.locationOptionSubtitle}>Block c , zik hall</Text>
+              </View>
+            </Pressable>
+
+            <Pressable
+              style={styles.locationOptionRow}
+              onPress={() => handleShareSavedLocation('Office', 'Chevron', 6.4281, 3.4219)}>
+              <View style={[styles.locationOptionIcon, { backgroundColor: '#f3eeff' }]}>
+                <Ionicons name="pin-outline" size={20} color={COLORS.brand} />
+              </View>
+              <View style={styles.locationOptionDetails}>
+                <Text style={styles.locationOptionTitle}>Office</Text>
+                <Text style={styles.locationOptionSubtitle}>Chevron</Text>
+              </View>
+            </Pressable>
+
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Mock Document Picker Modal */}
+      <Modal
+        visible={isDocPickerOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsDocPickerOpen(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setIsDocPickerOpen(false)}>
+          <View style={[styles.modalContent, { paddingBottom: insets.bottom + 24 }]}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Select Document</Text>
+              <Pressable hitSlop={8} onPress={() => setIsDocPickerOpen(false)}>
+                <Ionicons name="close" size={24} color={COLORS.textPrimary} />
+              </Pressable>
+            </View>
+
+            <Pressable style={styles.fileRow} onPress={() => handlePickDocument('Assignment_Draft.pdf')}>
+              <Ionicons name="document-text" size={24} color="#ef4444" />
+              <Text style={styles.fileNameText}>Assignment_Draft.pdf</Text>
+            </Pressable>
+            
+            <Pressable style={styles.fileRow} onPress={() => handlePickDocument('GST_Notes.xlsx')}>
+              <Ionicons name="grid" size={24} color="#10b981" />
+              <Text style={styles.fileNameText}>GST_Notes.xlsx</Text>
+            </Pressable>
+
+            <Pressable style={styles.fileRow} onPress={() => handlePickDocument('Project_Proposal.docx')}>
+              <Ionicons name="document" size={24} color="#2563eb" />
+              <Text style={styles.fileNameText}>Project_Proposal.docx</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Mock Camera Modal */}
+      <Modal
+        visible={isCameraOpen}
+        animationType="fade"
+        onRequestClose={() => setIsCameraOpen(false)}>
+        <View style={styles.cameraContainer}>
+          <Image
+            source={{ uri: 'https://images.unsplash.com/photo-1542435503-956c469947f6?auto=format&fit=crop&w=800&q=80' }}
+            style={StyleSheet.absoluteFillObject}
+          />
+          <View style={styles.cameraOverlay}>
+            <Pressable style={styles.cameraCloseBtn} onPress={() => setIsCameraOpen(false)}>
+              <Ionicons name="close" size={30} color="#ffffff" />
+            </Pressable>
+            
+            <View style={styles.cameraBottomBar}>
+              <Pressable style={styles.shutterButton} onPress={handleCapturePhoto}>
+                <View style={styles.shutterButtonInner} />
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Mock Gallery Picker Modal */}
+      <Modal
+        visible={isImagePickerOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsImagePickerOpen(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setIsImagePickerOpen(false)}>
+          <View style={[styles.modalContent, { paddingBottom: insets.bottom + 24 }]}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>Choose Photo</Text>
+              <Pressable hitSlop={8} onPress={() => setIsImagePickerOpen(false)}>
+                <Ionicons name="close" size={24} color={COLORS.textPrimary} />
+              </Pressable>
+            </View>
+
+            <View style={styles.galleryGrid}>
+              {[
+                'https://images.unsplash.com/photo-1506784983877-45594efa4cbe?auto=format&fit=crop&w=300&q=80',
+                'https://images.unsplash.com/photo-1461749280684-dccba630e2f6?auto=format&fit=crop&w=300&q=80',
+                'https://images.unsplash.com/photo-1531403009284-440f080d1e12?auto=format&fit=crop&w=300&q=80',
+              ].map((url, i) => (
+                <Pressable key={i} style={styles.galleryItem} onPress={() => handleSelectGalleryPhoto(url)}>
+                  <Image source={{ uri: url }} style={styles.galleryImage} />
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -702,6 +1171,284 @@ const styles = StyleSheet.create({
     fontFamily: 'Geist_700Bold',
     fontSize: 14,
     color: '#ffffff',
+  },
+
+  // Custom attachment bubble and modal styles
+  locationCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e2e2ec',
+    width: 250,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+    alignSelf: 'flex-end',
+    marginVertical: 4,
+  },
+  locationMapImage: {
+    width: '100%',
+    height: 120,
+    backgroundColor: '#e5e5e5',
+  },
+  locationFooter: {
+    padding: 12,
+  },
+  locationTextCol: {
+    gap: 4,
+  },
+  locationHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  locationTitle: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 15,
+    color: '#111122',
+  },
+  locationSubtitle: {
+    fontFamily: 'Geist_400Regular',
+    fontSize: 13,
+    color: '#5a5a70',
+    lineHeight: 16,
+  },
+  openIcon: {
+    marginLeft: 4,
+  },
+  imageCard: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    width: 200,
+    padding: 4,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e2ec',
+    marginVertical: 4,
+  },
+  imageCardMine: {
+    alignSelf: 'flex-end',
+    backgroundColor: 'rgba(108,59,255,0.12)',
+  },
+  imageCardTheirs: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#ffffff',
+  },
+  attachmentImage: {
+    width: '100%',
+    height: 150,
+    borderRadius: 12,
+  },
+  docCard: {
+    borderRadius: 16,
+    padding: 12,
+    width: 240,
+    borderWidth: 1,
+    borderColor: '#e2e2ec',
+    marginVertical: 4,
+  },
+  docCardMine: {
+    alignSelf: 'flex-end',
+    backgroundColor: COLORS.brand,
+  },
+  docCardTheirs: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#ffffff',
+  },
+  docRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  docIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: '#f3eeff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  docInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  docName: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 14,
+  },
+  docNameMine: {
+    color: '#ffffff',
+  },
+  docNameTheirs: {
+    color: '#111122',
+  },
+  docMeta: {
+    fontFamily: 'Geist_400Regular',
+    fontSize: 11,
+    color: '#a0a0ba',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(17, 17, 34, 0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 32,
+    gap: 16,
+  },
+  modalTitle: {
+    fontFamily: 'Geist_700Bold',
+    fontSize: 24,
+    color: COLORS.textPrimary,
+  },
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 16,
+    marginVertical: 8,
+  },
+  gridItem: {
+    width: '47%',
+    backgroundColor: COLORS.canvas,
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  gridIconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gridLabel: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 14,
+    color: COLORS.textPrimary,
+  },
+  gridFooterText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  locationOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+  },
+  locationOptionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  locationOptionDetails: {
+    flex: 1,
+    gap: 2,
+  },
+  locationOptionTitle: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 15,
+    color: COLORS.textPrimary,
+  },
+  locationOptionSubtitle: {
+    fontFamily: 'Geist_400Regular',
+    fontSize: 13,
+    color: COLORS.textSecondary,
+  },
+  savedLabel: {
+    fontFamily: 'Geist_700Bold',
+    fontSize: 11,
+    letterSpacing: 0.8,
+    color: COLORS.textSecondary,
+    marginTop: 8,
+  },
+  fileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.border,
+  },
+  fileNameText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    color: COLORS.textPrimary,
+  },
+  cameraContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
+  cameraOverlay: {
+    flex: 1,
+    justifyContent: 'space-between',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  cameraCloseBtn: {
+    alignSelf: 'flex-start',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cameraBottomBar: {
+    alignItems: 'center',
+  },
+  shutterButton: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 4,
+    borderColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shutterButtonInner: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#ffffff',
+  },
+  galleryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    justifyContent: 'space-between',
+    marginVertical: 12,
+  },
+  galleryItem: {
+    width: '30%',
+    aspectRatio: 1,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  galleryImage: {
+    width: '100%',
+    height: '100%',
   },
 });
 

@@ -166,7 +166,10 @@ export default function TasksScreen() {
                   setRateModalVisible(true);
                 }}
                 onReceipt={() => {
-                  // Mock receipt action
+                  router.push({
+                    pathname: '/receipt',
+                    params: { taskId: task.id },
+                  });
                 }}
               />
             ))

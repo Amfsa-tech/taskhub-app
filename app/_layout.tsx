@@ -78,6 +78,16 @@ export default function RootLayout() {
                   <Stack.Screen name="change-password" options={{ headerShown: false }} />
                   <Stack.Screen name="change-password-success" options={{ headerShown: false }} />
                   <Stack.Screen name="saved-taskers" options={{ headerShown: false }} />
+                  <Stack.Screen name="notification-details" options={{ headerShown: false }} />
+                  <Stack.Screen name="receipt" options={{ headerShown: false }} />
+                  <Stack.Screen name="help-support" options={{ headerShown: false }} />
+                  <Stack.Screen name="blocked-users" options={{ headerShown: false }} />
+                  <Stack.Screen name="device-sessions" options={{ headerShown: false }} />
+                  <Stack.Screen name="select-verification" options={{ headerShown: false }} />
+                  <Stack.Screen name="nin-verification" options={{ headerShown: false }} />
+                  <Stack.Screen name="phone-number" options={{ headerShown: false }} />
+                  <Stack.Screen name="wallet" options={{ headerShown: false }} />
+                  <Stack.Screen name="transaction-history" options={{ headerShown: false }} />
                   <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                   <Stack.Screen name="screens" options={{ headerShown: false }} />
                   <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
