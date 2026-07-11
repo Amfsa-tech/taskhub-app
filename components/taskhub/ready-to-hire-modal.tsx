@@ -1,4 +1,13 @@
-import { Image, ImageSourcePropType, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+    ActivityIndicator,
+    Image,
+    ImageSourcePropType,
+    Modal,
+    Pressable,
+    StyleSheet,
+    Text,
+    View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 
@@ -22,14 +31,22 @@ export function ReadyToHireModal({
     taskerAvatar,
     taskerPrice,
     onClose,
-    onSend,
+    onConfirm,
+    confirmLabel,
+    pending,
 }: {
     visible: boolean;
     taskerName: string;
     taskerAvatar: ImageSourcePropType | null;
     taskerPrice?: string | null;
     onClose: () => void;
-    onSend?: (message: string) => void;
+    /**
+     * When provided, the primary button performs this action (with a pending
+     * spinner) instead of navigating to the agreement screen.
+     */
+    onConfirm?: () => void;
+    confirmLabel?: string;
+    pending?: boolean;
 }) {
     const insets = useSafeAreaInsets();
     const router = useRouter();
@@ -60,8 +77,17 @@ export function ReadyToHireModal({
                         </View>
                         <View style={styles.buttons}>
                             <Pressable
-                                style={({ pressed }) => [styles.continueButton, pressed && styles.pressed]}
+                                style={({ pressed }) => [
+                                    styles.continueButton,
+                                    pressed && styles.pressed,
+                                    pending && styles.pressed,
+                                ]}
+                                disabled={pending}
                                 onPress={() => {
+                                    if (onConfirm) {
+                                        onConfirm();
+                                        return;
+                                    }
                                     onClose();
                                     router.push({
                                         pathname: '/task-agreement',
@@ -71,10 +97,16 @@ export function ReadyToHireModal({
                                         },
                                     });
                                 }}>
-                                <Text style={styles.continueLabel}>Continue to Agreement</Text>
+                                {pending ? (
+                                    <ActivityIndicator color={COLORS.onBrand} />
+                                ) : (
+                                    <Text style={styles.continueLabel}>
+                                        {confirmLabel ?? 'Continue to Agreement'}
+                                    </Text>
+                                )}
                             </Pressable>
 
-                            <Pressable style={styles.cancelButton} hitSlop={8} onPress={onClose}>
+                            <Pressable style={styles.cancelButton} hitSlop={8} onPress={onClose} disabled={pending}>
                                 <Text style={styles.cancelLabel}>Cancel</Text>
                             </Pressable>
                         </View>

@@ -1,11 +1,23 @@
+import { useMutation } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ArrowLeft } from '@/components/icons/arrow-left';
 import { Headset } from '@/components/icons/headset';
+import { resendVerification, verifyEmail } from '@/lib/auth/auth-api';
+import { useAuth } from '@/lib/auth/auth-context';
+import type { AccountType } from '@/lib/auth/types';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -21,18 +33,70 @@ const CODE_LENGTH = 6;
 export default function OtpScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { email } = useLocalSearchParams<{ email?: string }>();
+  const { email, password, type } = useLocalSearchParams<{
+    email?: string;
+    password?: string;
+    type?: string;
+  }>();
+  const accountType: AccountType = type === 'tasker' ? 'tasker' : 'user';
+  const { signIn } = useAuth();
   const inputRef = useRef<TextInput>(null);
   const [code, setCode] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   const focusInput = () => inputRef.current?.focus();
 
   const onChange = (text: string) => {
     const digits = text.replace(/[^0-9]/g, '').slice(0, CODE_LENGTH);
     setCode(digits);
+    if (error) setError(null);
   };
 
-  const verify = () => router.replace('/purpose-selection');
+  const verifyMutation = useMutation({
+    mutationFn: async () => {
+      if (!email) throw new Error('Missing email address. Please start again.');
+      await verifyEmail({ code, emailAddress: email, type: accountType });
+      // When we arrived from sign-up we have the password, so log in
+      // automatically. When we arrived from an unverified login we don't —
+      // send the user back to log in with their now-verified account.
+      if (password) {
+        await signIn(accountType, { emailAddress: email, password });
+        return true;
+      }
+      return false;
+    },
+    onSuccess: (loggedIn) => {
+      router.replace(loggedIn ? '/purpose-selection' : '/login-form');
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Verification failed. Please try again.');
+    },
+  });
+
+  const resendMutation = useMutation({
+    mutationFn: () => {
+      if (!email) throw new Error('Missing email address. Please start again.');
+      return resendVerification({ emailAddress: email, type: accountType });
+    },
+    onSuccess: () => {
+      setCode('');
+      Alert.alert('Code sent', 'We sent a new verification code to your email.');
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Could not resend the code.');
+    },
+  });
+
+  const verify = () => {
+    setError(null);
+    if (code.length < CODE_LENGTH) {
+      setError('Enter the 6-digit code.');
+      return;
+    }
+    verifyMutation.mutate();
+  };
+
+  const isVerifying = verifyMutation.isPending;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -83,17 +147,38 @@ export default function OtpScreen() {
           />
         </Pressable>
 
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+
         {/* Buttons */}
         <View style={styles.buttons}>
           <Pressable
-            style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-            onPress={verify}>
-            <Text style={styles.buttonLabel}>Verify</Text>
+            style={({ pressed }) => [
+              styles.button,
+              pressed && styles.buttonPressed,
+              isVerifying && styles.buttonDisabled,
+            ]}
+            onPress={verify}
+            disabled={isVerifying}>
+            {isVerifying ? (
+              <ActivityIndicator color={COLORS.onBrand} />
+            ) : (
+              <Text style={styles.buttonLabel}>Verify</Text>
+            )}
           </Pressable>
 
-          <Pressable hitSlop={8} onPress={() => setCode('')} style={styles.resendRow}>
+          <Pressable
+            hitSlop={8}
+            onPress={() => resendMutation.mutate()}
+            disabled={resendMutation.isPending}
+            style={styles.resendRow}>
             <Text style={styles.resendMuted}>
-              Didn’t receive a code? <Text style={styles.resendLink}>Resend</Text>
+              {resendMutation.isPending ? (
+                'Sending…'
+              ) : (
+                <>
+                  Didn’t receive a code? <Text style={styles.resendLink}>Resend</Text>
+                </>
+              )}
             </Text>
           </Pressable>
         </View>
@@ -192,11 +277,21 @@ const styles = StyleSheet.create({
   buttonPressed: {
     opacity: 0.9,
   },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
   buttonLabel: {
     fontFamily: 'Geist_500Medium',
     fontSize: 17,
     letterSpacing: -0.41,
     color: COLORS.onBrand,
+  },
+  error: {
+    marginTop: 16,
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    letterSpacing: -0.24,
+    color: '#dc2626',
   },
   resendRow: {
     height: 48,

@@ -1,7 +1,10 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Dimensions,
   Pressable,
   ScrollView,
@@ -14,14 +17,14 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import NavPlus from '@/assets/icons/nav-plus.svg';
+import { LeaveReviewModal } from '@/components/taskhub/leave-review-modal';
 import {
   CompletedTaskCard,
   InProgressTaskCard,
-  SAMPLE_COMPLETED_TASKS,
-  SAMPLE_IN_PROGRESS_TASKS,
-  SAMPLE_TASKS,
   TaskCard,
 } from '@/components/taskhub/task-card';
+import { useUserTasks, useUserTasksByStatuses } from '@/lib/api/queries';
+import { rateTask, taskToCard, taskToCompletedCard, taskToInProgressCard } from '@/lib/api/tasks';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -32,15 +35,76 @@ const COLORS = {
   brand: '#6c3bff',
   textPrimary: '#111122',
   textSecondary: '#5a5a70',
+  error: '#dc2626',
 };
 
 type TaskTab = 'posted' | 'in_progress' | 'completed';
+
+type StateViewProps = {
+  mode: 'loading' | 'error' | 'empty';
+  emptyText?: string;
+  onRetry?: () => void;
+  isRetrying?: boolean;
+};
+
+function StateView({ mode, emptyText, onRetry, isRetrying }: StateViewProps) {
+  if (mode === 'loading') {
+    return (
+      <View style={styles.state}>
+        <ActivityIndicator color={COLORS.brand} />
+      </View>
+    );
+  }
+  if (mode === 'error') {
+    return (
+      <View style={styles.state}>
+        <Text style={styles.errorText}>Couldn’t load your tasks.</Text>
+        <Pressable hitSlop={8} onPress={onRetry} disabled={isRetrying}>
+          <Text style={styles.retry}>{isRetrying ? 'Retrying…' : 'Retry'}</Text>
+        </Pressable>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.state}>
+      <Text style={styles.emptyText}>{emptyText}</Text>
+    </View>
+  );
+}
 
 export default function TasksScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const pagerRef = useRef<ScrollView>(null);
   const [tab, setTab] = useState<TaskTab>('posted');
+
+  const queryClient = useQueryClient();
+  const posted = useUserTasks({ status: 'open' });
+  const inProgress = useUserTasksByStatuses(['assigned', 'in-progress']);
+  const completed = useUserTasks({ status: 'completed' });
+
+  const postedTasks = posted.data?.tasks ?? [];
+  const completedTasks = completed.data?.tasks ?? [];
+
+  const [reviewTask, setReviewTask] = useState<{ id: string; title: string } | null>(null);
+
+  const rateMutation = useMutation({
+    mutationFn: (v: { id: string; rating: number; reviewText: string }) =>
+      rateTask(v.id, { rating: v.rating, reviewText: v.reviewText || undefined }),
+    onSuccess: () => {
+      setReviewTask(null);
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      Alert.alert('Thanks!', 'Your review has been submitted.');
+    },
+    onError: (err) =>
+      Alert.alert(
+        'Could not submit review',
+        err instanceof Error ? err.message : 'Please try again.',
+      ),
+  });
+
+  const openTask = (id: string) =>
+    router.push({ pathname: '/task-details', params: { id } });
 
   const goTab = (next: TaskTab) => {
     setTab(next);
@@ -101,31 +165,16 @@ export default function TasksScreen() {
           style={{ width: SCREEN_WIDTH }}
           contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
           showsVerticalScrollIndicator={false}>
-          {SAMPLE_TASKS.map((task, i) => (
-            <TaskCard
-              key={`${task.title}-${i}`}
-              task={task}
-              onPress={() => router.push('/task-details')}
-            />
-          ))}
-        </ScrollView>
-
-        <ScrollView
-          style={{ width: SCREEN_WIDTH }}
-          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
-          showsVerticalScrollIndicator={false}>
-          {SAMPLE_IN_PROGRESS_TASKS.length > 0 ? (
-            SAMPLE_IN_PROGRESS_TASKS.map((task) => (
-              <InProgressTaskCard
-                key={task.id}
-                task={task}
-                onPress={() => router.push('/task-details')}
-              />
-            ))
+          {posted.isLoading ? (
+            <StateView mode="loading" />
+          ) : posted.isError ? (
+            <StateView mode="error" onRetry={posted.refetch} isRetrying={posted.isRefetching} />
+          ) : postedTasks.length === 0 ? (
+            <StateView mode="empty" emptyText="No posted tasks yet." />
           ) : (
-            <View style={styles.empty}>
-              <Text style={styles.emptyText}>No tasks in progress.</Text>
-            </View>
+            postedTasks.map((task) => (
+              <TaskCard key={task._id} task={taskToCard(task)} onPress={() => openTask(task._id)} />
+            ))
           )}
         </ScrollView>
 
@@ -133,21 +182,63 @@ export default function TasksScreen() {
           style={{ width: SCREEN_WIDTH }}
           contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
           showsVerticalScrollIndicator={false}>
-          {SAMPLE_COMPLETED_TASKS.length > 0 ? (
-            SAMPLE_COMPLETED_TASKS.map((task) => (
-              <CompletedTaskCard
-                key={task.id}
-                task={task}
-                onPress={() => router.push('/task-details')}
+          {inProgress.isLoading ? (
+            <StateView mode="loading" />
+          ) : inProgress.isError ? (
+            <StateView
+              mode="error"
+              onRetry={inProgress.refetch}
+              isRetrying={inProgress.isRefetching}
+            />
+          ) : inProgress.tasks.length === 0 ? (
+            <StateView mode="empty" emptyText="No tasks in progress." />
+          ) : (
+            inProgress.tasks.map((task) => (
+              <InProgressTaskCard
+                key={task._id}
+                task={taskToInProgressCard(task)}
+                onPress={() => openTask(task._id)}
               />
             ))
+          )}
+        </ScrollView>
+
+        <ScrollView
+          style={{ width: SCREEN_WIDTH }}
+          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
+          showsVerticalScrollIndicator={false}>
+          {completed.isLoading ? (
+            <StateView mode="loading" />
+          ) : completed.isError ? (
+            <StateView
+              mode="error"
+              onRetry={completed.refetch}
+              isRetrying={completed.isRefetching}
+            />
+          ) : completedTasks.length === 0 ? (
+            <StateView mode="empty" emptyText="No completed tasks yet." />
           ) : (
-            <View style={styles.empty}>
-              <Text style={styles.emptyText}>No completed tasks yet.</Text>
-            </View>
+            completedTasks.map((task) => (
+              <CompletedTaskCard
+                key={task._id}
+                task={taskToCompletedCard(task)}
+                onPress={() => openTask(task._id)}
+                onReview={() => setReviewTask({ id: task._id, title: task.title })}
+              />
+            ))
           )}
         </ScrollView>
       </ScrollView>
+
+      <LeaveReviewModal
+        visible={reviewTask !== null}
+        taskTitle={reviewTask?.title}
+        pending={rateMutation.isPending}
+        onClose={() => setReviewTask(null)}
+        onSubmit={(rating, reviewText) => {
+          if (reviewTask) rateMutation.mutate({ id: reviewTask.id, rating, reviewText });
+        }}
+      />
     </View>
   );
 }
@@ -220,14 +311,28 @@ const styles = StyleSheet.create({
     paddingTop: 24,
     gap: 12,
   },
-  empty: {
+  state: {
     paddingTop: 48,
     alignItems: 'center',
+    gap: 8,
   },
   emptyText: {
     fontFamily: 'Geist_500Medium',
     fontSize: 15,
     letterSpacing: -0.24,
     color: COLORS.textSecondary,
+    textAlign: 'center',
+  },
+  errorText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    letterSpacing: -0.24,
+    color: COLORS.error,
+  },
+  retry: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 15,
+    letterSpacing: -0.24,
+    color: COLORS.brand,
   },
 });

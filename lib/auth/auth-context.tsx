@@ -17,14 +17,26 @@ import {
 } from 'react';
 
 import { ApiError, setApiToken } from '@/lib/api/client';
-import { getProfile, login, logout as logoutRequest } from './auth-api';
+import {
+  getProfile,
+  googleAuth,
+  googleCompleteSignup,
+  login,
+  logout as logoutRequest,
+} from './auth-api';
+import { getGoogleIdToken } from './google';
 import {
   clearSession,
   loadSession,
   saveSession,
   saveUser,
 } from './storage';
-import type { AccountType, AuthUser, LoginPayload } from './types';
+import type { AccountType, AuthUser, GoogleProfile, LoginPayload } from './types';
+
+/** Result of a Google sign-in attempt: either signed in, or needs Phase-2 completion. */
+export type GoogleSignInOutcome =
+  | { kind: 'signed-in'; user: AuthUser }
+  | { kind: 'needs-signup'; idToken: string; profile: GoogleProfile };
 
 interface AuthContextValue {
   /** True until the persisted session has been read on launch. */
@@ -35,6 +47,19 @@ interface AuthContextValue {
   accountType: AccountType | null;
   /** Authenticate and persist the session. Returns the signed-in user. */
   signIn: (type: AccountType, payload: LoginPayload) => Promise<AuthUser>;
+  /**
+   * Native Google sign-in. Establishes a session for existing/linked accounts,
+   * or returns a `needs-signup` outcome (with the verified idToken + profile)
+   * when no account exists yet, so the caller can open the completion screen.
+   */
+  signInWithGoogle: (type: AccountType) => Promise<GoogleSignInOutcome>;
+  /** Finish a Google signup (Phase 2) with the collected fields, then sign in. */
+  completeGoogleSignup: (args: {
+    idToken: string;
+    type: AccountType;
+    fullName: string;
+    country: string;
+  }) => Promise<AuthUser>;
   /** Adopt a session obtained elsewhere (e.g. right after verify-email). */
   setSession: (type: AccountType, token: string, user: AuthUser) => Promise<void>;
   signOut: () => Promise<void>;
@@ -103,10 +128,76 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback(
     async (type: AccountType, payload: LoginPayload) => {
+      // The login endpoint returns only a token (+ metadata) — never the user —
+      // so we set the token, then fetch the full profile ourselves.
       const res = await login(type, payload);
-      applySession(type, res.token, res.user);
-      await saveSession({ token: res.token, accountType: type, user: res.user });
-      return res.user;
+      const accountType = res.user_type ?? type;
+
+      // Login succeeds even for unverified accounts. Don't establish a session;
+      // surface a verification error so the screen can route to the OTP flow.
+      if (!res.isEmailVerified) {
+        setApiToken(null);
+        throw new ApiError('Please verify your email to continue.', 403, {
+          emailVerificationRequired: true,
+        });
+      }
+
+      setApiToken(res.token);
+      const { user } = await getProfile(accountType);
+      applySession(accountType, res.token, user);
+      await saveSession({ token: res.token, accountType, user });
+      return user;
+    },
+    [applySession],
+  );
+
+  const signInWithGoogle = useCallback(
+    async (type: AccountType): Promise<GoogleSignInOutcome> => {
+      // 1. Get a verified Google ID token from the native SDK.
+      const idToken = await getGoogleIdToken();
+      try {
+        // 2. Phase 1: sign in / link an existing account.
+        const res = await googleAuth({ idToken, user_type: type });
+        const nextType = res.user_type ?? type;
+        setApiToken(res.token);
+        const { user } = await getProfile(nextType);
+        applySession(nextType, res.token, user);
+        await saveSession({ token: res.token, accountType: nextType, user });
+        return { kind: 'signed-in', user };
+      } catch (err) {
+        // 404 + `account_not_found` means there's no account yet — hand the
+        // caller the idToken + profile so it can run the completion screen.
+        if (err instanceof ApiError && err.status === 404) {
+          const body = err.body as { code?: string; googleProfile?: GoogleProfile } | undefined;
+          if (body?.code === 'account_not_found' && body.googleProfile) {
+            return { kind: 'needs-signup', idToken, profile: body.googleProfile };
+          }
+        }
+        throw err;
+      }
+    },
+    [applySession],
+  );
+
+  const completeGoogleSignup = useCallback(
+    async ({
+      idToken,
+      type,
+      fullName,
+      country,
+    }: {
+      idToken: string;
+      type: AccountType;
+      fullName: string;
+      country: string;
+    }): Promise<AuthUser> => {
+      const res = await googleCompleteSignup({ idToken, user_type: type, fullName, country });
+      const nextType = res.user_type ?? type;
+      setApiToken(res.token);
+      const { user } = await getProfile(nextType);
+      applySession(nextType, res.token, user);
+      await saveSession({ token: res.token, accountType: nextType, user });
+      return user;
     },
     [applySession],
   );
@@ -149,11 +240,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       token,
       accountType,
       signIn,
+      signInWithGoogle,
+      completeGoogleSignup,
       setSession,
       signOut,
       refreshProfile,
     }),
-    [isBootstrapping, token, user, accountType, signIn, setSession, signOut, refreshProfile],
+    [
+      isBootstrapping,
+      token,
+      user,
+      accountType,
+      signIn,
+      signInWithGoogle,
+      completeGoogleSignup,
+      setSession,
+      signOut,
+      refreshProfile,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

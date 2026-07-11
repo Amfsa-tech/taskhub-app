@@ -16,12 +16,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ArrowLeft } from '@/components/icons/arrow-left';
-import { ArrowRight } from '@/components/icons/arrow-right';
 import { CaretDown } from '@/components/icons/caret-down';
 import { Check } from '@/components/icons/check';
-import { Eye } from '@/components/icons/eye';
-import { Headset } from '@/components/icons/headset';
-import { registerUser } from '@/lib/auth/auth-api';
+import { useAuth } from '@/lib/auth/auth-context';
+import { clearPendingGoogleSignup, getPendingGoogleSignup } from '@/lib/auth/google';
 import { useSelectedCountry } from '@/lib/onboarding/country';
 
 const COLORS = {
@@ -36,110 +34,72 @@ const COLORS = {
   onBrand: '#ffffff',
 };
 
-type FieldProps = {
-  label: string;
-  placeholder: string;
-  value: string;
-  onChangeText: (text: string) => void;
-  secureTextEntry?: boolean;
-  keyboardType?: 'default' | 'email-address';
-  autoCapitalize?: 'none' | 'words';
-};
-
-function Field({
-  label,
-  placeholder,
-  value,
-  onChangeText,
-  secureTextEntry,
-  keyboardType = 'default',
-  autoCapitalize = 'none',
-}: FieldProps) {
-  const [showPassword, setShowPassword] = useState(false);
-  const isPassword = !!secureTextEntry;
-
-  return (
-    <View style={styles.field}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <View style={styles.inputWrap}>
-        <TextInput
-          style={[styles.input, isPassword && styles.inputWithToggle]}
-          placeholder={placeholder}
-          placeholderTextColor={COLORS.placeholder}
-          value={value}
-          onChangeText={onChangeText}
-          secureTextEntry={isPassword && !showPassword}
-          keyboardType={keyboardType}
-          autoCapitalize={autoCapitalize}
-          autoCorrect={false}
-        />
-        {isPassword ? (
-          <Pressable
-            style={styles.toggle}
-            hitSlop={8}
-            onPress={() => setShowPassword((prev) => !prev)}
-            accessibilityRole="button"
-            accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}>
-            <Eye size={20} color={showPassword ? COLORS.primary : COLORS.iconSecondary} />
-          </Pressable>
-        ) : null}
-      </View>
-    </View>
-  );
-}
-
-export default function CreateAccountScreen() {
+export default function GoogleCompleteSignupScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [agreed, setAgreed] = useState(false);
+  const { completeGoogleSignup } = useAuth();
   const country = useSelectedCountry();
+
+  // Captured once — set by the login screen before navigating here.
+  const [pending] = useState(getPendingGoogleSignup);
+  const [fullName, setFullName] = useState(pending?.profile.name ?? '');
+  const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const registerMutation = useMutation({
-    mutationFn: () =>
-      registerUser({
-        fullName: fullName.trim(),
-        emailAddress: email.trim().toLowerCase(),
-        password,
-        country,
-      }),
-    onSuccess: (res) => {
-      // In non-production the backend echoes the 6-digit code — log it so the
-      // OTP screen can be tested without a real inbox.
-      if (__DEV__ && res.emailToken) {
-        console.log('[dev] email verification code:', res.emailToken);
+  const completeMutation = useMutation({
+    mutationFn: () => {
+      if (!pending?.idToken) {
+        throw new Error('Your Google session expired. Please try signing in again.');
       }
-      router.push({
-        pathname: '/otp',
-        params: { email: email.trim().toLowerCase(), password, type: 'user' },
+      return completeGoogleSignup({
+        idToken: pending.idToken,
+        type: 'user',
+        fullName: fullName.trim(),
+        country,
       });
     },
+    onSuccess: () => {
+      clearPendingGoogleSignup();
+      router.replace('/purpose-selection');
+    },
     onError: (err) => {
-      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+      setError(err instanceof Error ? err.message : 'Could not complete sign up. Please try again.');
     },
   });
 
   const submit = () => {
     setError(null);
-    if (!fullName.trim() || !email.trim() || !password) {
-      setError('Please fill in your name, email, and password.');
-      return;
-    }
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters.');
+    if (!fullName.trim()) {
+      setError('Please enter your full name.');
       return;
     }
     if (!agreed) {
       setError('Please agree to the Terms of Service to continue.');
       return;
     }
-    registerMutation.mutate();
+    completeMutation.mutate();
   };
 
-  const isSubmitting = registerMutation.isPending;
+  const isSubmitting = completeMutation.isPending;
+
+  // Defensive: reached without a pending Google session (e.g. deep link / reload).
+  if (!pending) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <StatusBar style="dark" />
+        <View style={styles.content}>
+          <Pressable style={styles.tabButton} hitSlop={8} onPress={() => router.replace('/login')}>
+            <ArrowLeft size={18} color={COLORS.textSecondary} />
+            <Text style={styles.tabLabel}>Back</Text>
+          </Pressable>
+          <Text style={styles.title}>Session expired</Text>
+          <Text style={styles.subtitle}>
+            Please tap “Continue with Google” again to finish creating your account.
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -152,47 +112,33 @@ export default function CreateAccountScreen() {
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
-          {/* Top bar */}
-          <View style={styles.topBar}>
-            <Pressable style={styles.tabButton} hitSlop={8} onPress={() => router.back()}>
-              <ArrowLeft size={18} color={COLORS.textSecondary} />
-              <Text style={styles.tabLabel}>Back</Text>
-            </Pressable>
-            <Pressable style={styles.tabButton} hitSlop={8} onPress={() => {}}>
-              <Headset size={18} color={COLORS.textSecondary} />
-              <Text style={styles.tabLabel}>Support</Text>
-            </Pressable>
-          </View>
+          {/* Back */}
+          <Pressable style={styles.tabButton} hitSlop={8} onPress={() => router.back()}>
+            <ArrowLeft size={18} color={COLORS.textSecondary} />
+            <Text style={styles.tabLabel}>Back</Text>
+          </Pressable>
 
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>Create Account</Text>
-            <Text style={styles.subtitle}>Join NGTaskHub today</Text>
+            <Text style={styles.title}>Enter Name</Text>
+            <Text style={styles.subtitle}>Enter your full name to complete sign up</Text>
           </View>
 
           {/* Fields */}
           <View style={styles.fields}>
-            <Field
-              label="Full name"
-              placeholder="e.g Elliot Eniola"
-              value={fullName}
-              onChangeText={setFullName}
-              autoCapitalize="words"
-            />
-            <Field
-              label="Email Address"
-              placeholder="Enter your email address"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-            />
-            <Field
-              label="Password"
-              placeholder="Enter password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Full name</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g Elliot Eniola"
+                placeholderTextColor={COLORS.placeholder}
+                value={fullName}
+                onChangeText={setFullName}
+                autoCapitalize="words"
+                autoCorrect={false}
+              />
+            </View>
+
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>Country</Text>
               <Pressable
@@ -238,17 +184,8 @@ export default function CreateAccountScreen() {
             {isSubmitting ? (
               <ActivityIndicator color={COLORS.onBrand} />
             ) : (
-              <>
-                <Text style={styles.buttonLabel}>Create Account</Text>
-                <ArrowRight size={18} color={COLORS.onBrand} />
-              </>
+              <Text style={styles.buttonLabel}>Complete sign up</Text>
             )}
-          </Pressable>
-
-          <Pressable hitSlop={8} onPress={() => router.replace('/login-form')} style={styles.loginRow}>
-            <Text style={styles.loginMuted}>
-              Already have an account? <Text style={styles.loginLink}>Login</Text>
-            </Text>
           </Pressable>
         </View>
       </KeyboardAvoidingView>
@@ -257,27 +194,16 @@ export default function CreateAccountScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.canvas,
-  },
-  flex: {
-    flex: 1,
-  },
-  scroll: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-  },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
+  container: { flex: 1, backgroundColor: COLORS.canvas },
+  flex: { flex: 1 },
+  content: { paddingHorizontal: 16, paddingTop: 14, gap: 12 },
+  scroll: { paddingHorizontal: 16, paddingTop: 14 },
   tabButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     padding: 8,
+    alignSelf: 'flex-start',
   },
   tabLabel: {
     fontFamily: 'Geist_500Medium',
@@ -285,10 +211,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.24,
     color: COLORS.textSecondary,
   },
-  header: {
-    marginTop: 24,
-    gap: 6,
-  },
+  header: { marginTop: 24, gap: 6 },
   title: {
     fontFamily: 'Geist_600SemiBold',
     fontSize: 24,
@@ -303,21 +226,13 @@ const styles = StyleSheet.create({
     letterSpacing: -0.41,
     color: COLORS.textSecondary,
   },
-  fields: {
-    marginTop: 24,
-    gap: 16,
-  },
-  field: {
-    gap: 4,
-  },
+  fields: { marginTop: 24, gap: 16 },
+  field: { gap: 4 },
   fieldLabel: {
     fontFamily: 'Geist_500Medium',
     fontSize: 17,
     letterSpacing: -0.41,
     color: COLORS.textPrimary,
-  },
-  inputWrap: {
-    justifyContent: 'center',
   },
   input: {
     height: 48,
@@ -330,17 +245,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     letterSpacing: -0.41,
     color: COLORS.textPrimary,
-  },
-  inputWithToggle: {
-    paddingRight: 48,
-  },
-  toggle: {
-    position: 'absolute',
-    right: 0,
-    height: 48,
-    width: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   select: {
     flexDirection: 'row',
@@ -359,6 +263,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.41,
     color: COLORS.textPrimary,
   },
+  footer: { paddingHorizontal: 16, paddingTop: 8, gap: 8 },
   consent: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -391,27 +296,15 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     textDecorationLine: 'underline',
   },
-  footer: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    gap: 8,
-  },
   button: {
     height: 48,
     borderRadius: 12,
     backgroundColor: COLORS.primary,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 20,
   },
-  buttonPressed: {
-    opacity: 0.9,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
+  buttonPressed: { opacity: 0.9 },
+  buttonDisabled: { opacity: 0.6 },
   buttonLabel: {
     fontFamily: 'Geist_500Medium',
     fontSize: 17,
@@ -423,20 +316,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     letterSpacing: -0.24,
     color: '#dc2626',
-    textAlign: 'center',
-  },
-  loginRow: {
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loginMuted: {
-    fontFamily: 'Geist_500Medium',
-    fontSize: 17,
-    letterSpacing: -0.41,
-    color: COLORS.iconSecondary,
-  },
-  loginLink: {
-    color: COLORS.primary,
   },
 });

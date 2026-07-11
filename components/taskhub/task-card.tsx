@@ -4,11 +4,9 @@ import BadgeGraduation from '@/assets/icons/badge-graduation.svg';
 import BadgeHouse from '@/assets/icons/badge-house.svg';
 import BadgePackage from '@/assets/icons/badge-package.svg';
 import CaretRight from '@/assets/icons/caret-right-muted.svg';
-import CaretRightPurple from '@/assets/icons/caret-right.svg'; // Assuming this exists or we can just use CaretRight with color if it's an icon, let's use text for chevron or just a simple svg
 import Clock from '@/assets/icons/clock.svg';
 import Lightning from '@/assets/icons/lightning.svg';
 import MapPin from '@/assets/icons/map-pin.svg';
-import Star from '@/assets/icons/star-fill.svg'; // Assuming we have a star icon, if not we'll use emoji or similar. Let's see if there is one. Wait, let's just use Text '⭐'.
 
 const COLORS = {
   surface: '#ffffff',
@@ -228,7 +226,23 @@ export function InProgressTaskCard({ task, onPress }: { task: InProgressTask; on
   );
 }
 
-export function CompletedTaskCard({ task, onPress }: { task: CompletedTask; onPress?: () => void }) {
+export function CompletedTaskCard({
+  task,
+  onPress,
+  onReview,
+}: {
+  task: CompletedTask;
+  onPress?: () => void;
+  onReview?: () => void;
+}) {
+  // Show only the stats we actually have — never a misleading "0 Jobs".
+  const stats = [
+    task.tasker.rating > 0 ? String(task.tasker.rating) : null,
+    task.tasker.jobs > 0 ? `${task.tasker.jobs} Jobs` : null,
+  ]
+    .filter(Boolean)
+    .join(' • ');
+
   return (
     <Pressable style={styles.card} onPress={onPress}>
       <View style={styles.row}>
@@ -247,17 +261,19 @@ export function CompletedTaskCard({ task, onPress }: { task: CompletedTask; onPr
         <Image source={{ uri: task.tasker.avatar }} style={styles.avatar} />
         <View style={styles.taskerInfo}>
           <Text style={styles.taskerName}>{task.tasker.name}</Text>
-          <View style={styles.taskerStats}>
-            <Text style={styles.star}>⭐</Text>
-            <Text style={styles.statsText}>{task.tasker.rating} • {task.tasker.jobs} Jobs</Text>
-          </View>
+          {stats ? (
+            <View style={styles.taskerStats}>
+              <Text style={styles.star}>⭐</Text>
+              <Text style={styles.statsText}>{stats}</Text>
+            </View>
+          ) : null}
         </View>
       </View>
 
       {/* Actions */}
       <View style={styles.actionsRow}>
         {task.reviewStatus === 'none' ? (
-          <Pressable style={[styles.btn, styles.btnReview]}>
+          <Pressable style={[styles.btn, styles.btnReview]} onPress={onReview}>
             <Text style={[styles.btnText, { color: '#ffffff' }]}>Leave review</Text>
           </Pressable>
         ) : (

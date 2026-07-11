@@ -39,13 +39,13 @@ export default function ForgotPasswordSentScreen() {
           </Text>
         </View>
 
-        {/* Confirmation card — tap to simulate opening the reset link */}
+        {/* Confirmation card — tap to continue to the reset-code screen */}
         <Pressable
           style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-          onPress={() => router.push('/create-new-password')}>
+          onPress={() => router.push({ pathname: '/create-new-password', params: { email: target } })}>
           <Text style={styles.cardTitle}>Check your Email</Text>
           <Text style={styles.cardMessage}>
-            A reset Link was sent to <Text style={styles.cardEmail}>{target}</Text>
+            A reset code was sent to <Text style={styles.cardEmail}>{target}</Text>
           </Text>
         </Pressable>
 

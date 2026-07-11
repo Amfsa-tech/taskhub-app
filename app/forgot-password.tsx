@@ -1,10 +1,19 @@
+import { useMutation } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ArrowLeft } from '@/components/icons/arrow-left';
+import { forgotPassword } from '@/lib/auth/auth-api';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -21,6 +30,34 @@ export default function ForgotPasswordScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [email, setEmail] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const forgotMutation = useMutation({
+    mutationFn: () =>
+      forgotPassword({ emailAddress: email.trim().toLowerCase(), type: 'user' }),
+    onSuccess: () => {
+      // Go straight to the screen that collects the code + new password — the
+      // old interstitial "check your email" screen was a dead end with no input.
+      router.push({
+        pathname: '/create-new-password',
+        params: { email: email.trim().toLowerCase() },
+      });
+    },
+    onError: (err) => {
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+    },
+  });
+
+  const submit = () => {
+    setError(null);
+    if (!email.trim()) {
+      setError('Please enter your email address.');
+      return;
+    }
+    forgotMutation.mutate();
+  };
+
+  const isSubmitting = forgotMutation.isPending;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -37,7 +74,7 @@ export default function ForgotPasswordScreen() {
         <View style={styles.heading}>
           <Text style={styles.title}>Forgot Password?</Text>
           <Text style={styles.subtitle}>
-            Enter your email address we will send you a reset link
+            Enter your email address and we will send you a reset code
           </Text>
         </View>
 
@@ -58,12 +95,23 @@ export default function ForgotPasswordScreen() {
           </View>
         </View>
 
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+
         {/* Buttons */}
         <View style={styles.buttons}>
           <Pressable
-            style={({ pressed }) => [styles.button, pressed && styles.pressed]}
-            onPress={() => router.push({ pathname: '/forgot-password-sent', params: { email } })}>
-            <Text style={styles.buttonLabel}>Send Reset Link</Text>
+            style={({ pressed }) => [
+              styles.button,
+              pressed && styles.pressed,
+              isSubmitting && styles.buttonDisabled,
+            ]}
+            onPress={submit}
+            disabled={isSubmitting}>
+            {isSubmitting ? (
+              <ActivityIndicator color={COLORS.onBrand} />
+            ) : (
+              <Text style={styles.buttonLabel}>Send Reset Code</Text>
+            )}
           </Pressable>
 
           <Pressable
@@ -142,11 +190,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pressed: { opacity: 0.9 },
+  buttonDisabled: { opacity: 0.6 },
   buttonLabel: {
     fontFamily: 'Geist_500Medium',
     fontSize: 17,
     letterSpacing: -0.41,
     color: COLORS.onBrand,
+  },
+  error: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    letterSpacing: -0.24,
+    color: '#dc2626',
   },
   backToLogin: {
     height: 48,

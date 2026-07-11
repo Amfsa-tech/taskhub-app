@@ -1,8 +1,10 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
-import { router, useRouter } from 'expo-router';
+import { router, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Dimensions,
   Pressable,
@@ -10,7 +12,6 @@ import {
   StyleSheet,
   Text,
   View,
-  type ImageSourcePropType,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from 'react-native';
@@ -25,6 +26,28 @@ import Star from '@/assets/icons/star.svg';
 import { InviteToBidModal } from '@/components/taskhub/invite-to-bid-modal';
 import { ReadyToHireModal } from '@/components/taskhub/ready-to-hire-modal';
 import { TaskActionsModal } from '@/components/taskhub/task-actions-modal';
+import { ApiError } from '@/lib/api/client';
+import { acceptBid, inviteTasker, sendHireRequest } from '@/lib/api/bids';
+import { createOrGetConversation } from '@/lib/api/chat';
+import { useTask, useTaskMatches } from '@/lib/api/queries';
+import {
+  changeTaskStatus,
+  formatNaira,
+  formatShortDate,
+  locationLabel,
+  statusLabel,
+  type TaskBid,
+  type TaskerMatch,
+  type TaskStatus,
+} from '@/lib/api/tasks';
+
+type HireContext =
+  | { kind: 'accept'; bidId: string; name: string; avatar: string; price: string }
+  | { kind: 'hire'; taskerId: string; name: string; avatar: string; price: string; amount: number };
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : 'Something went wrong. Please try again.';
+}
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -41,109 +64,124 @@ const COLORS = {
   textSecondary: '#5a5a70',
 };
 
+const STATUS_COLORS: Record<TaskStatus, { bg: string; text: string }> = {
+  open: { bg: '#edfaf3', text: '#0d6639' },
+  assigned: { bg: '#eff6ff', text: '#1d4ed8' },
+  'in-progress': { bg: '#eff6ff', text: '#1d4ed8' },
+  completed: { bg: '#edfaf3', text: '#0d6639' },
+  cancelled: { bg: '#fff1f1', text: '#b01515' },
+};
+
 type Match = {
+  id: string;
   name: string;
-  match: string;
   rating: string;
   jobs: string;
   distance: string;
   tags: string[];
-  avatar: ImageSourcePropType;
-  price?: string;
+  avatar: string;
 };
 
-const MATCHES: Match[] = [
-  {
-    name: 'Chioma. A',
-    match: '96% match',
-    rating: '4.9',
-    jobs: '127 Jobs',
-    distance: '0.3km',
-    tags: ['Printing', 'Assignment'],
-    avatar: require('@/assets/images/chats/chat-1.png'),
-    price: '₦1,500',
-  },
-  {
-    name: 'Tunde .O',
-    match: '96% match',
-    rating: '4.9',
-    jobs: '127 Jobs',
-    distance: '0.3km',
-    tags: ['Printing'],
-    avatar: require('@/assets/images/chats/chat-2.jpg'),
-    price: '₦1,800',
-  },
-];
-
-type Bid = {
+type BidView = {
+  id: string;
   name: string;
   price: string;
   rating: string;
-  jobs: string;
-  distance: string;
   message: string;
-  avatar: ImageSourcePropType;
+  avatar: string;
 };
 
-const BIDS: Bid[] = [
-  {
-    name: 'Chioma. A',
-    price: '₦1,500',
-    rating: '4.9',
-    jobs: '127 Jobs',
-    distance: '0.3km',
-    message: "I can print and deliver within 30 minutes. I'm close to Zik Hall.",
-    avatar: require('@/assets/images/chats/chat-1.png'),
-  },
-  {
-    name: 'Hassan. A',
-    price: '₦1,500',
-    rating: '4.9',
-    jobs: '127 Jobs',
-    distance: '0.3km',
-    message: 'Will handle this right away. Sharp printing guaranteed.',
-    avatar: require('@/assets/images/chats/chat-3.jpg'),
-  },
-];
+/** `Chioma`, `Amara` -> `Chioma A.` */
+function shortName(first?: string, last?: string): string {
+  const f = first?.trim() ?? '';
+  const li = last?.trim()?.[0];
+  return [f, li ? `${li}.` : ''].filter(Boolean).join(' ') || 'Tasker';
+}
+
+function matchToView(m: TaskerMatch): Match {
+  return {
+    id: m._id,
+    name: shortName(m.firstName, m.lastName),
+    rating: m.averageRating != null ? m.averageRating.toFixed(1) : '',
+    jobs: m.completedJobs ? `${m.completedJobs} Jobs` : '',
+    distance: m.distance != null ? `${m.distance}km` : '',
+    tags: m.primaryCategory ? [m.primaryCategory] : [],
+    avatar: m.profilePicture || '',
+  };
+}
+
+function bidToView(b: TaskBid): BidView {
+  return {
+    id: b._id,
+    name: shortName(b.tasker.firstName, b.tasker.lastName),
+    price: formatNaira(b.amount),
+    rating: b.tasker.averageRating != null ? b.tasker.averageRating.toFixed(1) : '',
+    message: b.message || '',
+    avatar: b.tasker.profilePicture || '',
+  };
+}
 
 function Dot() {
   return <RatingDot width={6} height={6} />;
 }
 
-function MatchedCard({ match, onInvite, onHire }: { match: Match; onInvite: () => void, onHire: () => void }) {
+function Avatar({ uri }: { uri: string }) {
+  return (
+    <View style={styles.avatarWrap}>
+      {uri ? <Image source={{ uri }} style={styles.avatar} contentFit="cover" /> : null}
+    </View>
+  );
+}
+
+function MatchedCard({
+  match,
+  onInvite,
+  onHire,
+}: {
+  match: Match;
+  onInvite: () => void;
+  onHire: () => void;
+}) {
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
-        <View style={styles.avatarWrap}>
-          <Image source={match.avatar} style={styles.avatar} contentFit="cover" />
-        </View>
+        <Avatar uri={match.avatar} />
 
         <View style={styles.userInfo}>
           <View style={styles.userDetails}>
             <Text style={styles.name}>{match.name}</Text>
-            <View style={[styles.badge, { backgroundColor: COLORS.successBg }]}>
-              <Text style={[styles.badgeText, { color: COLORS.successText }]}>{match.match}</Text>
-            </View>
           </View>
 
           <View style={styles.ratingRow}>
-            <View style={styles.ratingItem}>
-              <Star width={18} height={18} />
-              <Text style={styles.metaText}>{match.rating}</Text>
-            </View>
-            <Dot />
-            <Text style={styles.metaText}>{match.jobs}</Text>
-            <Dot />
-            <Text style={styles.metaText}>{match.distance}</Text>
+            {match.rating ? (
+              <View style={styles.ratingItem}>
+                <Star width={18} height={18} />
+                <Text style={styles.metaText}>{match.rating}</Text>
+              </View>
+            ) : null}
+            {match.jobs ? (
+              <>
+                <Dot />
+                <Text style={styles.metaText}>{match.jobs}</Text>
+              </>
+            ) : null}
+            {match.distance ? (
+              <>
+                <Dot />
+                <Text style={styles.metaText}>{match.distance}</Text>
+              </>
+            ) : null}
           </View>
 
-          <View style={styles.tags}>
-            {match.tags.map((tag) => (
-              <View key={tag} style={styles.pill}>
-                <Text style={styles.pillText}>{tag}</Text>
-              </View>
-            ))}
-          </View>
+          {match.tags.length > 0 ? (
+            <View style={styles.tags}>
+              {match.tags.map((tag) => (
+                <View key={tag} style={styles.pill}>
+                  <Text style={styles.pillText}>{tag}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
         </View>
       </View>
 
@@ -159,13 +197,19 @@ function MatchedCard({ match, onInvite, onHire }: { match: Match; onInvite: () =
   );
 }
 
-function BidCard({ bid, onAccept }: { bid: Bid; onAccept: () => void }) {
+function BidCard({
+  bid,
+  onAccept,
+  onChat,
+}: {
+  bid: BidView;
+  onAccept: () => void;
+  onChat: () => void;
+}) {
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
-        <View style={styles.avatarWrap}>
-          <Image source={bid.avatar} style={styles.avatar} contentFit="cover" />
-        </View>
+        <Avatar uri={bid.avatar} />
 
         <View style={styles.userInfo}>
           <View style={styles.userDetails}>
@@ -173,23 +217,21 @@ function BidCard({ bid, onAccept }: { bid: Bid; onAccept: () => void }) {
             <Text style={styles.name}>{bid.price}</Text>
           </View>
 
-          <View style={styles.ratingRow}>
-            <View style={styles.ratingItem}>
-              <Star width={18} height={18} />
-              <Text style={styles.metaText}>{bid.rating}</Text>
+          {bid.rating ? (
+            <View style={styles.ratingRow}>
+              <View style={styles.ratingItem}>
+                <Star width={18} height={18} />
+                <Text style={styles.metaText}>{bid.rating}</Text>
+              </View>
             </View>
-            <Dot />
-            <Text style={styles.metaText}>{bid.jobs}</Text>
-            <Dot />
-            <Text style={styles.metaText}>{bid.distance}</Text>
-          </View>
+          ) : null}
 
-          <Text style={styles.bidMessage}>{bid.message}</Text>
+          {bid.message ? <Text style={styles.bidMessage}>{bid.message}</Text> : null}
         </View>
       </View>
 
       <View style={styles.bidActions}>
-        <Pressable style={[styles.actionButton, styles.secondaryButton]} onPress={() => router.push({ pathname: '/chat', params: { name: bid.name } })}>
+        <Pressable style={[styles.actionButton, styles.secondaryButton]} onPress={onChat}>
           <Text style={styles.secondaryLabel} numberOfLines={1}>
             Chat
           </Text>
@@ -212,13 +254,92 @@ function BidCard({ bid, onAccept }: { bid: Bid; onAccept: () => void }) {
 export default function TaskDetailsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const taskQ = useTask(id);
+  const matchesQ = useTaskMatches(id);
+  const task = taskQ.data?.task;
+
+  const queryClient = useQueryClient();
   const pagerRef = useRef<ScrollView>(null);
   const [tab, setTab] = useState<'matches' | 'bids'>('matches');
-  const [inviteName, setInviteName] = useState<string | null>(null);
-  const [hireName, setHireName] = useState<string | null>(null);
-  const [hireAvatar, setHireAvatar] = useState<ImageSourcePropType | null>(null);
-  const [hirePrice, setHirePrice] = useState<string | null>(null);
+  const [invite, setInvite] = useState<{ taskerId: string; name: string } | null>(null);
+  const [hire, setHire] = useState<HireContext | null>(null);
   const [actionsVisible, setActionsVisible] = useState(false);
+
+  const matches = (matchesQ.data?.matches ?? []).map(matchToView);
+  const bids = (task?.bids ?? []).map(bidToView);
+  const budgetText = task ? formatNaira(task.budget) : '';
+  const statusColor = task ? STATUS_COLORS[task.status] : STATUS_COLORS.open;
+
+  const inviteMutation = useMutation({
+    mutationFn: (taskerId: string) => inviteTasker({ taskId: id as string, taskerId }),
+    onSuccess: () => {
+      setInvite(null);
+      Alert.alert('Invite sent', 'The tasker has been invited to bid on your task.');
+    },
+    onError: (err) => Alert.alert('Could not send invite', errorMessage(err)),
+  });
+
+  const acceptMutation = useMutation({
+    mutationFn: (bidId: string) => acceptBid(bidId),
+    onSuccess: () => {
+      setHire(null);
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      Alert.alert('Bid accepted', 'Payment is held in escrow until the task is completed.', [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    },
+    onError: (err) => {
+      // A short wallet balance returns 402 — offer to top up.
+      if (err instanceof ApiError && err.status === 402) {
+        setHire(null);
+        Alert.alert('Insufficient balance', errorMessage(err), [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Fund wallet', onPress: () => router.push('/wallet') },
+        ]);
+        return;
+      }
+      Alert.alert('Could not accept bid', errorMessage(err));
+    },
+  });
+
+  const hireMutation = useMutation({
+    mutationFn: (v: { taskerId: string; amount: number }) =>
+      sendHireRequest({ taskId: id as string, taskerId: v.taskerId, amount: v.amount }),
+    onSuccess: () => {
+      setHire(null);
+      Alert.alert('Hire request sent', 'We’ll let you know when the tasker responds.');
+    },
+    onError: (err) => Alert.alert('Could not send hire request', errorMessage(err)),
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: () => changeTaskStatus(id as string, 'cancelled'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      Alert.alert('Task cancelled', 'Your task has been cancelled.', [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    },
+    onError: (err) => Alert.alert('Could not cancel task', errorMessage(err)),
+  });
+
+  const confirmCancel = () =>
+    Alert.alert('Cancel Task', 'Are you sure you want to cancel this task?', [
+      { text: 'No', style: 'cancel' },
+      { text: 'Yes', style: 'destructive', onPress: () => cancelMutation.mutate() },
+    ]);
+
+  const openChatMutation = useMutation({
+    mutationFn: (bidId: string) => createOrGetConversation({ taskId: id as string, bidId }),
+    onSuccess: (res) => {
+      const conv = res.conversation;
+      const chatName =
+        [conv.tasker?.firstName, conv.tasker?.lastName].filter(Boolean).join(' ') || 'Tasker';
+      router.push({ pathname: '/chat', params: { id: conv._id, name: chatName } });
+    },
+    onError: (err) => Alert.alert('Could not open chat', errorMessage(err)),
+  });
 
   const goTab = (next: 'matches' | 'bids') => {
     setTab(next);
@@ -242,119 +363,179 @@ export default function TaskDetailsScreen() {
             <ArrowLeft width={22} height={22} />
           </Pressable>
           <Text style={styles.headerTitle}>Task Details</Text>
-          <Pressable hitSlop={8} onPress={() => setActionsVisible(true)}>
-            <Text style={styles.actionsLink}>Actions</Text>
+          <Pressable hitSlop={8} onPress={() => setActionsVisible(true)} disabled={!task}>
+            <Text style={[styles.actionsLink, !task && styles.actionsLinkDisabled]}>Actions</Text>
           </Pressable>
         </View>
       </View>
 
-      {/* Header (fixed above the swipeable pages) */}
-      <View style={styles.header}>
-        <View style={[styles.badge, styles.statusBadge, { backgroundColor: COLORS.successBg }]}>
-          <Text style={[styles.badgeText, { color: COLORS.successText }]}>Open</Text>
+      {taskQ.isLoading ? (
+        <View style={styles.centerState}>
+          <ActivityIndicator color={COLORS.brand} />
         </View>
-
-        <Text style={styles.title}>Printing & Photocopying, Assignment</Text>
-
-        <View style={styles.meta}>
-          <View style={styles.metaItem}>
-            <MapPin width={16} height={16} />
-            <Text style={styles.metaText}>UI Main gate</Text>
-          </View>
-          <View style={styles.metaItem}>
-            <Clock width={16} height={16} />
-            <Text style={styles.metaText}>18 May</Text>
-          </View>
-          <View style={styles.metaItem}>
-            <Shield width={16} height={16} />
-            <Text style={styles.metaText}>Safe</Text>
-          </View>
-        </View>
-
-        {/* Tabs */}
-        <View style={styles.tabBudget}>
-          <View>
-            <Text style={[styles.budgetText]}>
-              Budget
-            </Text>
-          </View>
-          <View>
-            <Text style={[styles.priceText]}>{hirePrice}</Text>
-          </View>
-        </View>
-
-        {/* Tabs */}
-        <View style={styles.tabs}>
-          <Pressable
-            style={[styles.tab, tab === 'matches' && styles.tabActive]}
-            onPress={() => goTab('matches')}>
-            <Text style={[styles.tabText, tab === 'matches' && styles.tabTextActive]}>
-              Smart Matches (2)
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.tab, tab === 'bids' && styles.tabActive]}
-            onPress={() => goTab('bids')}>
-            <Text style={[styles.tabText, tab === 'bids' && styles.tabTextActive]}>Bids(3)</Text>
+      ) : !task ? (
+        <View style={styles.centerState}>
+          <Text style={styles.stateText}>Couldn’t load this task.</Text>
+          <Pressable hitSlop={8} onPress={() => taskQ.refetch()}>
+            <Text style={styles.retry}>Retry</Text>
           </Pressable>
         </View>
-      </View>
+      ) : (
+        <>
+          {/* Header (fixed above the swipeable pages) */}
+          <View style={styles.header}>
+            <View style={[styles.badge, styles.statusBadge, { backgroundColor: statusColor.bg }]}>
+              <Text style={[styles.badgeText, { color: statusColor.text }]}>
+                {statusLabel(task.status)}
+              </Text>
+            </View>
 
-      {/* Swipeable pages */}
-      <ScrollView
-        ref={pagerRef}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={onPagerScroll}
-        style={styles.flex}>
-        <ScrollView
-          style={{ width: SCREEN_WIDTH }}
-          contentContainerStyle={[styles.page, { paddingBottom: insets.bottom + 24 }]}
-          showsVerticalScrollIndicator={false}>
-          {MATCHES.map((m, i) => (
-            <MatchedCard key={`${m.name}-${i}`} match={m} onInvite={() => setInviteName(m.name)} onHire={() => { setHireName(m.name); setHireAvatar(m.avatar); setHirePrice(m.price ?? null); }} />
-          ))}
-        </ScrollView>
+            <Text style={styles.title}>{task.title}</Text>
 
-        <ScrollView
-          style={{ width: SCREEN_WIDTH }}
-          contentContainerStyle={[styles.page, { paddingBottom: insets.bottom + 24 }]}
-          showsVerticalScrollIndicator={false}>
-          {BIDS.map((b, i) => (
-            <BidCard key={`${b.name}-${i}`} bid={b} onAccept={() => { setHireName(b.name); setHireAvatar(b.avatar); setHirePrice(b.price); }} />
-          ))}
-        </ScrollView>
-      </ScrollView>
+            <View style={styles.meta}>
+              <View style={styles.metaItem}>
+                <MapPin width={16} height={16} />
+                <Text style={styles.metaText}>{locationLabel(task)}</Text>
+              </View>
+              <View style={styles.metaItem}>
+                <Clock width={16} height={16} />
+                <Text style={styles.metaText}>
+                  {formatShortDate(task.deadline || task.createdAt)}
+                </Text>
+              </View>
+              <View style={styles.metaItem}>
+                <Shield width={16} height={16} />
+                <Text style={styles.metaText}>Safe</Text>
+              </View>
+            </View>
 
-      <InviteToBidModal
-        visible={inviteName !== null}
-        taskerName={inviteName ?? ''}
-        onClose={() => setInviteName(null)}
-      />
-      <ReadyToHireModal
-        visible={hireName !== null}
-        taskerName={hireName ?? ''}
-        taskerAvatar={hireAvatar ?? null}
-        taskerPrice={hirePrice}
-        onClose={() => setHireName(null)}
-      />
-      <TaskActionsModal
-        visible={actionsVisible}
-        onClose={() => setActionsVisible(false)}
-        onEdit={() => Alert.alert('Edit Task', 'Edit task functionality goes here.')}
-        onBoost={() => Alert.alert('Boost Task', 'Task boosted successfully!')}
-        onCancel={() =>
-          Alert.alert('Cancel Task', 'Are you sure you want to cancel this task?', [
-            { text: 'No', style: 'cancel' },
-            {
-              text: 'Yes',
-              onPress: () => Alert.alert('Task Cancelled', 'Task has been cancelled successfully!'),
-            },
-          ])
-        }
-        onReport={() => router.push('/report-issue')}
-      />
+            {/* Budget */}
+            <View style={styles.tabBudget}>
+              <Text style={styles.budgetText}>Budget</Text>
+              <Text style={styles.priceText}>{budgetText}</Text>
+            </View>
+
+            {/* Tabs */}
+            <View style={styles.tabs}>
+              <Pressable
+                style={[styles.tab, tab === 'matches' && styles.tabActive]}
+                onPress={() => goTab('matches')}>
+                <Text style={[styles.tabText, tab === 'matches' && styles.tabTextActive]}>
+                  Smart Matches ({matches.length})
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.tab, tab === 'bids' && styles.tabActive]}
+                onPress={() => goTab('bids')}>
+                <Text style={[styles.tabText, tab === 'bids' && styles.tabTextActive]}>
+                  Bids ({bids.length})
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
+          {/* Swipeable pages */}
+          <ScrollView
+            ref={pagerRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={onPagerScroll}
+            style={styles.flex}>
+            <ScrollView
+              style={{ width: SCREEN_WIDTH }}
+              contentContainerStyle={[styles.page, { paddingBottom: insets.bottom + 24 }]}
+              showsVerticalScrollIndicator={false}>
+              {matchesQ.isLoading ? (
+                <View style={styles.pageState}>
+                  <ActivityIndicator color={COLORS.brand} />
+                </View>
+              ) : matches.length === 0 ? (
+                <View style={styles.pageState}>
+                  <Text style={styles.stateText}>No matches yet.</Text>
+                </View>
+              ) : (
+                matches.map((m) => (
+                  <MatchedCard
+                    key={m.id}
+                    match={m}
+                    onInvite={() => setInvite({ taskerId: m.id, name: m.name })}
+                    onHire={() =>
+                      setHire({
+                        kind: 'hire',
+                        taskerId: m.id,
+                        name: m.name,
+                        avatar: m.avatar,
+                        price: budgetText,
+                        amount: task.budget,
+                      })
+                    }
+                  />
+                ))
+              )}
+            </ScrollView>
+
+            <ScrollView
+              style={{ width: SCREEN_WIDTH }}
+              contentContainerStyle={[styles.page, { paddingBottom: insets.bottom + 24 }]}
+              showsVerticalScrollIndicator={false}>
+              {bids.length === 0 ? (
+                <View style={styles.pageState}>
+                  <Text style={styles.stateText}>No bids yet.</Text>
+                </View>
+              ) : (
+                bids.map((b) => (
+                  <BidCard
+                    key={b.id}
+                    bid={b}
+                    onChat={() => openChatMutation.mutate(b.id)}
+                    onAccept={() =>
+                      setHire({
+                        kind: 'accept',
+                        bidId: b.id,
+                        name: b.name,
+                        avatar: b.avatar,
+                        price: b.price,
+                      })
+                    }
+                  />
+                ))
+              )}
+            </ScrollView>
+          </ScrollView>
+
+          <InviteToBidModal
+            visible={invite !== null}
+            taskerName={invite?.name ?? ''}
+            onClose={() => setInvite(null)}
+            onSend={() => {
+              if (invite) inviteMutation.mutate(invite.taskerId);
+            }}
+          />
+          <ReadyToHireModal
+            visible={hire !== null}
+            taskerName={hire?.name ?? ''}
+            taskerAvatar={hire?.avatar ? { uri: hire.avatar } : null}
+            taskerPrice={hire?.price ?? null}
+            confirmLabel={hire?.kind === 'accept' ? 'Confirm & Pay' : 'Send Hire Request'}
+            pending={acceptMutation.isPending || hireMutation.isPending}
+            onConfirm={() => {
+              if (!hire) return;
+              if (hire.kind === 'accept') acceptMutation.mutate(hire.bidId);
+              else hireMutation.mutate({ taskerId: hire.taskerId, amount: hire.amount });
+            }}
+            onClose={() => setHire(null)}
+          />
+          <TaskActionsModal
+            visible={actionsVisible}
+            onClose={() => setActionsVisible(false)}
+            onEdit={() => Alert.alert('Edit Task', 'Edit task functionality goes here.')}
+            onBoost={() => Alert.alert('Boost Task', 'Task boosted successfully!')}
+            onCancel={confirmCancel}
+            onReport={() => router.push('/report-issue')}
+          />
+        </>
+      )}
     </View>
   );
 }
@@ -389,6 +570,32 @@ const styles = StyleSheet.create({
     fontSize: 15,
     letterSpacing: -0.24,
     color: COLORS.brandStrong,
+  },
+  actionsLinkDisabled: {
+    opacity: 0.4,
+  },
+  centerState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  pageState: {
+    paddingTop: 48,
+    alignItems: 'center',
+    gap: 8,
+  },
+  stateText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    letterSpacing: -0.24,
+    color: COLORS.textSecondary,
+  },
+  retry: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 15,
+    letterSpacing: -0.24,
+    color: COLORS.brand,
   },
   header: {
     paddingHorizontal: 16,

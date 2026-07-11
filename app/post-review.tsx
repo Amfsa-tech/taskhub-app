@@ -1,9 +1,12 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { StepsHeader } from '@/components/taskhub/steps-header';
+import { usePostTask } from '@/context/PostTaskContext';
+import { createTask, formatNaira } from '@/lib/api/tasks';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -12,15 +15,67 @@ const COLORS = {
   textSecondary: '#5a5a70',
 };
 
-const SUMMARY: { label: string; value: string; emphasized?: boolean }[] = [
-  { label: 'Service', value: 'Printing & Photocopy, Assignment' },
-  { label: 'Location', value: 'UI, Ibadan' },
-  { label: 'Budget', value: '₦4,000', emphasized: true },
-  { label: 'Title', value: 'Printing & Photocopy, Assignment' },
-];
-
 export default function PostReviewScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const { draft, reset } = usePostTask();
+
+  const budgetNum = Number(draft.budget.replace(/[^\d.]/g, ''));
+  const serviceValue =
+    draft.subCategories.map((s) => s.displayName).join(', ') ||
+    draft.mainCategory?.displayName ||
+    '—';
+
+  const summary: { label: string; value: string; emphasized?: boolean }[] = [
+    { label: 'Category', value: draft.mainCategory?.displayName || '—' },
+    { label: 'Service', value: serviceValue },
+    { label: 'Title', value: draft.title.trim() || '—' },
+    { label: 'Budget', value: budgetNum > 0 ? formatNaira(budgetNum) : '—', emphasized: true },
+    { label: 'Location', value: draft.location.trim() || 'From your profile' },
+    ...(draft.images.length > 0
+      ? [{ label: 'Photos', value: `${draft.images.length} attached` }]
+      : []),
+  ];
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      createTask(
+        {
+          title: draft.title.trim(),
+          description: draft.description.trim(),
+          mainCategory: draft.mainCategory!._id,
+          categories: draft.subCategories.map((s) => s._id),
+          budget: budgetNum,
+        },
+        draft.images,
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      router.replace('/post-success');
+      reset();
+    },
+    onError: (err) =>
+      Alert.alert(
+        'Could not post task',
+        err instanceof Error ? err.message : 'Please try again.',
+      ),
+  });
+
+  const submit = () => {
+    if (!draft.mainCategory || draft.subCategories.length === 0) {
+      Alert.alert('Missing details', 'Please choose a category and at least one service.');
+      return;
+    }
+    if (!draft.title.trim() || !draft.description.trim()) {
+      Alert.alert('Missing details', 'Please add a title and description.');
+      return;
+    }
+    if (!(budgetNum > 0)) {
+      Alert.alert('Invalid budget', 'Please enter a valid budget amount.');
+      return;
+    }
+    createMutation.mutate();
+  };
 
   return (
     <View style={styles.container}>
@@ -34,7 +89,7 @@ export default function PostReviewScreen() {
         </View>
 
         <View style={styles.card}>
-          {SUMMARY.map((row) => (
+          {summary.map((row) => (
             <View key={row.label} style={styles.row}>
               <Text style={styles.rowLabel}>{row.label}</Text>
               <Text style={[styles.rowValue, row.emphasized && styles.rowValueEmphasized]}>
@@ -45,7 +100,11 @@ export default function PostReviewScreen() {
         </View>
 
         <View style={styles.buttonWrap}>
-          <PrimaryButton label="Post Task" onPress={() => router.replace('/post-success')} />
+          <PrimaryButton
+            label={createMutation.isPending ? 'Posting…' : 'Post Task'}
+            disabled={createMutation.isPending}
+            onPress={submit}
+          />
         </View>
       </ScrollView>
     </View>

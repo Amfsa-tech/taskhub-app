@@ -12,7 +12,7 @@ import NavHouseOutline from '@/assets/icons/nav-house-outline.svg';
 import NavPlus from '@/assets/icons/nav-plus.svg';
 import NavUser from '@/assets/icons/nav-user.svg';
 import NavUserActive from '@/assets/icons/nav-user-active.svg';
-import { MESSAGES_UNREAD_COUNT } from '@/app/(main)/messages';
+import { useChatUnreadCount } from '@/lib/api/queries';
 
 const COLORS = {
   surface: '#ffffff',
@@ -60,6 +60,7 @@ function TabButton({
 export function BottomNav({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const messagesBadge = useChatUnreadCount();
 
   const current = state.routes[state.index]?.name;
   const isHome = current === 'home';
@@ -109,7 +110,7 @@ export function BottomNav({ state, navigation }: BottomTabBarProps) {
         <TabButton
           label="Messages"
           active={isMessages}
-          badge={MESSAGES_UNREAD_COUNT}
+          badge={messagesBadge}
           onPress={() => go('messages')}>
           {isMessages ? (
             <NavChatActive width={24} height={24} color={COLORS.brand} />

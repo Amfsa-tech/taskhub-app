@@ -13,3 +13,8 @@ if (!rawApiUrl && __DEV__) {
 
 // Normalize: strip any trailing slash so we can safely concatenate paths.
 export const API_BASE_URL = (rawApiUrl || DEFAULT_API_URL).replace(/\/+$/, '');
+
+// Google Sign-In: the OAuth *web* client ID. This MUST match the backend's
+// GOOGLE_CLIENT_ID, since the backend verifies the ID token's audience against
+// it. Empty until configured (native Google Sign-In needs a development build).
+export const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() || '';

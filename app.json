@@ -40,7 +40,13 @@
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "TaskHub needs access to your photos so you can attach images to tasks and messages."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

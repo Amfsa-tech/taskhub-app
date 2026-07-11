@@ -82,8 +82,12 @@ export async function apiRequest<T = unknown>(
     ? path
     : `${API_BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`;
 
+  // FormData bodies (e.g. chat attachments, task images) must go out as
+  // multipart/form-data — let fetch set the Content-Type + boundary itself.
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+
   const finalHeaders: Record<string, string> = { Accept: 'application/json', ...headers };
-  if (body !== undefined) {
+  if (body !== undefined && !isFormData) {
     finalHeaders['Content-Type'] = 'application/json';
   }
 
@@ -97,7 +101,7 @@ export async function apiRequest<T = unknown>(
     response = await fetch(url, {
       method,
       headers: finalHeaders,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: body !== undefined ? (isFormData ? (body as FormData) : JSON.stringify(body)) : undefined,
       signal,
     });
   } catch (err) {

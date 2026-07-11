@@ -22,6 +22,7 @@ import { Eye } from '@/components/icons/eye';
 import { GoogleLogo } from '@/components/icons/google-logo';
 import { ApiError } from '@/lib/api/client';
 import { useAuth } from '@/lib/auth/auth-context';
+import { setPendingGoogleSignup } from '@/lib/auth/google';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -40,10 +41,11 @@ const COLORS = {
 export default function LoginFormScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { signIn } = useAuth();
+  const { signIn, signInWithGoogle } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loginMutation = useMutation({
@@ -52,8 +54,12 @@ export default function LoginFormScreen() {
     onSuccess: () => router.replace('/home'),
     onError: (err) => {
       if (err instanceof ApiError && err.emailVerificationRequired) {
-        // Account exists but isn't verified — route to the OTP screen.
-        router.push({ pathname: '/otp', params: { email: email.trim().toLowerCase() } });
+        // Account exists but isn't verified — route to the OTP screen, carrying
+        // the password so verification can log the user straight in.
+        router.push({
+          pathname: '/otp',
+          params: { email: email.trim().toLowerCase(), password, type: 'user' },
+        });
         return;
       }
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
@@ -69,8 +75,33 @@ export default function LoginFormScreen() {
     loginMutation.mutate();
   };
 
-  const socialUnavailable = () =>
-    Alert.alert('Coming soon', 'Social sign-in is not available yet.');
+  const handleGoogle = async () => {
+    if (googleBusy) return;
+    setError(null);
+    setGoogleBusy(true);
+    try {
+      const outcome = await signInWithGoogle('user');
+      if (outcome.kind === 'signed-in') {
+        router.replace('/home');
+      } else {
+        // No account yet — carry the verified token to the completion screen.
+        setPendingGoogleSignup({ idToken: outcome.idToken, profile: outcome.profile });
+        router.push('/google-complete-signup');
+      }
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (code === 'SIGN_IN_CANCELLED' || code === '-5') {
+        // User dismissed the Google chooser — no-op.
+      } else {
+        setError(err instanceof Error ? err.message : 'Google sign-in failed. Please try again.');
+      }
+    } finally {
+      setGoogleBusy(false);
+    }
+  };
+
+  const appleUnavailable = () =>
+    Alert.alert('Coming soon', 'Apple sign-in is not available yet.');
 
   const isSubmitting = loginMutation.isPending;
 
@@ -167,14 +198,25 @@ export default function LoginFormScreen() {
           {/* Social */}
           <View style={styles.social}>
             <Pressable
-              style={({ pressed }) => [styles.socialButton, styles.googleButton, pressed && styles.pressed]}
-              onPress={socialUnavailable}>
-              <GoogleLogo size={20} />
-              <Text style={styles.googleLabel}>Continue with Google</Text>
+              style={({ pressed }) => [
+                styles.socialButton,
+                styles.googleButton,
+                (pressed || googleBusy) && styles.pressed,
+              ]}
+              onPress={handleGoogle}
+              disabled={googleBusy}>
+              {googleBusy ? (
+                <ActivityIndicator color={COLORS.googleText} />
+              ) : (
+                <>
+                  <GoogleLogo size={20} />
+                  <Text style={styles.googleLabel}>Continue with Google</Text>
+                </>
+              )}
             </Pressable>
             <Pressable
               style={({ pressed }) => [styles.socialButton, styles.appleButton, pressed && styles.pressed]}
-              onPress={socialUnavailable}>
+              onPress={appleUnavailable}>
               <Ionicons name="logo-apple" size={20} color={COLORS.onBrand} />
               <Text style={styles.appleLabel}>Continue with Apple</Text>
             </Pressable>

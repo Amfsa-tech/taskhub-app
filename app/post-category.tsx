@@ -1,12 +1,15 @@
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import GraduationCapWhite from '@/assets/icons/graduation-cap-white.svg';
 import HouseWhite from '@/assets/icons/house-white.svg';
 import PackageWhite from '@/assets/icons/package-white.svg';
 import { MagnifyingGlass } from '@/components/icons/magnifying-glass';
 import { StepsHeader } from '@/components/taskhub/steps-header';
+import { usePostTask } from '@/context/PostTaskContext';
+import { groupCategories, type Category } from '@/lib/api/categories';
+import { useCategories } from '@/lib/api/queries';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -20,43 +23,31 @@ const COLORS = {
   amber: '#f59e0b',
   purple: '#6c3bff',
   green: '#18a962',
+  error: '#dc2626',
 };
 
-type Cat = { key: string; title: string; subtitle: string; bg: string; icon: React.ReactNode };
-
-const CATEGORIES: Cat[] = [
-  {
-    key: 'campus',
-    title: 'Campus Task',
-    subtitle: 'University Tasks',
-    bg: COLORS.blue,
-    icon: <GraduationCapWhite width={24} height={24} />,
-  },
-  {
-    key: 'local',
-    title: 'Local Services',
-    subtitle: 'Home & Area service',
-    bg: COLORS.amber,
-    icon: <HouseWhite width={24} height={24} />,
-  },
-  {
-    key: 'errands',
-    title: 'Errands & Deliveries',
-    subtitle: 'Deliveries & Pickup',
-    bg: COLORS.purple,
-    icon: <PackageWhite width={24} height={24} />,
-  },
-  {
-    key: 'digital',
-    title: 'Digital / Remote',
-    subtitle: 'Design,  editing, coding, remote help...',
-    bg: COLORS.green,
-    icon: <PackageWhite width={24} height={24} />,
-  },
-];
+/** Match a main category to one of the designed icon/colour treatments. */
+function visual(main: Category): { icon: React.ReactNode; bg: string } {
+  const n = main.name.toLowerCase();
+  if (n.includes('campus')) return { icon: <GraduationCapWhite width={24} height={24} />, bg: COLORS.blue };
+  if (n.includes('local')) return { icon: <HouseWhite width={24} height={24} />, bg: COLORS.amber };
+  if (n.includes('errand') || n.includes('deliver')) {
+    return { icon: <PackageWhite width={24} height={24} />, bg: COLORS.purple };
+  }
+  return { icon: <PackageWhite width={24} height={24} />, bg: COLORS.green };
+}
 
 export default function PostCategoryScreen() {
   const router = useRouter();
+  const { setMainCategory } = usePostTask();
+  const { data, isLoading, isError, refetch, isRefetching } = useCategories();
+
+  const groups = data ? groupCategories(data.categories) : [];
+
+  const select = (main: Category) => {
+    setMainCategory(main);
+    router.push('/post-service');
+  };
 
   return (
     <View style={styles.container}>
@@ -74,17 +65,39 @@ export default function PostCategoryScreen() {
           <Text style={styles.searchText}>Search category, service...</Text>
         </View>
 
-        <View style={styles.list}>
-          {CATEGORIES.map((cat) => (
-            <Pressable key={cat.key} style={styles.card} onPress={() => router.push('/post-service')}>
-              <View style={[styles.icon, { backgroundColor: cat.bg }]}>{cat.icon}</View>
-              <View style={styles.textBlock}>
-                <Text style={styles.cardTitle}>{cat.title}</Text>
-                <Text style={styles.cardSubtitle}>{cat.subtitle}</Text>
-              </View>
+        {isLoading ? (
+          <View style={styles.state}>
+            <ActivityIndicator color={COLORS.purple} />
+          </View>
+        ) : isError ? (
+          <View style={styles.state}>
+            <Text style={styles.errorText}>Couldn’t load categories.</Text>
+            <Pressable hitSlop={8} onPress={() => refetch()} disabled={isRefetching}>
+              <Text style={styles.retry}>{isRefetching ? 'Retrying…' : 'Retry'}</Text>
             </Pressable>
-          ))}
-        </View>
+          </View>
+        ) : groups.length === 0 ? (
+          <View style={styles.state}>
+            <Text style={styles.emptyText}>No categories available yet.</Text>
+          </View>
+        ) : (
+          <View style={styles.list}>
+            {groups.map(({ main, subs }) => {
+              const v = visual(main);
+              return (
+                <Pressable key={main._id} style={styles.card} onPress={() => select(main)}>
+                  <View style={[styles.icon, { backgroundColor: v.bg }]}>{v.icon}</View>
+                  <View style={styles.textBlock}>
+                    <Text style={styles.cardTitle}>{main.displayName}</Text>
+                    <Text style={styles.cardSubtitle} numberOfLines={1}>
+                      {main.description || `${subs.length} service${subs.length === 1 ? '' : 's'}`}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -174,5 +187,28 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     letterSpacing: -0.24,
     color: COLORS.iconSecondary,
+  },
+  state: {
+    paddingTop: 48,
+    alignItems: 'center',
+    gap: 8,
+  },
+  errorText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    letterSpacing: -0.24,
+    color: COLORS.error,
+  },
+  emptyText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    letterSpacing: -0.24,
+    color: COLORS.textSecondary,
+  },
+  retry: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 15,
+    letterSpacing: -0.24,
+    color: COLORS.purple,
   },
 });

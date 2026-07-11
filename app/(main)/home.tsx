@@ -27,6 +27,8 @@ import Star from '@/assets/icons/star.svg';
 import VerificationRing from '@/assets/icons/verification-ring.svg';
 import { ActiveTasks } from '@/components/taskhub/active-tasks';
 import { useLocation } from '@/context/LocationContext';
+import { useNotifications } from '@/lib/api/queries';
+import { useAuth } from '@/lib/auth/auth-context';
 
 // Colours pulled directly from the Figma design tokens (light theme).
 const COLORS = {
@@ -111,6 +113,13 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { selectedLocation, isLoadingLocation } = useLocation();
+  const { user } = useAuth();
+  const { data: notifData } = useNotifications();
+  const unreadCount = notifData?.data?.unreadCount ?? 0;
+
+  // Users have `fullName`; taskers have `firstName`. Fall back gracefully.
+  const firstName =
+    user?.fullName?.trim().split(/\s+/)[0] || user?.firstName || 'there';
 
   return (
     <View style={styles.container}>
@@ -119,7 +128,7 @@ export default function HomeScreen() {
       {/* Top bar */}
       <View style={[styles.topBar, { paddingTop: insets.top + 12 }]}>
         <View style={styles.userInfo}>
-          <Text style={styles.greeting}>Hi, Elliot</Text>
+          <Text style={styles.greeting}>Hi, {firstName}</Text>
           <Pressable 
             style={styles.locationRow} 
             hitSlop={8} 
@@ -142,6 +151,11 @@ export default function HomeScreen() {
           hitSlop={8}
           onPress={() => router.push('/notifications')}>
           <Bell width={20} height={20} />
+          {unreadCount > 0 ? (
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+            </View>
+          ) : null}
         </Pressable>
       </View>
 
@@ -217,7 +231,9 @@ export default function HomeScreen() {
         </View>
 
         {/* Your Active Tasks */}
-        <ActiveTasks onTaskPress={() => router.push('/task-details')} />
+        <ActiveTasks
+          onTaskPress={(taskId) => router.push({ pathname: '/task-details', params: { id: taskId } })}
+        />
       </ScrollView>
     </View>
   );
@@ -270,6 +286,26 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.sunken,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  badge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 999,
+    backgroundColor: '#dc2626',
+    paddingHorizontal: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: COLORS.surface,
+  },
+  badgeText: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 10,
+    lineHeight: 12,
+    color: COLORS.onBrand,
   },
   scroll: {
     paddingHorizontal: 16,

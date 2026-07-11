@@ -8,4 +8,9 @@ config.transformer.babelTransformerPath = require.resolve('react-native-svg-tran
 config.resolver.assetExts = config.resolver.assetExts.filter((ext) => ext !== 'svg');
 config.resolver.sourceExts.push('svg');
 
+// Treat require() calls inside try/catch as optional, so modules that are only
+// present in a development/production build (e.g. the native Google Sign-In SDK,
+// referenced defensively in lib/auth/google.ts) don't break the Expo Go bundle.
+config.resolver.allowOptionalDependencies = true;
+
 module.exports = config;

@@ -149,6 +149,8 @@ export default function ProfileScreen() {
       router.push('/my-reviews');
     } else if (key === 'settings') {
       router.push('/settings');
+    } else if (key === 'wallet-payment') {
+      router.push('/wallet');
     } else if (key === 'logout') {
       router.replace('/login');
     }

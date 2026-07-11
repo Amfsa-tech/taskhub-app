@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -9,6 +9,7 @@ import PaperPlaneWhite from '@/assets/icons/paper-plane-white.svg';
 import SparkleWhite from '@/assets/icons/sparkle-white.svg';
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
+import { usePostTask } from '@/context/PostTaskContext';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -30,7 +31,19 @@ const EXAMPLES = [
 export default function PostScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { reset, patch } = usePostTask();
   const [prompt, setPrompt] = useState('');
+
+  // Start each post with a clean draft.
+  useEffect(() => {
+    reset();
+  }, [reset]);
+
+  const goToCategory = () => {
+    // Seed the description with whatever the user typed so it isn't lost.
+    if (prompt.trim()) patch({ description: prompt.trim() });
+    router.push('/post-category');
+  };
 
   return (
     <View style={styles.container}>
@@ -84,12 +97,12 @@ export default function PostScreen() {
         <PrimaryButton
           label="Continue"
           leftIcon={<SparkleWhite width={18} height={18} />}
-          onPress={() => router.push('/post-category')}
+          onPress={goToCategory}
         />
         <PrimaryButton
           label="Choose Manually Instead"
           variant="secondary"
-          onPress={() => router.push('/post-category')}
+          onPress={goToCategory}
         />
       </View>
     </View>

@@ -2,12 +2,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ArrowLeft } from '@/components/icons/arrow-left';
 import { GoogleLogo } from '@/components/icons/google-logo';
 import { Headset } from '@/components/icons/headset';
+import { useAuth } from '@/lib/auth/auth-context';
+import { GoogleSignInUnavailableError, setPendingGoogleSignup } from '@/lib/auth/google';
 
 const COLORS = {
   primary: '#6c3bff',
@@ -21,8 +24,36 @@ const COLORS = {
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { signInWithGoogle } = useAuth();
+  const [googleBusy, setGoogleBusy] = useState(false);
 
-  const enterApp = () => router.replace('/home');
+  const handleGoogle = async () => {
+    if (googleBusy) return;
+    setGoogleBusy(true);
+    try {
+      const outcome = await signInWithGoogle('user');
+      if (outcome.kind === 'signed-in') {
+        router.replace('/home');
+      } else {
+        // No account yet — carry the verified token to the completion screen.
+        setPendingGoogleSignup({ idToken: outcome.idToken, profile: outcome.profile });
+        router.push('/google-complete-signup');
+      }
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (code === 'SIGN_IN_CANCELLED' || code === '-5') {
+        // User dismissed the Google chooser — no-op.
+      } else if (err instanceof GoogleSignInUnavailableError) {
+        Alert.alert('Development build required', err.message);
+      } else {
+        Alert.alert('Google sign-in failed', err instanceof Error ? err.message : 'Please try again.');
+      }
+    } finally {
+      setGoogleBusy(false);
+    }
+  };
+
+  const comingSoon = () => Alert.alert('Coming soon', 'Apple sign-in is not available yet.');
 
   return (
     <ImageBackground
@@ -62,15 +93,27 @@ export default function LoginScreen() {
           </Pressable>
 
           <Pressable
-            style={({ pressed }) => [styles.button, styles.googleButton, pressed && styles.pressed]}
-            onPress={enterApp}>
-            <GoogleLogo size={20} />
-            <Text style={styles.googleLabel}>Continue with Google</Text>
+            style={({ pressed }) => [
+              styles.button,
+              styles.googleButton,
+              pressed && styles.pressed,
+              googleBusy && styles.pressed,
+            ]}
+            onPress={handleGoogle}
+            disabled={googleBusy}>
+            {googleBusy ? (
+              <ActivityIndicator color={COLORS.googleText} />
+            ) : (
+              <>
+                <GoogleLogo size={20} />
+                <Text style={styles.googleLabel}>Continue with Google</Text>
+              </>
+            )}
           </Pressable>
 
           <Pressable
             style={({ pressed }) => [styles.button, styles.appleButton, pressed && styles.pressed]}
-            onPress={enterApp}>
+            onPress={comingSoon}>
             <Ionicons name="logo-apple" size={20} color={COLORS.white} />
             <Text style={styles.appleLabel}>Continue with Apple</Text>
           </Pressable>

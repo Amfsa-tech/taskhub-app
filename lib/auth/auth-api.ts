@@ -4,6 +4,9 @@ import { api } from '@/lib/api/client';
 import type {
   AccountType,
   ForgotPasswordPayload,
+  GoogleAuthPayload,
+  GoogleAuthResponse,
+  GoogleCompleteSignupPayload,
   LoginPayload,
   LoginResponse,
   MessageResponse,
@@ -52,6 +55,16 @@ export function forgotPassword(payload: ForgotPasswordPayload) {
 
 export function resetPassword(payload: ResetPasswordPayload) {
   return api.post<MessageResponse>(`${BASE}/reset-password`, payload, { auth: false });
+}
+
+/** Phase 1 — verify a Google ID token and sign in / link an existing account. */
+export function googleAuth(payload: GoogleAuthPayload) {
+  return api.post<GoogleAuthResponse>(`${BASE}/google`, payload, { auth: false });
+}
+
+/** Phase 2 — create a brand-new account after collecting the completion fields. */
+export function googleCompleteSignup(payload: GoogleCompleteSignupPayload) {
+  return api.post<GoogleAuthResponse>(`${BASE}/google/complete-signup`, payload, { auth: false });
 }
 
 /** Fetch the authenticated profile. Requires a valid bearer token. */

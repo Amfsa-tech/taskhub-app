@@ -1,8 +1,13 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -18,6 +23,16 @@ import ImageSquare from '@/assets/icons/image-square.svg';
 import PaperPlaneTilt from '@/assets/icons/paper-plane-tilt.svg';
 import UserCircle from '@/assets/icons/user-circle.svg';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
+import {
+  isMine,
+  markConversationRead,
+  sendMessage,
+  type ChatMessage,
+  type MessageAttachment,
+} from '@/lib/api/chat';
+import { useMessages } from '@/lib/api/queries';
+import { useAuth } from '@/lib/auth/auth-context';
+import { pickImages, type PickedImage } from '@/lib/image-picker';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -31,22 +46,14 @@ const COLORS = {
   onBrand: '#ffffff',
   onBrandSubtle: '#eaeaf0',
   brandText: '#6c3bff',
+  error: '#dc2626',
 };
-
-type Message = { id: string; from: 'me' | 'them'; text: string; time: string };
-
-const INITIAL_MESSAGES: Message[] = [
-  { id: '1', from: 'them', text: 'Hi! I can handle your printing task.', time: '2:30PM' },
-  { id: '2', from: 'me', text: ' Great! How quickly can you do it?', time: '2:30PM' },
-  { id: '3', from: 'them', text: "Within 30 minutes. I'm near Zik Hall right now.", time: '2:30PM' },
-  { id: '4', from: 'me', text: "Perfect! It's 15 pages, black and white.", time: '2:30PM' },
-  { id: '5', from: 'them', text: "No problem. I'll head to the printing shop now.", time: '2:30PM' },
-];
 
 const QUICK_REPLIES = ['On my way!', 'How Long?', 'Thanks!', 'You are welcome'];
 
-function formatTime() {
-  const d = new Date();
+function formatMessageTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
   let h = d.getHours();
   const m = d.getMinutes().toString().padStart(2, '0');
   const period = h >= 12 ? 'PM' : 'AM';
@@ -54,18 +61,54 @@ function formatTime() {
   return `${h}:${m}${period}`;
 }
 
-function Bubble({ message }: { message: Message }) {
-  const mine = message.from === 'me';
+function isImageAttachment(a: MessageAttachment): boolean {
+  return (a.type ?? '').startsWith('image') || !a.type;
+}
+
+function Bubble({
+  mine,
+  text,
+  time,
+  attachments,
+}: {
+  mine: boolean;
+  text: string;
+  time: string;
+  attachments?: MessageAttachment[];
+}) {
+  const images = (attachments ?? []).filter(isImageAttachment);
+  const files = (attachments ?? []).filter((a) => !isImageAttachment(a));
   return (
     <View style={[styles.bubbleRow, mine ? styles.bubbleRowMine : styles.bubbleRowTheirs]}>
       <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}>
-        <Text style={[styles.bubbleText, mine ? styles.bubbleTextMine : styles.bubbleTextTheirs]}>
-          {message.text}
-        </Text>
+        {images.map((img) => (
+          <Image key={img.url} source={{ uri: img.url }} style={styles.attachImage} contentFit="cover" />
+        ))}
+        {files.map((f) => (
+          <Pressable key={f.url} onPress={() => Linking.openURL(f.url)}>
+            <Text
+              style={[styles.bubbleText, mine ? styles.bubbleTextMine : styles.bubbleTextTheirs]}>
+              📎 {f.name || 'Attachment'}
+            </Text>
+          </Pressable>
+        ))}
+        {text ? (
+          <Text style={[styles.bubbleText, mine ? styles.bubbleTextMine : styles.bubbleTextTheirs]}>
+            {text}
+          </Text>
+        ) : null}
         <Text style={[styles.bubbleTime, mine ? styles.bubbleTimeMine : styles.bubbleTimeTheirs]}>
-          {message.time}
+          {time}
         </Text>
       </View>
+    </View>
+  );
+}
+
+function SystemNote({ text }: { text: string }) {
+  return (
+    <View style={styles.systemRow}>
+      <Text style={styles.systemText}>{text}</Text>
     </View>
   );
 }
@@ -73,22 +116,46 @@ function Bubble({ message }: { message: Message }) {
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ name?: string }>();
-  const name = params.name ?? 'Chioma A.';
+  const queryClient = useQueryClient();
+  const { accountType } = useAuth();
+  const params = useLocalSearchParams<{ id?: string; name?: string }>();
+  const conversationId = params.id;
+  const name = params.name ?? 'Chat';
 
-  const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES);
+  const { data, isLoading, isError, refetch } = useMessages(conversationId);
+  const messages = data?.messages ?? [];
+
   const [draft, setDraft] = useState('');
   const scrollRef = useRef<ScrollView>(null);
 
+  // Mark the conversation read on open, then refresh the inbox + badge.
+  useEffect(() => {
+    if (!conversationId) return;
+    markConversationRead(conversationId)
+      .then(() => queryClient.invalidateQueries({ queryKey: ['chat'] }))
+      .catch(() => {});
+  }, [conversationId, queryClient]);
+
+  const sendMutation = useMutation({
+    mutationFn: (payload: { text?: string; attachments?: PickedImage[] }) =>
+      sendMessage(conversationId as string, payload.text ?? '', payload.attachments),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['chat'] }),
+    onError: (err) =>
+      Alert.alert('Message not sent', err instanceof Error ? err.message : 'Please try again.'),
+  });
+
   const send = (text: string) => {
     const body = text.trim();
-    if (!body) return;
-    setMessages((prev) => [
-      ...prev,
-      { id: String(prev.length + 1), from: 'me', text: body, time: formatTime() },
-    ]);
+    if (!body || !conversationId) return;
     setDraft('');
+    sendMutation.mutate({ text: body });
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+  };
+
+  const sendPhoto = async () => {
+    if (!conversationId) return;
+    const picked = await pickImages(1);
+    if (picked.length) sendMutation.mutate({ attachments: picked });
   };
 
   return (
@@ -115,29 +182,48 @@ export default function ChatScreen() {
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={insets.top + 56}>
-        <ScrollView
-          ref={scrollRef}
-          style={styles.flex}
-          contentContainerStyle={styles.messages}
-          showsVerticalScrollIndicator={false}
-          onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}>
-          {messages.map((m) => (
-            <Bubble key={m.id} message={m} />
-          ))}
-        </ScrollView>
+        {isLoading ? (
+          <View style={styles.state}>
+            <ActivityIndicator color={COLORS.brand} />
+          </View>
+        ) : isError ? (
+          <View style={styles.state}>
+            <Text style={styles.errorText}>Couldn’t load messages.</Text>
+            <Pressable hitSlop={8} onPress={() => refetch()}>
+              <Text style={styles.retry}>Retry</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <ScrollView
+            ref={scrollRef}
+            style={styles.flex}
+            contentContainerStyle={styles.messages}
+            showsVerticalScrollIndicator={false}
+            onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}>
+            {messages.length === 0 ? (
+              <View style={styles.emptyWrap}>
+                <Text style={styles.emptyText}>No messages yet. Say hello!</Text>
+              </View>
+            ) : (
+              messages.map((m: ChatMessage) =>
+                m.senderType === 'system' ? (
+                  <SystemNote key={m._id} text={m.text ?? ''} />
+                ) : (
+                  <Bubble
+                    key={m._id}
+                    mine={isMine(m, accountType)}
+                    text={m.text ?? ''}
+                    time={formatMessageTime(m.createdAt)}
+                    attachments={m.attachments}
+                  />
+                ),
+              )
+            )}
+          </ScrollView>
+        )}
 
         {/* Composer area */}
         <View style={[styles.composer, { paddingBottom: insets.bottom + 16 }]}>
-          {/* Contextual action buttons */}
-          <View style={styles.actions}>
-            <Pressable style={[styles.actionButton, styles.actionSecondary]} onPress={() => {}}>
-              <Text style={styles.actionSecondaryLabel}>View Bid</Text>
-            </Pressable>
-            <Pressable style={[styles.actionButton, styles.actionPrimary]} onPress={() => {}}>
-              <Text style={styles.actionPrimaryLabel}>Hire Now</Text>
-            </Pressable>
-          </View>
-
           {/* Quick replies */}
           <ScrollView
             horizontal
@@ -153,7 +239,7 @@ export default function ChatScreen() {
 
           {/* Input row */}
           <View style={styles.inputRow}>
-            <Pressable style={styles.iconTile} onPress={() => {}}>
+            <Pressable style={styles.iconTile} onPress={sendPhoto}>
               <ImageSquare width={24} height={24} />
             </Pressable>
             <View style={styles.inputField}>
@@ -190,6 +276,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     gap: 16,
+    flexGrow: 1,
   },
   bubbleRow: {
     flexDirection: 'row',
@@ -224,44 +311,63 @@ const styles = StyleSheet.create({
   },
   bubbleTextTheirs: { color: COLORS.textSecondary },
   bubbleTextMine: { color: COLORS.onBrand },
+  attachImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
   bubbleTime: {
     fontFamily: 'Geist_500Medium',
     fontSize: 12,
   },
   bubbleTimeTheirs: { color: COLORS.textSecondary },
   bubbleTimeMine: { color: COLORS.onBrandSubtle },
+  systemRow: {
+    alignItems: 'center',
+  },
+  systemText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 13,
+    letterSpacing: -0.08,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+  },
+  emptyWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+  },
+  emptyText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    letterSpacing: -0.24,
+    color: COLORS.textSecondary,
+  },
+  state: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  errorText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    letterSpacing: -0.24,
+    color: COLORS.error,
+  },
+  retry: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 15,
+    letterSpacing: -0.24,
+    color: COLORS.brand,
+  },
   // Composer
   composer: {
     backgroundColor: COLORS.surface,
     paddingTop: 12,
     gap: 12,
-  },
-  actions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    paddingHorizontal: 16,
-  },
-  actionButton: {
-    flex: 1,
-    height: 40,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionSecondary: { backgroundColor: COLORS.sunken },
-  actionPrimary: { backgroundColor: COLORS.brand },
-  actionSecondaryLabel: {
-    fontFamily: 'Geist_500Medium',
-    fontSize: 15,
-    letterSpacing: -0.24,
-    color: COLORS.brandText,
-  },
-  actionPrimaryLabel: {
-    fontFamily: 'Geist_500Medium',
-    fontSize: 15,
-    letterSpacing: -0.24,
-    color: COLORS.onBrand,
   },
   chips: {
     paddingHorizontal: 16,
