@@ -229,6 +229,7 @@ export function InProgressTaskCard({ task, onPress }: { task: InProgressTask; on
 export function CompletedTaskCard({
   task,
   onPress,
+<<<<<<< HEAD
   onReview,
 }: {
   task: CompletedTask;
@@ -243,6 +244,18 @@ export function CompletedTaskCard({
     .filter(Boolean)
     .join(' • ');
 
+=======
+  onHireAgain,
+  onLeaveReview,
+  onReceipt,
+}: {
+  task: CompletedTask;
+  onPress?: () => void;
+  onHireAgain?: () => void;
+  onLeaveReview?: () => void;
+  onReceipt?: () => void;
+}) {
+>>>>>>> 9406da0f79bbbfd36c4dab6d39988089096b3e1b
   return (
     <Pressable style={styles.card} onPress={onPress}>
       <View style={styles.row}>
@@ -273,24 +286,29 @@ export function CompletedTaskCard({
       {/* Actions */}
       <View style={styles.actionsRow}>
         {task.reviewStatus === 'none' ? (
+<<<<<<< HEAD
           <Pressable style={[styles.btn, styles.btnReview]} onPress={onReview}>
+=======
+          <Pressable style={[styles.btn, styles.btnReview]} onPress={onLeaveReview}>
+>>>>>>> 9406da0f79bbbfd36c4dab6d39988089096b3e1b
             <Text style={[styles.btnText, { color: '#ffffff' }]}>Leave review</Text>
           </Pressable>
         ) : (
-          <Pressable style={[styles.btn, styles.btnReviewed]}>
+          <Pressable style={[styles.btn, styles.btnReviewed]} onPress={onLeaveReview}>
             <Text style={[styles.btnText, { color: COLORS.success }]}>Reviewed</Text>
           </Pressable>
         )}
-        <Pressable style={[styles.btn, styles.btnHireAgain]}>
+        <Pressable style={[styles.btn, styles.btnHireAgain]} onPress={onHireAgain}>
           <Text style={[styles.btnText, { color: COLORS.brand }]}>Hire Again</Text>
         </Pressable>
-        <Pressable style={[styles.btn, styles.btnReceipt]}>
+        <Pressable style={[styles.btn, styles.btnReceipt]} onPress={onReceipt}>
           <Text style={[styles.btnText, { color: COLORS.textPrimary }]}>Receipt</Text>
         </Pressable>
       </View>
     </Pressable>
   );
 }
+
 
 const styles = StyleSheet.create({
   card: {

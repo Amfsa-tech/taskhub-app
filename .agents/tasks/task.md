@@ -1,0 +1,3 @@
+- [x] 1. Update TaskContext types and category mapping `context/TaskContext.tsx`
+- [x] 2. Create `HireAgainModal` component in `components/taskhub/hire-again-modal.tsx`tyles)
+- `[x]` Verify typecheck

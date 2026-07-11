@@ -15,8 +15,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { StepsHeader } from '@/components/taskhub/steps-header';
+<<<<<<< HEAD
 import { usePostTask } from '@/context/PostTaskContext';
 import { pickImages } from '@/lib/image-picker';
+=======
+import { useTasks } from '@/context/TaskContext';
+>>>>>>> 9406da0f79bbbfd36c4dab6d39988089096b3e1b
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -31,6 +35,7 @@ const COLORS = {
 export default function PostDetailsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+<<<<<<< HEAD
   const { draft, patch } = usePostTask();
 
   const canContinue =
@@ -47,6 +52,24 @@ export default function PostDetailsScreen() {
 
   const removePhoto = (uri: string) =>
     patch({ images: draft.images.filter((img) => img.uri !== uri) });
+=======
+  const { draftTask, updateDraftTask } = useTasks();
+
+  const [title, setTitle] = useState(draftTask?.title || '');
+  const [description, setDescription] = useState(draftTask?.description || '');
+  const [location, setLocation] = useState(draftTask?.location || '');
+  const [budget, setBudget] = useState(draftTask?.budget || '');
+
+  const handleNext = () => {
+    updateDraftTask({
+      title,
+      description,
+      location,
+      budget,
+    });
+    router.push('/post-review');
+  };
+>>>>>>> 9406da0f79bbbfd36c4dab6d39988089096b3e1b
 
   return (
     <View style={styles.container}>
@@ -113,6 +136,7 @@ export default function PostDetailsScreen() {
                 onChangeText={(budget) => patch({ budget })}
                 keyboardType="numeric"
               />
+<<<<<<< HEAD
             </View>
 
             <View style={styles.field}>
@@ -136,16 +160,28 @@ export default function PostDetailsScreen() {
                   </Pressable>
                 ) : null}
               </View>
+=======
+              {draftTask?.category === 'local' && (
+                <Text style={styles.helper}>Suggested Price: ₦4,000</Text>
+              )}
+              {draftTask?.category === 'campus' && (
+                <Text style={styles.helper}>Suggested Price: ₦1,000</Text>
+              )}
+>>>>>>> 9406da0f79bbbfd36c4dab6d39988089096b3e1b
             </View>
           </View>
         </ScrollView>
 
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+<<<<<<< HEAD
           <PrimaryButton
             label="Next"
             disabled={!canContinue}
             onPress={() => router.push('/post-review')}
           />
+=======
+          <PrimaryButton label="Next" onPress={handleNext} />
+>>>>>>> 9406da0f79bbbfd36c4dab6d39988089096b3e1b
         </View>
       </KeyboardAvoidingView>
     </View>

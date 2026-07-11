@@ -9,6 +9,8 @@ import ShieldCheck from '@/assets/icons/shield-check.svg';
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
 
+import { useTasks } from '@/context/TaskContext';
+
 const COLORS = {
   canvas: '#f9f9fb',
   surface: '#ffffff',
@@ -19,16 +21,35 @@ const COLORS = {
   successText: '#0d6639',
 };
 
-const DETAILS = [
-  { label: 'Service', value: 'Printing & Photocopy, Assignment' },
-  { label: 'Location', value: 'UI, Ibadan' },
-  { label: 'Title', value: 'Someone to print and do my assignment' },
-  { label: 'Deadline', value: '18th of May, 2026' },
-];
-
 export default function VoiceConfirmScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { draftTask } = useTasks();
+
+  const taskTitle = draftTask?.title || 'Someone to print and do my assignment';
+  const taskService = draftTask?.service || 'Printing & Photocopy, Assignment';
+  const taskLocation = draftTask?.location || 'UI, Ibadan';
+  const taskBudget = draftTask?.budget ? (draftTask.budget.startsWith('₦') ? draftTask.budget : `₦${draftTask.budget}`) : '₦1,500';
+
+  const DETAILS = [
+    { label: 'Service', value: taskService },
+    { label: 'Location', value: taskLocation },
+    { label: 'Budget', value: taskBudget },
+    { label: 'Title', value: taskTitle },
+    { label: 'Deadline', value: '18th of May, 2026' },
+  ];
+
+  const handleContinue = () => {
+    router.push('/voice-organizing');
+  };
+
+  const handleEdit = () => {
+    router.push('/post-details');
+  };
+
+  const handleRetry = () => {
+    router.replace('/voice-recording');
+  };
 
   return (
     <View style={styles.container}>
@@ -67,13 +88,13 @@ export default function VoiceConfirmScreen() {
         </View>
 
         <View style={styles.actions}>
-          <PrimaryButton label="Post Task" onPress={() => router.push('/voice-organizing')} />
+          <PrimaryButton label="Continue" onPress={handleContinue} />
           <View style={styles.secondaryRow}>
-            <Pressable style={styles.outlineButton} onPress={() => router.back()}>
+            <Pressable style={styles.outlineButton} onPress={handleEdit}>
               <PencilSimpleLine width={16} height={16} />
               <Text style={styles.outlineLabel}>Edit</Text>
             </Pressable>
-            <Pressable style={styles.outlineButton} onPress={() => router.replace('/voice-post')}>
+            <Pressable style={styles.outlineButton} onPress={handleRetry}>
               <ArrowCounterClockwise width={16} height={16} />
               <Text style={styles.outlineLabel}>Retry</Text>
             </Pressable>

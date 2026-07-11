@@ -5,8 +5,12 @@ import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { StepsHeader } from '@/components/taskhub/steps-header';
+<<<<<<< HEAD
 import { usePostTask } from '@/context/PostTaskContext';
 import { createTask, formatNaira } from '@/lib/api/tasks';
+=======
+import { useTasks } from '@/context/TaskContext';
+>>>>>>> 9406da0f79bbbfd36c4dab6d39988089096b3e1b
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -17,6 +21,7 @@ const COLORS = {
 
 export default function PostReviewScreen() {
   const router = useRouter();
+<<<<<<< HEAD
   const queryClient = useQueryClient();
   const { draft, reset } = usePostTask();
 
@@ -76,6 +81,52 @@ export default function PostReviewScreen() {
     }
     createMutation.mutate();
   };
+=======
+  const { draftTask, addTask } = useTasks();
+
+  const taskTitle = draftTask?.title || 'Printing & Photocopy, Assignment';
+  const taskLocation = draftTask?.location || 'UI, Ibadan';
+  const rawBudget = draftTask?.budget || '4,000';
+  const taskBudget = rawBudget.startsWith('₦') ? rawBudget : `₦${rawBudget}`;
+  const taskService = draftTask?.service || 'Printing & Photocopy, Assignment';
+
+  const handlePostTask = () => {
+    const taskId = addTask({
+      title: taskTitle,
+      description: draftTask?.description || '',
+      location: taskLocation,
+      budget: taskBudget,
+      category: draftTask?.category || 'campus',
+      service: taskService,
+    });
+
+    if (draftTask?.inviteTasker) {
+      router.replace({
+        pathname: '/chat',
+        params: {
+          name: draftTask.inviteTasker,
+          showInviteBanner: 'true',
+          invitedTaskTitle: taskTitle,
+          taskTitle: taskTitle,
+          taskPrice: taskBudget,
+        },
+      });
+    } else {
+      router.replace({
+        pathname: '/post-success',
+        params: { taskId },
+      });
+    }
+  };
+
+
+  const SUMMARY = [
+    { label: 'Service', value: taskService },
+    { label: 'Location', value: taskLocation },
+    { label: 'Budget', value: taskBudget, emphasized: true },
+    { label: 'Title', value: taskTitle },
+  ];
+>>>>>>> 9406da0f79bbbfd36c4dab6d39988089096b3e1b
 
   return (
     <View style={styles.container}>
@@ -100,11 +151,15 @@ export default function PostReviewScreen() {
         </View>
 
         <View style={styles.buttonWrap}>
+<<<<<<< HEAD
           <PrimaryButton
             label={createMutation.isPending ? 'Posting…' : 'Post Task'}
             disabled={createMutation.isPending}
             onPress={submit}
           />
+=======
+          <PrimaryButton label="Post Task" onPress={handlePostTask} />
+>>>>>>> 9406da0f79bbbfd36c4dab6d39988089096b3e1b
         </View>
       </ScrollView>
     </View>

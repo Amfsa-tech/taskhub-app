@@ -43,7 +43,7 @@ export default function LocationPermissionScreen() {
     }
   };
 
-  const skip = () => router.push('/location-map');
+  const skip = () => router.push('/success');
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
