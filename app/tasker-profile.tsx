@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -13,6 +15,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { queryKeys, useSavedTaskers } from '@/lib/api/queries';
+import { saveTasker, unsaveTasker } from '@/lib/api/saved-taskers';
+
+import Heart from '@/assets/icons/heart.svg';
 import HeartOutline from '@/assets/icons/heart-outline.svg';
 import RatingDot from '@/assets/icons/rating-dot.svg';
 import Share from '@/assets/icons/share.svg';
@@ -99,11 +105,41 @@ function ReviewCard({ review }: { review: ReviewItem }) {
   );
 }
 
+/** The heart is only meaningful when we know which tasker this is. */
+function SaveHeart({ taskerId, size = 24 }: { taskerId: string; size?: number }) {
+  const queryClient = useQueryClient();
+  const { data } = useSavedTaskers();
+  const isSaved = (data?.taskers ?? []).some((t) => t._id === taskerId);
+
+  const toggle = useMutation({
+    mutationFn: () => (isSaved ? unsaveTasker(taskerId) : saveTasker(taskerId)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.savedTaskers() });
+    },
+    onError: (err: Error) => {
+      Alert.alert(isSaved ? 'Could not remove' : 'Could not save', err.message);
+    },
+  });
+
+  return (
+    <Pressable
+      hitSlop={6}
+      disabled={toggle.isPending}
+      onPress={() => toggle.mutate()}
+      style={toggle.isPending && { opacity: 0.5 }}>
+      {isSaved ? <Heart width={size} height={size} /> : <HeartOutline width={size} height={size} />}
+    </Pressable>
+  );
+}
+
 export default function TaskerProfileScreen() {
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ name?: string }>();
+  const params = useLocalSearchParams<{ name?: string; id?: string }>();
   const name = params.name ?? 'Chioma. A';
   const firstName = name.split(/[.\s]/).filter(Boolean)[0] ?? name;
+  // Callers that know the real tasker (e.g. a bid) pass `id`; without it there's
+  // nothing to save, so the heart is hidden rather than shown as a dead control.
+  const taskerId = params.id;
 
   const [activeTab, setActiveTab] = useState<'about' | 'reviews'>('about');
   const [selectedImage, setSelectedImage] = useState<ImageSourcePropType | null>(null);
@@ -116,9 +152,7 @@ export default function TaskerProfileScreen() {
         title="Profile"
         right={
           <View style={styles.headerIcons}>
-            <Pressable hitSlop={6} onPress={() => {}}>
-              <HeartOutline width={24} height={24} />
-            </Pressable>
+            {taskerId ? <SaveHeart taskerId={taskerId} /> : null}
             <Pressable hitSlop={6} onPress={() => {}}>
               <Share width={24} height={24} />
             </Pressable>
@@ -187,7 +221,7 @@ export default function TaskerProfileScreen() {
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>About me</Text>
               <Text style={styles.aboutText}>
-                I can print and deliver within 30 minutes. I'm close to Zik Hall.
+                I can print and deliver within 30 minutes. I&apos;m close to Zik Hall.
               </Text>
             </View>
 
@@ -236,9 +270,11 @@ export default function TaskerProfileScreen() {
 
       {/* Footer */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-        <Pressable style={styles.heartButton} hitSlop={6} onPress={() => {}}>
-          <HeartOutline width={24} height={24} />
-        </Pressable>
+        {taskerId ? (
+          <View style={styles.heartButton}>
+            <SaveHeart taskerId={taskerId} />
+          </View>
+        ) : null}
         <PrimaryButton label={`Hire ${firstName}`} onPress={() => {}} style={styles.hireButton} />
       </View>
 

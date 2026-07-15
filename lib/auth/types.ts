@@ -17,6 +17,12 @@ export interface AuthUser {
   profilePicture?: string;
   wallet?: number;
   isEmailVerified?: boolean;
+  isKYCVerified?: boolean;
+  /** Profile stats, returned by `GET /api/auth/user`. Counted server-side. */
+  tasksPostedCount?: number;
+  /** Reviews this user has left on their completed tasks. */
+  reviewsGivenCount?: number;
+  savedTaskersCount?: number;
   [key: string]: unknown;
 }
 
@@ -144,6 +150,30 @@ export interface GoogleCompleteSignupPayload {
   firstName?: string;
   lastName?: string;
   originState?: string;
+}
+
+/**
+ * Fields `PUT /api/auth/profile` accepts. Every field is optional — the backend
+ * only applies the keys actually present, so send just what changed.
+ * The picked "Location" is persisted as `address`.
+ */
+export interface UpdateProfilePayload {
+  fullName?: string;
+  phoneNumber?: string;
+  /** Max 500 characters — the backend rejects longer. */
+  bio?: string;
+  address?: string;
+  country?: string;
+  residentState?: string;
+  /** Accepts a University id or name; the backend resolves it to an id. */
+  university?: string;
+}
+
+/** `PUT /api/auth/profile-picture` echoes back the new Cloudinary URL. */
+export interface UpdateProfilePictureResponse {
+  status: string;
+  message: string;
+  profilePicture: string;
 }
 
 export interface VerifyEmailPayload {

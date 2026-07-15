@@ -1,7 +1,4 @@
-<<<<<<< HEAD
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-=======
->>>>>>> 9406da0f79bbbfd36c4dab6d39988089096b3e1b
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -51,82 +48,12 @@ function iconFor(n: AppNotification): { icon: React.ReactNode; bg: string } {
   return { icon: <Gavel width={22} height={22} />, bg: COLORS.purple100 };
 }
 
-<<<<<<< HEAD
 function NotificationRow({ item, onPress }: { item: AppNotification; onPress: () => void }) {
   const { icon, bg } = iconFor(item);
   const unread = !item.read;
   return (
     <Pressable style={[styles.row, unread && styles.rowUnread]} onPress={onPress}>
       <View style={[styles.iconTile, { backgroundColor: bg }]}>{icon}</View>
-=======
-const NOTIFICATIONS: Notification[] = [
-  {
-    id: 'bid-received',
-    title: 'New Bid Received',
-    message: 'Tunde A. Placed a ₦1,500 bid on your Printing Task',
-    time: '2m ago',
-    iconBg: COLORS.purple100,
-    icon: <Gavel width={22} height={22} />,
-    unread: true,
-  },
-  {
-    id: 'new-message',
-    title: 'New Message',
-    message: 'Ngozi: “ I am on my way to your location now”',
-    time: '15m ago',
-    iconBg: COLORS.infoBg,
-    icon: <ChatCircle width={22} height={22} />,
-    unread: true,
-  },
-  {
-    id: 'new-review',
-    title: 'New Review',
-    message: 'Chidi.O. left you a 5 star review on Grocery Errand',
-    time: '1h ago',
-    iconBg: COLORS.warningBg,
-    icon: <StarAmber width={22} height={22} />,
-    unread: true,
-  },
-  {
-    id: 'task-boosted',
-    title: 'Task boosted',
-    message: 'Your task “Laundry Help” is now boosted and Visible to more Taskers',
-    time: '1h ago',
-    iconBg: COLORS.warningBg,
-    icon: <LightningAmber width={22} height={22} />,
-    unread: false,
-  },
-  {
-    id: 'task-expiring',
-    title: 'Task Expiring Soon',
-    message: 'Your Task “ Airport pick up” Expires in 2 hours',
-    time: '1h ago',
-    iconBg: COLORS.errorBg,
-    icon: <WarningCircle width={22} height={22} />,
-    unread: false,
-  },
-  {
-    id: 'bid-accepted',
-    title: 'Bid Accepted',
-    message: 'Your Bid on “Document scanning”  was Accepted',
-    time: '1h ago',
-    iconBg: COLORS.purple100,
-    icon: <Gavel width={22} height={22} />,
-    unread: false,
-  },
-];
-
-function NotificationRow({ item, onPress }: { item: Notification; onPress: () => void }) {
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.row,
-        item.unread && styles.rowUnread,
-        pressed && styles.rowPressed,
-      ]}
-      onPress={onPress}>
-      <View style={[styles.iconTile, { backgroundColor: item.iconBg }]}>{item.icon}</View>
->>>>>>> 9406da0f79bbbfd36c4dab6d39988089096b3e1b
       <View style={styles.content}>
         <View style={styles.topRow}>
           <Text style={styles.title} numberOfLines={1}>
@@ -146,12 +73,8 @@ function NotificationRow({ item, onPress }: { item: Notification; onPress: () =>
 export default function NotificationsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-<<<<<<< HEAD
   const queryClient = useQueryClient();
   const { data, isLoading, isError, refetch, isRefetching } = useNotifications();
-=======
-  const [items, setItems] = useState(NOTIFICATIONS);
->>>>>>> 9406da0f79bbbfd36c4dab6d39988089096b3e1b
 
   const notifications = data?.data?.notifications ?? [];
   const unreadCount = data?.data?.unreadCount ?? 0;
@@ -170,21 +93,6 @@ export default function NotificationsScreen() {
     if (!n.read) readOneMutation.mutate(n._id);
     const taskId = n.metadata?.taskId;
     if (taskId) router.push({ pathname: '/task-details', params: { id: taskId } });
-  };
-
-  const handlePress = (item: Notification) => {
-    // Mark as read
-    setItems((prev) =>
-      prev.map((n) => (n.id === item.id ? { ...n, unread: false } : n))
-    );
-    // Navigate to details
-    router.push({
-      pathname: '/notification-details',
-      params: {
-        title: item.title,
-        message: item.message,
-      },
-    });
   };
 
   return (
@@ -209,7 +117,6 @@ export default function NotificationsScreen() {
         }
       />
 
-<<<<<<< HEAD
       {isLoading ? (
         <View style={styles.state}>
           <ActivityIndicator color={COLORS.brand} />
@@ -235,20 +142,6 @@ export default function NotificationsScreen() {
           ))}
         </ScrollView>
       )}
-=======
-      <ScrollView
-        style={styles.flex}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
-        showsVerticalScrollIndicator={false}>
-        {items.map((item) => (
-          <NotificationRow
-            key={item.id}
-            item={item}
-            onPress={() => handlePress(item)}
-          />
-        ))}
-      </ScrollView>
->>>>>>> 9406da0f79bbbfd36c4dab6d39988089096b3e1b
     </View>
   );
 }
@@ -276,9 +169,6 @@ const styles = StyleSheet.create({
   },
   rowUnread: {
     backgroundColor: COLORS.brandSubtle,
-  },
-  rowPressed: {
-    opacity: 0.7,
   },
   iconTile: {
     width: 48,

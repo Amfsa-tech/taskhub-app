@@ -1,8 +1,12 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { Spinner } from '@/components/taskhub/spinner';
+import { useSavedTaskers } from '@/lib/api/queries';
+import { useAuth } from '@/lib/auth/auth-context';
 
 import BadgeVerified from '@/assets/icons/badge-verified.svg';
 import CaretRight from '@/assets/icons/caret-right.svg';
@@ -33,20 +37,11 @@ const COLORS = {
   errorBg: '#fff1f1',
   errorText: '#b01515',
   warningBg: '#fffbea',
+  warningText: '#b45309',
   successBg: '#edfaf3',
   successText: '#0d6639',
   draftBg: '#f2f2f7',
 };
-
-const AVATAR = require('@/assets/images/taskers/tasker-1.png');
-
-type Stat = { value: string; label: string };
-
-const STATS: Stat[] = [
-  { value: '8', label: 'Task Posted' },
-  { value: '6', label: 'Reviews' },
-  { value: '5', label: 'Saved' },
-];
 
 type MenuItem = {
   key: string;
@@ -136,9 +131,38 @@ function MenuCard({ items, onItemPress }: { items: MenuItem[]; onItemPress: (key
   );
 }
 
+/** `Elliot Eniola` -> `EE`. Falls back to the first letter of the email. */
+function initialsOf(name: string, email: string): string {
+  const letters = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]);
+  return (letters.join('') || email[0] || '?').toUpperCase();
+}
+
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { user, accountType, isBootstrapping, signOut } = useAuth();
+
+  // The Saved tile reads from the live query rather than the (cached) user
+  // object, so it updates as soon as a tasker is saved or unsaved.
+  const { data: saved } = useSavedTaskers();
+
+  const handleLogout = () => {
+    Alert.alert('Log Out', 'Are you sure you want to log out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Log Out',
+        style: 'destructive',
+        onPress: async () => {
+          await signOut();
+          router.replace('/login');
+        },
+      },
+    ]);
+  };
 
   const handleMenuPress = (key: string) => {
     if (key === 'edit-profile') {
@@ -151,10 +175,54 @@ export default function ProfileScreen() {
       router.push('/settings');
     } else if (key === 'wallet-payment') {
       router.push('/wallet');
+    } else if (key === 'verification') {
+      router.push('/select-verification');
+    } else if (key === 'help') {
+      router.push('/help-support');
     } else if (key === 'logout') {
-      router.replace('/login');
+      handleLogout();
     }
   };
+
+  if (isBootstrapping) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <StatusBar style="dark" />
+        <Spinner />
+      </View>
+    );
+  }
+
+  // There's no auth guard on the tab group, so this screen can be reached
+  // signed-out (e.g. after a token expiry clears the session).
+  if (!user) {
+    return (
+      <View style={[styles.container, styles.centered]}>
+        <StatusBar style="dark" />
+        <Text style={styles.emptyTitle}>You&apos;re signed out</Text>
+        <Text style={styles.emptyBody}>Log in to see your profile.</Text>
+        <Pressable
+          style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
+          onPress={() => router.replace('/login')}>
+          <Text style={styles.emptyButtonLabel}>Log In</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  const name =
+    user.fullName?.trim() ||
+    [user.firstName, user.lastName].filter(Boolean).join(' ').trim() ||
+    user.emailAddress.split('@')[0];
+
+  const isVerified = Boolean(user.isKYCVerified);
+  const savedCount = saved?.count ?? user.savedTaskersCount ?? 0;
+
+  const stats = [
+    { value: user.tasksPostedCount ?? 0, label: 'Task Posted' },
+    { value: user.reviewsGivenCount ?? 0, label: 'Reviews' },
+    { value: savedCount, label: 'Saved' },
+  ];
 
   return (
     <View style={styles.container}>
@@ -175,24 +243,47 @@ export default function ProfileScreen() {
         {/* Profile details */}
         <View style={styles.profileRow}>
           <View style={styles.avatarWrap}>
-            <Image source={AVATAR} style={styles.avatar} contentFit="cover" />
+            {user.profilePicture ? (
+              <Image
+                source={{ uri: user.profilePicture }}
+                style={styles.avatar}
+                contentFit="cover"
+              />
+            ) : (
+              <View style={styles.avatarFallback}>
+                <Text style={styles.avatarInitials}>{initialsOf(name, user.emailAddress)}</Text>
+              </View>
+            )}
           </View>
           <View style={styles.profileMain}>
             <View style={styles.profileInfo}>
               <Text style={styles.name} numberOfLines={1}>
-                Elliot Eniola
+                {name}
               </Text>
               <Text style={styles.email} numberOfLines={1}>
-                ellioteniolasamuel@gmail.com
+                {user.emailAddress}
               </Text>
               <View style={styles.badgeRow}>
-                <View style={[styles.tag, { backgroundColor: COLORS.successBg }]}>
-                  <BadgeVerified width={16} height={16} />
-                  <Text style={[styles.tagText, { color: COLORS.successText }]}>Verified</Text>
-                </View>
+                {isVerified ? (
+                  <View style={[styles.tag, { backgroundColor: COLORS.successBg }]}>
+                    <BadgeVerified width={16} height={16} />
+                    <Text style={[styles.tagText, { color: COLORS.successText }]}>Verified</Text>
+                  </View>
+                ) : (
+                  <Pressable
+                    style={[styles.tag, { backgroundColor: COLORS.warningBg }]}
+                    onPress={() => handleMenuPress('verification')}
+                    hitSlop={4}>
+                    <Text style={[styles.tagText, { color: COLORS.warningText }]}>
+                      Verify identity
+                    </Text>
+                  </Pressable>
+                )}
                 <View style={[styles.tag, { backgroundColor: COLORS.brandSubtle }]}>
                   <User width={16} height={16} />
-                  <Text style={[styles.tagText, { color: COLORS.textBrandStrong }]}>Customer</Text>
+                  <Text style={[styles.tagText, { color: COLORS.textBrandStrong }]}>
+                    {accountType === 'tasker' ? 'Tasker' : 'Customer'}
+                  </Text>
                 </View>
               </View>
             </View>
@@ -204,7 +295,7 @@ export default function ProfileScreen() {
 
         {/* Stats */}
         <View style={styles.statsRow}>
-          {STATS.map((stat) => (
+          {stats.map((stat) => (
             <View key={stat.label} style={styles.statCard}>
               <Text style={styles.statValue}>{stat.value}</Text>
               <Text style={styles.statLabel}>{stat.label}</Text>
@@ -236,6 +327,36 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.canvas },
   flex: { flex: 1 },
+  centered: { alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 16 },
+  // Signed-out fallback
+  emptyTitle: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 17,
+    letterSpacing: -0.41,
+    color: COLORS.textPrimary,
+  },
+  emptyBody: {
+    fontFamily: 'Geist_400Regular',
+    fontSize: 15,
+    letterSpacing: -0.24,
+    color: COLORS.textSecondary,
+  },
+  emptyButton: {
+    marginTop: 8,
+    height: 48,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    backgroundColor: COLORS.brand,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyButtonLabel: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    letterSpacing: -0.24,
+    color: COLORS.onBrand,
+  },
+  pressed: { opacity: 0.9 },
   topBar: {
     backgroundColor: COLORS.surface,
     flexDirection: 'row',
@@ -270,6 +391,18 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   avatar: { width: '100%', height: '100%' },
+  avatarFallback: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitials: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 28,
+    letterSpacing: -0.45,
+    color: COLORS.onBrand,
+  },
   profileMain: {
     flex: 1,
     flexDirection: 'row',

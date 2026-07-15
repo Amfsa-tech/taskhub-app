@@ -16,7 +16,7 @@ import {
   MOCK_TRANSACTIONS,
   getStatusStyle,
   getTransactionIcon,
-} from './wallet';
+} from '@/lib/mock/transactions';
 
 const COLORS = {
   canvas: '#f9f9fb',

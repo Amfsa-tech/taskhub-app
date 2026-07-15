@@ -18,3 +18,8 @@ export const API_BASE_URL = (rawApiUrl || DEFAULT_API_URL).replace(/\/+$/, '');
 // GOOGLE_CLIENT_ID, since the backend verifies the ID token's audience against
 // it. Empty until configured (native Google Sign-In needs a development build).
 export const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID?.trim() || '';
+
+// The OAuth *iOS* client ID (from the same Google Cloud project). Used by the
+// native SDK on iOS. Its reversed form is also the app's URL scheme (configured
+// via the google-signin config plugin in app.json).
+export const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim() || '';

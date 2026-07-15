@@ -9,7 +9,8 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.amfsatech.taskhub"
     },
     "android": {
       "adaptiveIcon": {
@@ -45,6 +46,20 @@
         "expo-image-picker",
         {
           "photosPermission": "TaskHub needs access to your photos so you can attach images to tasks and messages."
+        }
+      ],
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.865414877881-tihd83p5o5h386g4na6of50lbd2vdagl"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static"
+          }
         }
       ]
     ],

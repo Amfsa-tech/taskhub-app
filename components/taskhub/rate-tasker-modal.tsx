@@ -23,10 +23,18 @@ interface Props {
   onClose: () => void;
   taskerName: string;
   taskerAvatar: string;
+  pending?: boolean;
   onSubmit: (rating: number, comment: string) => void;
 }
 
-export function RateTaskerModal({ visible, onClose, taskerName, taskerAvatar, onSubmit }: Props) {
+export function RateTaskerModal({
+  visible,
+  onClose,
+  taskerName,
+  taskerAvatar,
+  pending,
+  onSubmit,
+}: Props) {
   const insets = useSafeAreaInsets();
   const [rating, setRating] = useState<number>(0);
   const [comment, setComment] = useState<string>('');
@@ -35,15 +43,15 @@ export function RateTaskerModal({ visible, onClose, taskerName, taskerAvatar, on
     setRating(index);
   };
 
+  // The submission is a network call, so the input is kept until the caller
+  // closes the modal — a failed request must not silently discard the review.
   const handleSubmit = () => {
-    if (rating === 0) return;
+    if (rating === 0 || pending) return;
     onSubmit(rating, comment);
-    // Reset state after submitting
-    setRating(0);
-    setComment('');
   };
 
   const handleClose = () => {
+    if (pending) return;
     setRating(0);
     setComment('');
     onClose();
@@ -108,16 +116,16 @@ export function RateTaskerModal({ visible, onClose, taskerName, taskerAvatar, on
             <Pressable
               style={[
                 styles.submitBtn,
-                rating === 0 ? styles.submitBtnDisabled : styles.submitBtnEnabled,
+                rating === 0 || pending ? styles.submitBtnDisabled : styles.submitBtnEnabled,
               ]}
               onPress={handleSubmit}
-              disabled={rating === 0}>
+              disabled={rating === 0 || pending}>
               <Text
                 style={[
                   styles.submitBtnText,
-                  { color: rating === 0 ? COLORS.disabledText : '#ffffff' },
+                  { color: rating === 0 || pending ? COLORS.disabledText : '#ffffff' },
                 ]}>
-                Submit Review
+                {pending ? 'Submitting…' : 'Submit Review'}
               </Text>
             </Pressable>
           </View>

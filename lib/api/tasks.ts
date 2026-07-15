@@ -221,6 +221,40 @@ export function rateTask(id: string, payload: RatePayload) {
   );
 }
 
+/**
+ * Rate the client on a completed task (once). Assigned-tasker only — the
+ * reverse of `rateTask`. There's no tasker UI in this app yet, so this backs a
+ * future tasker surface; the reviews it creates surface in the client's
+ * "About you" tab via `getReviewsAboutMe`.
+ */
+export function rateClient(id: string, payload: RatePayload) {
+  return api.post<{ status: string; message: string; data: { averageRating: number } }>(
+    `/api/tasks/${id}/rate-client`,
+    payload,
+  );
+}
+
+/** A review a tasker left about the signed-in client (the "About you" tab). */
+export interface ClientReview {
+  _id: string;
+  rating: number;
+  reviewText: string;
+  ratedAt: string | null;
+  tasker: TaskTaskerRef | null;
+  category: string | null;
+}
+
+export interface ReviewsAboutMeResponse {
+  status: string;
+  count: number;
+  reviews: ClientReview[];
+}
+
+/** Reviews taskers have left about the signed-in client. */
+export function getReviewsAboutMe(signal?: AbortSignal) {
+  return api.get<ReviewsAboutMeResponse>('/api/tasks/user/reviews', { signal });
+}
+
 /** Change a task's status as the owner (e.g. cancel an open/assigned task). */
 export function changeTaskStatus(id: string, status: TaskStatus) {
   return api.patch<{ status: string; message: string; task: Task }>(

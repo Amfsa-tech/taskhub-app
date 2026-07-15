@@ -5,8 +5,10 @@ import { useQueries, useQuery } from '@tanstack/react-query';
 import { getCategories } from './categories';
 import { getChatNotifications, getConversations, getMessages } from './chat';
 import { getNotifications } from './notifications';
+import { getSavedTaskers } from './saved-taskers';
 import { getWalletBalance, getWalletTransactions } from './wallet';
 import {
+  getReviewsAboutMe,
   getTaskById,
   getTaskMatches,
   getTasks,
@@ -21,7 +23,9 @@ export const queryKeys = {
   tasks: (params?: TaskListParams) => ['tasks', 'all', params ?? {}] as const,
   task: (id: string) => ['tasks', 'detail', id] as const,
   taskMatches: (id: string) => ['tasks', 'matches', id] as const,
+  reviewsAboutMe: () => ['reviews', 'about-me'] as const,
   categories: () => ['categories'] as const,
+  savedTaskers: () => ['saved-taskers'] as const,
   notifications: () => ['notifications'] as const,
   conversations: () => ['chat', 'conversations'] as const,
   messages: (id: string) => ['chat', 'messages', id] as const,
@@ -87,12 +91,31 @@ export function useTaskMatches(id?: string) {
   });
 }
 
+/** Reviews taskers have left about the signed-in client (the "About you" tab). */
+export function useReviewsAboutMe() {
+  return useQuery({
+    queryKey: queryKeys.reviewsAboutMe(),
+    queryFn: ({ signal }) => getReviewsAboutMe(signal),
+  });
+}
+
 /** All categories (main + sub). Cached longer — they rarely change. */
 export function useCategories() {
   return useQuery({
     queryKey: queryKeys.categories(),
     queryFn: ({ signal }) => getCategories(signal),
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * The user's bookmarked taskers. Backs both the Saved Taskers screen and the
+ * "Saved" tile on the profile, so it stays live across save/unsave mutations.
+ */
+export function useSavedTaskers() {
+  return useQuery({
+    queryKey: queryKeys.savedTaskers(),
+    queryFn: ({ signal }) => getSavedTaskers(signal),
   });
 }
 

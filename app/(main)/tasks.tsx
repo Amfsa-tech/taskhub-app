@@ -7,6 +7,7 @@ import {
   Alert,
   Dimensions,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,8 +18,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import NavPlus from '@/assets/icons/nav-plus.svg';
-<<<<<<< HEAD
-import { LeaveReviewModal } from '@/components/taskhub/leave-review-modal';
+import { HireAgainModal } from '@/components/taskhub/hire-again-modal';
+import { RateTaskerModal } from '@/components/taskhub/rate-tasker-modal';
 import {
   CompletedTaskCard,
   InProgressTaskCard,
@@ -26,18 +27,6 @@ import {
 } from '@/components/taskhub/task-card';
 import { useUserTasks, useUserTasksByStatuses } from '@/lib/api/queries';
 import { rateTask, taskToCard, taskToCompletedCard, taskToInProgressCard } from '@/lib/api/tasks';
-=======
-import { HireAgainModal } from '@/components/taskhub/hire-again-modal';
-import { RateTaskerModal } from '@/components/taskhub/rate-tasker-modal';
-import {
-  CompletedTaskCard,
-  InProgressTaskCard,
-  SAMPLE_COMPLETED_TASKS,
-  SAMPLE_IN_PROGRESS_TASKS,
-  TaskCard,
-} from '@/components/taskhub/task-card';
-import { useTasks } from '@/context/TaskContext';
->>>>>>> 9406da0f79bbbfd36c4dab6d39988089096b3e1b
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -90,20 +79,6 @@ export default function TasksScreen() {
   const router = useRouter();
   const pagerRef = useRef<ScrollView>(null);
   const [tab, setTab] = useState<TaskTab>('posted');
-  const { tasks } = useTasks();
-  const [hireModalVisible, setHireModalVisible] = useState(false);
-  const [selectedTaskerName, setSelectedTaskerName] = useState('');
-  const [rateModalVisible, setRateModalVisible] = useState(false);
-  const [selectedTaskerAvatar, setSelectedTaskerAvatar] = useState('');
-  const [selectedTaskId, setSelectedTaskId] = useState('');
-  const [completedTasks, setCompletedTasks] = useState(SAMPLE_COMPLETED_TASKS);
-
-  const handleReviewSubmit = (rating: number, comment: string) => {
-    setCompletedTasks((prev) =>
-      prev.map((t) => (t.id === selectedTaskId ? { ...t, reviewStatus: 'reviewed' } : t))
-    );
-    setRateModalVisible(false);
-  };
 
   const queryClient = useQueryClient();
   const posted = useUserTasks({ status: 'open' });
@@ -113,7 +88,14 @@ export default function TasksScreen() {
   const postedTasks = posted.data?.tasks ?? [];
   const completedTasks = completed.data?.tasks ?? [];
 
-  const [reviewTask, setReviewTask] = useState<{ id: string; title: string } | null>(null);
+  // The review sheet needs the tasker's identity as well as the task's, so the
+  // whole target is captured when the card is tapped.
+  const [reviewTask, setReviewTask] = useState<{
+    id: string;
+    taskerName: string;
+    taskerAvatar: string;
+  } | null>(null);
+  const [hireTaskerName, setHireTaskerName] = useState<string | null>(null);
 
   const rateMutation = useMutation({
     mutationFn: (v: { id: string; rating: number; reviewText: string }) =>
@@ -144,6 +126,17 @@ export default function TasksScreen() {
     const next: TaskTab = idx === 0 ? 'posted' : idx === 1 ? 'in_progress' : 'completed';
     if (next !== tab) setTab(next);
   };
+
+  // Each page pulls only its own query, so the spinner tracks the list you're
+  // actually looking at.
+  const refreshControl = (onRefresh: () => void, isRefreshing: boolean) => (
+    <RefreshControl
+      refreshing={isRefreshing}
+      onRefresh={onRefresh}
+      tintColor={COLORS.brand}
+      colors={[COLORS.brand]}
+    />
+  );
 
   return (
     <View style={styles.container}>
@@ -191,37 +184,14 @@ export default function TasksScreen() {
         <ScrollView
           style={{ width: SCREEN_WIDTH }}
           contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
-          showsVerticalScrollIndicator={false}>
-<<<<<<< HEAD
+          showsVerticalScrollIndicator={false}
+          refreshControl={refreshControl(posted.refetch, posted.isRefetching)}>
           {posted.isLoading ? (
             <StateView mode="loading" />
           ) : posted.isError ? (
             <StateView mode="error" onRetry={posted.refetch} isRetrying={posted.isRefetching} />
           ) : postedTasks.length === 0 ? (
             <StateView mode="empty" emptyText="No posted tasks yet." />
-=======
-          {tasks.map((task) => (
-            <TaskCard
-              key={task.id}
-              task={task}
-              onPress={() => router.push({ pathname: '/task-details', params: { taskId: task.id } })}
-            />
-          ))}
-        </ScrollView>
-
-        <ScrollView
-          style={{ width: SCREEN_WIDTH }}
-          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
-          showsVerticalScrollIndicator={false}>
-          {SAMPLE_IN_PROGRESS_TASKS.length > 0 ? (
-            SAMPLE_IN_PROGRESS_TASKS.map((task) => (
-              <InProgressTaskCard
-                key={task.id}
-                task={task}
-                onPress={() => router.push({ pathname: '/track-task', params: { taskId: task.id } })}
-              />
-            ))
->>>>>>> 9406da0f79bbbfd36c4dab6d39988089096b3e1b
           ) : (
             postedTasks.map((task) => (
               <TaskCard key={task._id} task={taskToCard(task)} onPress={() => openTask(task._id)} />
@@ -232,8 +202,8 @@ export default function TasksScreen() {
         <ScrollView
           style={{ width: SCREEN_WIDTH }}
           contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
-          showsVerticalScrollIndicator={false}>
-<<<<<<< HEAD
+          showsVerticalScrollIndicator={false}
+          refreshControl={refreshControl(inProgress.refetch, inProgress.isRefetching)}>
           {inProgress.isLoading ? (
             <StateView mode="loading" />
           ) : inProgress.isError ? (
@@ -249,31 +219,7 @@ export default function TasksScreen() {
               <InProgressTaskCard
                 key={task._id}
                 task={taskToInProgressCard(task)}
-                onPress={() => openTask(task._id)}
-=======
-          {completedTasks.length > 0 ? (
-            completedTasks.map((task) => (
-              <CompletedTaskCard
-                key={task.id}
-                task={task}
-                onPress={() => router.push({ pathname: '/task-details', params: { taskId: task.id } })}
-                onHireAgain={() => {
-                  setSelectedTaskerName(task.tasker.name);
-                  setHireModalVisible(true);
-                }}
-                onLeaveReview={() => {
-                  setSelectedTaskId(task.id);
-                  setSelectedTaskerName(task.tasker.name);
-                  setSelectedTaskerAvatar(task.tasker.avatar);
-                  setRateModalVisible(true);
-                }}
-                onReceipt={() => {
-                  router.push({
-                    pathname: '/receipt',
-                    params: { taskId: task.id },
-                  });
-                }}
->>>>>>> 9406da0f79bbbfd36c4dab6d39988089096b3e1b
+                onPress={() => router.push({ pathname: '/track-task', params: { id: task._id } })}
               />
             ))
           )}
@@ -282,7 +228,8 @@ export default function TasksScreen() {
         <ScrollView
           style={{ width: SCREEN_WIDTH }}
           contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
-          showsVerticalScrollIndicator={false}>
+          showsVerticalScrollIndicator={false}
+          refreshControl={refreshControl(completed.refetch, completed.isRefetching)}>
           {completed.isLoading ? (
             <StateView mode="loading" />
           ) : completed.isError ? (
@@ -294,41 +241,48 @@ export default function TasksScreen() {
           ) : completedTasks.length === 0 ? (
             <StateView mode="empty" emptyText="No completed tasks yet." />
           ) : (
-            completedTasks.map((task) => (
-              <CompletedTaskCard
-                key={task._id}
-                task={taskToCompletedCard(task)}
-                onPress={() => openTask(task._id)}
-                onReview={() => setReviewTask({ id: task._id, title: task.title })}
-              />
-            ))
+            completedTasks.map((task) => {
+              const card = taskToCompletedCard(task);
+              return (
+                <CompletedTaskCard
+                  key={task._id}
+                  task={card}
+                  onPress={() => openTask(task._id)}
+                  onHireAgain={() => setHireTaskerName(card.tasker.name)}
+                  onLeaveReview={() =>
+                    setReviewTask({
+                      id: task._id,
+                      taskerName: card.tasker.name,
+                      taskerAvatar: card.tasker.avatar,
+                    })
+                  }
+                  onReceipt={() =>
+                    router.push({ pathname: '/receipt', params: { id: task._id } })
+                  }
+                />
+              );
+            })
           )}
         </ScrollView>
       </ScrollView>
 
-<<<<<<< HEAD
-      <LeaveReviewModal
-        visible={reviewTask !== null}
-        taskTitle={reviewTask?.title}
-        pending={rateMutation.isPending}
-        onClose={() => setReviewTask(null)}
-        onSubmit={(rating, reviewText) => {
-          if (reviewTask) rateMutation.mutate({ id: reviewTask.id, rating, reviewText });
-        }}
-=======
       <HireAgainModal
-        visible={hireModalVisible}
-        onClose={() => setHireModalVisible(false)}
-        taskerName={selectedTaskerName}
+        visible={hireTaskerName !== null}
+        onClose={() => setHireTaskerName(null)}
+        taskerName={hireTaskerName ?? ''}
       />
 
       <RateTaskerModal
-        visible={rateModalVisible}
-        onClose={() => setRateModalVisible(false)}
-        taskerName={selectedTaskerName}
-        taskerAvatar={selectedTaskerAvatar}
-        onSubmit={handleReviewSubmit}
->>>>>>> 9406da0f79bbbfd36c4dab6d39988089096b3e1b
+        visible={reviewTask !== null}
+        onClose={() => setReviewTask(null)}
+        taskerName={reviewTask?.taskerName ?? ''}
+        taskerAvatar={reviewTask?.taskerAvatar ?? ''}
+        pending={rateMutation.isPending}
+        onSubmit={(rating, comment) => {
+          if (reviewTask) {
+            rateMutation.mutate({ id: reviewTask.id, rating, reviewText: comment });
+          }
+        }}
       />
     </View>
   );

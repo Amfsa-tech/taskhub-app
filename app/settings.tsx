@@ -5,6 +5,8 @@ import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useAuth } from '@/lib/auth/auth-context';
+
 const COLORS = {
   canvas: '#f9f9fb',
   surface: '#ffffff',
@@ -65,6 +67,7 @@ function SettingRow({
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { signOut } = useAuth();
 
   // Notification toggles state
   const [notifications, setNotifications] = useState({
@@ -83,7 +86,16 @@ export default function SettingsScreen() {
   const handleLogout = () => {
     Alert.alert('Log Out', 'Are you sure you want to log out?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Log Out', style: 'destructive', onPress: () => router.replace('/login') },
+      {
+        text: 'Log Out',
+        style: 'destructive',
+        onPress: async () => {
+          // Clear the persisted session before navigating — otherwise the token
+          // survives in SecureStore and the next launch silently restores it.
+          await signOut();
+          router.replace('/login');
+        },
+      },
     ]);
   };
 

@@ -1,8 +1,11 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useCallback, useState } from 'react';
 import {
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -27,7 +30,7 @@ import Star from '@/assets/icons/star.svg';
 import VerificationRing from '@/assets/icons/verification-ring.svg';
 import { ActiveTasks } from '@/components/taskhub/active-tasks';
 import { useLocation } from '@/context/LocationContext';
-import { useNotifications } from '@/lib/api/queries';
+import { queryKeys, useNotifications } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth/auth-context';
 
 // Colours pulled directly from the Figma design tokens (light theme).
@@ -117,6 +120,23 @@ export default function HomeScreen() {
   const { data: notifData } = useNotifications();
   const unreadCount = notifData?.data?.unreadCount ?? 0;
 
+  const queryClient = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+
+  // `ActiveTasks` owns its own `useUserTasks` query, so refresh by key rather
+  // than by handle — that covers the active-tasks list and the bell badge.
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ['tasks'] }),
+        queryClient.refetchQueries({ queryKey: queryKeys.notifications() }),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [queryClient]);
+
   // Users have `fullName`; taskers have `firstName`. Fall back gracefully.
   const firstName =
     user?.fullName?.trim().split(/\s+/)[0] || user?.firstName || 'there';
@@ -162,7 +182,15 @@ export default function HomeScreen() {
       <ScrollView
         style={styles.flex}
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
-        showsVerticalScrollIndicator={false}>
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={COLORS.brand}
+            colors={[COLORS.brand]}
+          />
+        }>
         {/* Account verification card */}
         <Pressable style={styles.verifyCard} onPress={() => {}}>
           <View style={styles.ring}>

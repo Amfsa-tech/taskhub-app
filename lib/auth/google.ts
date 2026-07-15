@@ -1,20 +1,17 @@
 // Isolated wrapper around the native Google Sign-In SDK.
 //
-// The native package `@react-native-google-signin/google-signin` is NOT
-// installed yet — it requires a development build and cannot run in Expo Go.
-// It's referenced here through an OPTIONAL (try/catch) require, which Metro is
-// told to allow via `resolver.allowOptionalDependencies` (see metro.config.js).
-// So the app still bundles and runs in Expo Go; pressing "Continue with Google"
-// there surfaces a clear `GoogleSignInUnavailableError` instead of crashing.
+// `@react-native-google-signin/google-signin` is a native module: it resolves in
+// a development/production build, but never in Expo Go. It's referenced here
+// through an OPTIONAL (try/catch) require, which Metro is told to allow via
+// `resolver.allowOptionalDependencies` (see metro.config.js). So the app still
+// bundles and runs in Expo Go; pressing "Continue with Google" there surfaces a
+// clear `GoogleSignInUnavailableError` instead of crashing.
 //
-// To activate (later — no change needed in this file):
-//   1. npx expo install @react-native-google-signin/google-signin
-//   2. Add its config plugin + iOS/Android client IDs to app.json.
-//   3. Set EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID to the SAME value as the backend's
-//      GOOGLE_CLIENT_ID (the token's audience must match, or the server rejects it).
-//   4. Create a development build (Expo Go will not work for native sign-in).
+// Run the app with `npx expo run:ios` / `run:android` to get the native flow.
+// EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID must equal the backend's GOOGLE_CLIENT_ID —
+// the token's audience must match, or the server rejects the sign-in.
 
-import { GOOGLE_WEB_CLIENT_ID } from '@/lib/config';
+import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from '@/lib/config';
 import type { GoogleProfile } from './types';
 
 export class GoogleSignInUnavailableError extends Error {
@@ -55,7 +52,13 @@ export async function getGoogleIdToken(): Promise<string> {
 
   const { GoogleSignin } = nativeModule;
   if (!configured) {
-    GoogleSignin.configure({ webClientId: GOOGLE_WEB_CLIENT_ID });
+    // `webClientId` sets the ID token's audience (must match the backend's
+    // GOOGLE_CLIENT_ID). `iosClientId` initializes the native iOS SDK — required
+    // here because there's no GoogleService-Info.plist to read it from.
+    GoogleSignin.configure({
+      webClientId: GOOGLE_WEB_CLIENT_ID,
+      iosClientId: GOOGLE_IOS_CLIENT_ID || undefined,
+    });
     configured = true;
   }
 

@@ -26,11 +26,13 @@ const COLORS = {
 export default function ReceiptScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { taskId } = useLocalSearchParams<{ taskId?: string }>();
+  const { id } = useLocalSearchParams<{ id?: string }>();
   const [copied, setCopied] = useState(false);
 
-  // Look up completed task details
-  const task = SAMPLE_COMPLETED_TASKS.find((t) => t.id === taskId);
+  // Look up completed task details.
+  // NOTE: still backed by sample data — a real task id won't match, and the
+  // screen falls back to the mockup values below.
+  const task = SAMPLE_COMPLETED_TASKS.find((t) => t.id === id);
 
   // Default values from mockup design
   let displayTitle = 'Print and Deliver 200-Level GST Notes';

@@ -1,8 +1,10 @@
+import { useMutation } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -18,6 +20,10 @@ import Camera from '@/assets/icons/camera.svg';
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
 import { useLocation } from '@/context/LocationContext';
+import { updateProfile, updateProfilePicture } from '@/lib/auth/auth-api';
+import { useAuth } from '@/lib/auth/auth-context';
+import type { UpdateProfilePayload } from '@/lib/auth/types';
+import { pickImages, type PickedImage } from '@/lib/image-picker';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -29,41 +35,110 @@ const COLORS = {
   textSecondary: '#5a5a70',
   placeholder: '#a0a0ba',
   avatarBg: '#4621c0',
+  onBrand: '#ffffff',
 };
 
-const AVATAR = require('@/assets/images/taskers/tasker-1.png');
+const BIO_MAX = 500;
 
-type Field = {
-  key: 'fullName' | 'phone' | 'location';
-  label: string;
-  placeholder: string;
-  keyboardType?: 'default' | 'phone-pad';
-};
-
-const FIELDS: Field[] = [
-  { key: 'fullName', label: 'Full name', placeholder: 'Enter your full name' },
-  { key: 'phone', label: 'Phone number', placeholder: '+234 800 000 0000', keyboardType: 'phone-pad' },
-  { key: 'location', label: 'Location', placeholder: 'Enter your location' },
-];
+/** `Elliot Eniola` -> `EE`. Falls back to the first letter of the email. */
+function initialsOf(name: string, email: string): string {
+  const letters = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]);
+  return (letters.join('') || email[0] || '?').toUpperCase();
+}
 
 export default function EditProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { selectedLocation } = useLocation();
+  const { user, refreshProfile } = useAuth();
 
-  const [values, setValues] = useState({
-    fullName: 'Elliot Eniola',
-    phone: '+234 812 345 6789',
-    bio: '',
+  // Seeded from the live profile — never from placeholder copy.
+  const [fullName, setFullName] = useState(user?.fullName ?? '');
+  const [phoneNumber, setPhoneNumber] = useState(user?.phoneNumber ?? '');
+  const [bio, setBio] = useState(typeof user?.bio === 'string' ? user.bio : '');
+  const [address, setAddress] = useState(
+    typeof user?.address === 'string' && user.address ? user.address : (selectedLocation ?? ''),
+  );
+  const [photo, setPhoto] = useState<PickedImage | null>(null);
+
+  // The location modal writes to LocationContext, which is app-wide (the Home
+  // header reads it too). Only adopt it into `address` once the user has
+  // actually opened the picker from this screen — otherwise merely visiting
+  // Edit Profile would silently overwrite a saved address with the Home value.
+  const openedPicker = useRef(false);
+  useEffect(() => {
+    if (openedPicker.current && selectedLocation) {
+      setAddress(selectedLocation);
+    }
+  }, [selectedLocation]);
+
+  const openLocationPicker = () => {
+    openedPicker.current = true;
+    router.push('/location-selector-modal');
+  };
+
+  const choosePhoto = async () => {
+    // Square crop; `edit` also makes iOS deliver JPEG rather than HEIC.
+    const picked = await pickImages(1, { edit: true, aspect: [1, 1] });
+    if (picked.length > 0) setPhoto(picked[0]);
+  };
+
+  const save = useMutation({
+    mutationFn: async () => {
+      // The picture has its own multipart endpoint, so it goes first and
+      // separately from the JSON field update.
+      if (photo) {
+        await updateProfilePicture(photo);
+      }
+
+      // Send only what actually changed — the backend applies the keys present.
+      const payload: UpdateProfilePayload = {};
+      const nextName = fullName.trim();
+      const nextPhone = phoneNumber.trim();
+      const nextBio = bio.trim();
+      const nextAddress = address.trim();
+
+      if (nextName !== (user?.fullName ?? '')) payload.fullName = nextName;
+      if (nextPhone !== (user?.phoneNumber ?? '')) payload.phoneNumber = nextPhone;
+      if (nextBio !== (typeof user?.bio === 'string' ? user.bio : '')) payload.bio = nextBio;
+      if (nextAddress !== (typeof user?.address === 'string' ? user.address : '')) {
+        payload.address = nextAddress;
+      }
+
+      if (Object.keys(payload).length > 0) {
+        await updateProfile(payload);
+      }
+    },
+    onSuccess: async () => {
+      // Pull the canonical profile back so the Profile screen's name, avatar
+      // and badges update immediately.
+      await refreshProfile();
+      router.back();
+    },
+    onError: (err: Error) => {
+      Alert.alert('Could not save', err.message);
+    },
   });
 
-  const setField = (key: keyof typeof values) => (text: string) =>
-    setValues((v) => ({ ...v, [key]: text }));
-
-  const save = () => {
-    // Persist when a backend exists; for now return to the profile.
-    router.back();
+  const onSave = () => {
+    if (!fullName.trim()) {
+      Alert.alert('Name required', 'Please enter your full name.');
+      return;
+    }
+    if (bio.length > BIO_MAX) {
+      Alert.alert('Bio too long', `Please keep your bio under ${BIO_MAX} characters.`);
+      return;
+    }
+    save.mutate();
   };
+
+  const pending = save.isPending;
+  const avatarUri = photo?.uri || (user?.profilePicture ? String(user.profilePicture) : '');
+  const initials = initialsOf(fullName || (user?.fullName ?? ''), user?.emailAddress ?? '');
 
   return (
     <View style={styles.container}>
@@ -72,8 +147,10 @@ export default function EditProfileScreen() {
       <ScreenHeader
         title="Edit Profile"
         right={
-          <Pressable hitSlop={8} onPress={save}>
-            <Text style={styles.saveAction}>Save</Text>
+          <Pressable hitSlop={8} onPress={onSave} disabled={pending}>
+            <Text style={[styles.saveAction, pending && styles.saveActionDisabled]}>
+              {pending ? 'Saving…' : 'Save'}
+            </Text>
           </Pressable>
         }
       />
@@ -88,66 +165,91 @@ export default function EditProfileScreen() {
           showsVerticalScrollIndicator={false}>
           {/* Avatar */}
           <View style={styles.avatarSection}>
-            <Pressable style={styles.avatarWrap} onPress={() => {}}>
+            <Pressable style={styles.avatarWrap} onPress={choosePhoto} disabled={pending}>
               <View style={styles.avatarCircle}>
-                <Image source={AVATAR} style={styles.avatar} contentFit="cover" />
+                {avatarUri ? (
+                  <Image source={{ uri: avatarUri }} style={styles.avatar} contentFit="cover" />
+                ) : (
+                  <View style={styles.avatarFallback}>
+                    <Text style={styles.avatarInitials}>{initials}</Text>
+                  </View>
+                )}
               </View>
               <View style={styles.cameraBadge}>
                 <Camera width={18} height={18} />
               </View>
             </Pressable>
-            <Text style={styles.changePhoto}>Tap to change photo</Text>
+            <Text style={styles.changePhoto}>
+              {photo ? 'New photo selected' : 'Tap to change photo'}
+            </Text>
           </View>
 
           {/* Fields */}
           <View style={styles.fields}>
-            {FIELDS.map((field) => {
-              if (field.key === 'location') {
-                return (
-                  <View key={field.key} style={styles.field}>
-                    <Text style={styles.fieldLabel}>{field.label}</Text>
-                    <Pressable 
-                      style={styles.input} 
-                      onPress={() => router.push('/location-selector-modal')}
-                    >
-                      <Text style={[styles.inputText, { color: selectedLocation ? COLORS.textPrimary : COLORS.placeholder }]}>
-                        {selectedLocation || field.placeholder}
-                      </Text>
-                    </Pressable>
-                  </View>
-                );
-              }
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Full name</Text>
+              <View style={styles.input}>
+                <TextInput
+                  style={styles.inputText}
+                  value={fullName}
+                  onChangeText={setFullName}
+                  placeholder="Enter your full name"
+                  placeholderTextColor={COLORS.placeholder}
+                  autoCorrect={false}
+                  editable={!pending}
+                />
+              </View>
+            </View>
 
-              return (
-                <View key={field.key} style={styles.field}>
-                  <Text style={styles.fieldLabel}>{field.label}</Text>
-                  <View style={styles.input}>
-                    <TextInput
-                      style={styles.inputText}
-                      value={values[field.key as keyof typeof values]}
-                      onChangeText={setField(field.key as keyof typeof values)}
-                      placeholder={field.placeholder}
-                      placeholderTextColor={COLORS.placeholder}
-                      keyboardType={field.keyboardType ?? 'default'}
-                      autoCorrect={false}
-                    />
-                  </View>
-                </View>
-              );
-            })}
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Phone number</Text>
+              <View style={styles.input}>
+                <TextInput
+                  style={styles.inputText}
+                  value={phoneNumber}
+                  onChangeText={setPhoneNumber}
+                  placeholder="+234 800 000 0000"
+                  placeholderTextColor={COLORS.placeholder}
+                  keyboardType="phone-pad"
+                  autoCorrect={false}
+                  editable={!pending}
+                />
+              </View>
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Location</Text>
+              <Pressable style={styles.input} onPress={openLocationPicker} disabled={pending}>
+                <Text
+                  style={[
+                    styles.inputText,
+                    { color: address ? COLORS.textPrimary : COLORS.placeholder },
+                  ]}
+                  numberOfLines={1}>
+                  {address || 'Enter your location'}
+                </Text>
+              </Pressable>
+            </View>
 
             {/* Bio */}
             <View style={styles.field}>
-              <Text style={styles.fieldLabel}>BIO</Text>
+              <View style={styles.bioLabelRow}>
+                <Text style={styles.fieldLabel}>BIO</Text>
+                <Text style={styles.bioCount}>
+                  {bio.length}/{BIO_MAX}
+                </Text>
+              </View>
               <View style={[styles.input, styles.textArea]}>
                 <TextInput
                   style={[styles.inputText, styles.textAreaInput]}
-                  value={values.bio}
-                  onChangeText={setField('bio')}
+                  value={bio}
+                  onChangeText={setBio}
                   placeholder="Tell others a bit about yourself..."
                   placeholderTextColor={COLORS.placeholder}
+                  maxLength={BIO_MAX}
                   multiline
                   textAlignVertical="top"
+                  editable={!pending}
                 />
               </View>
             </View>
@@ -156,7 +258,11 @@ export default function EditProfileScreen() {
 
         {/* Footer */}
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-          <PrimaryButton label="Save changes" onPress={save} />
+          <PrimaryButton
+            label={pending ? 'Saving…' : 'Save changes'}
+            onPress={onSave}
+            disabled={pending}
+          />
         </View>
       </KeyboardAvoidingView>
     </View>
@@ -172,6 +278,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.24,
     color: COLORS.brandStrong,
   },
+  saveActionDisabled: { opacity: 0.5 },
   scroll: {
     paddingHorizontal: 16,
     paddingTop: 24,
@@ -194,6 +301,18 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   avatar: { width: '100%', height: '100%' },
+  avatarFallback: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitials: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 28,
+    letterSpacing: -0.45,
+    color: COLORS.onBrand,
+  },
   cameraBadge: {
     position: 'absolute',
     right: 0,
@@ -223,6 +342,17 @@ const styles = StyleSheet.create({
     fontSize: 17,
     letterSpacing: -0.41,
     color: COLORS.textPrimary,
+  },
+  bioLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  bioCount: {
+    fontFamily: 'Geist_400Regular',
+    fontSize: 13,
+    letterSpacing: -0.08,
+    color: COLORS.textSecondary,
   },
   input: {
     flexDirection: 'row',

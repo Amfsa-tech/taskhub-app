@@ -229,22 +229,6 @@ export function InProgressTaskCard({ task, onPress }: { task: InProgressTask; on
 export function CompletedTaskCard({
   task,
   onPress,
-<<<<<<< HEAD
-  onReview,
-}: {
-  task: CompletedTask;
-  onPress?: () => void;
-  onReview?: () => void;
-}) {
-  // Show only the stats we actually have — never a misleading "0 Jobs".
-  const stats = [
-    task.tasker.rating > 0 ? String(task.tasker.rating) : null,
-    task.tasker.jobs > 0 ? `${task.tasker.jobs} Jobs` : null,
-  ]
-    .filter(Boolean)
-    .join(' • ');
-
-=======
   onHireAgain,
   onLeaveReview,
   onReceipt,
@@ -255,7 +239,16 @@ export function CompletedTaskCard({
   onLeaveReview?: () => void;
   onReceipt?: () => void;
 }) {
->>>>>>> 9406da0f79bbbfd36c4dab6d39988089096b3e1b
+  // Show only the stats we actually have — never a misleading "0 Jobs".
+  // The task list endpoint doesn't return the tasker's job count, so it
+  // arrives as 0 from `taskToCompletedCard`.
+  const stats = [
+    task.tasker.rating > 0 ? String(task.tasker.rating) : null,
+    task.tasker.jobs > 0 ? `${task.tasker.jobs} Jobs` : null,
+  ]
+    .filter(Boolean)
+    .join(' • ');
+
   return (
     <Pressable style={styles.card} onPress={onPress}>
       <View style={styles.row}>
@@ -286,11 +279,7 @@ export function CompletedTaskCard({
       {/* Actions */}
       <View style={styles.actionsRow}>
         {task.reviewStatus === 'none' ? (
-<<<<<<< HEAD
-          <Pressable style={[styles.btn, styles.btnReview]} onPress={onReview}>
-=======
           <Pressable style={[styles.btn, styles.btnReview]} onPress={onLeaveReview}>
->>>>>>> 9406da0f79bbbfd36c4dab6d39988089096b3e1b
             <Text style={[styles.btnText, { color: '#ffffff' }]}>Leave review</Text>
           </Pressable>
         ) : (
