@@ -4,13 +4,13 @@ import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
-  type ImageSourcePropType,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -30,7 +30,8 @@ import Star from '@/assets/icons/star.svg';
 import VerificationRing from '@/assets/icons/verification-ring.svg';
 import { ActiveTasks } from '@/components/taskhub/active-tasks';
 import { useLocation } from '@/context/LocationContext';
-import { queryKeys, useNotifications } from '@/lib/api/queries';
+import { queryKeys, useNearbyTaskers, useNotifications } from '@/lib/api/queries';
+import type { TaskerMatch } from '@/lib/api/tasks';
 import { useAuth } from '@/lib/auth/auth-context';
 
 // Colours pulled directly from the Figma design tokens (light theme).
@@ -61,43 +62,52 @@ const CATEGORIES: Category[] = [
   { key: 'remote', label: 'Remote', bg: COLORS.successBg, icon: <Laptop width={24} height={24} /> },
 ];
 
-type Tasker = {
+type TaskerVM = {
+  id: string;
   name: string;
-  photo: ImageSourcePropType;
+  avatar: string;
+  initials: string;
   rating: string;
   jobs: string;
   specialty: string;
 };
 
-const TASKER_1 = require('@/assets/images/taskers/tasker-1.png');
+/** `Chioma A.` from a populated tasker ref. */
+function taskerShortName(t: TaskerMatch): string {
+  const first = t.firstName?.trim() ?? '';
+  const lastInitial = t.lastName?.trim()?.[0];
+  return [first, lastInitial ? `${lastInitial}.` : ''].filter(Boolean).join(' ') || 'Tasker';
+}
 
-const TASKERS: Tasker[] = [
-  { name: 'Chioma . A', photo: TASKER_1, rating: '4.9', jobs: '127 Jobs', specialty: 'Printing' },
-  {
-    name: 'Tunde. O',
-    photo: require('@/assets/images/taskers/tasker-2.png'),
-    rating: '4.9',
-    jobs: '127 Jobs',
-    specialty: 'Laptop Repair',
-  },
-  {
-    name: 'Amara. K',
-    photo: require('@/assets/images/taskers/tasker-3.png'),
-    rating: '4.8',
-    jobs: '98 Jobs',
-    specialty: 'Graphic Design',
-  },
-  { name: 'Bola. M', photo: TASKER_1, rating: '5.0', jobs: '150 Jobs', specialty: 'Event Planning' },
-];
+function taskerToVM(t: TaskerMatch): TaskerVM {
+  const name = taskerShortName(t);
+  return {
+    id: t._id,
+    name,
+    avatar: t.profilePicture || '',
+    initials: (name.match(/\b\w/g)?.slice(0, 2).join('') || '?').toUpperCase(),
+    rating: t.averageRating != null && t.averageRating > 0 ? t.averageRating.toFixed(1) : 'New',
+    jobs: `${t.completedJobs ?? 0} ${t.completedJobs === 1 ? 'Job' : 'Jobs'}`,
+    specialty: t.primaryCategory || t.area || t.residentState || 'Available',
+  };
+}
 
-function TaskerCard({ tasker }: { tasker: Tasker }) {
+function TaskerCard({ tasker, onPress }: { tasker: TaskerVM; onPress: () => void }) {
   return (
-    <View style={styles.taskerCard}>
+    <Pressable style={styles.taskerCard} onPress={onPress}>
       <View style={styles.taskerImageWrap}>
-        <Image source={tasker.photo} style={styles.taskerImage} contentFit="cover" />
+        {tasker.avatar ? (
+          <Image source={{ uri: tasker.avatar }} style={styles.taskerImage} contentFit="cover" />
+        ) : (
+          <View style={styles.taskerImageFallback}>
+            <Text style={styles.taskerInitials}>{tasker.initials}</Text>
+          </View>
+        )}
       </View>
       <View style={styles.taskerInfo}>
-        <Text style={styles.taskerName}>{tasker.name}</Text>
+        <Text style={styles.taskerName} numberOfLines={1}>
+          {tasker.name}
+        </Text>
         <View style={styles.ratingRow}>
           <View style={styles.starRow}>
             <Star width={18} height={18} />
@@ -106,9 +116,11 @@ function TaskerCard({ tasker }: { tasker: Tasker }) {
           <RatingDot width={6} height={6} />
           <Text style={styles.ratingValue}>{tasker.jobs}</Text>
         </View>
-        <Text style={styles.taskerSpecialty}>{tasker.specialty}</Text>
+        <Text style={styles.taskerSpecialty} numberOfLines={1}>
+          {tasker.specialty}
+        </Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -119,6 +131,9 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const { data: notifData } = useNotifications();
   const unreadCount = notifData?.data?.unreadCount ?? 0;
+
+  const nearby = useNearbyTaskers();
+  const topTaskers = (nearby.data?.data ?? []).map(taskerToVM);
 
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
@@ -131,6 +146,7 @@ export default function HomeScreen() {
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ['tasks'] }),
         queryClient.refetchQueries({ queryKey: queryKeys.notifications() }),
+        queryClient.refetchQueries({ queryKey: queryKeys.nearbyTaskers() }),
       ]);
     } finally {
       setRefreshing(false);
@@ -248,14 +264,33 @@ export default function HomeScreen() {
               <Text style={styles.seeAll}>See all</Text>
             </Pressable>
           </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.taskerRow}>
-            {TASKERS.map((tasker, i) => (
-              <TaskerCard key={`${tasker.name}-${i}`} tasker={tasker} />
-            ))}
-          </ScrollView>
+          {nearby.isLoading ? (
+            <View style={styles.taskerState}>
+              <ActivityIndicator color={COLORS.brand} />
+            </View>
+          ) : topTaskers.length === 0 ? (
+            <View style={styles.taskerState}>
+              <Text style={styles.taskerEmpty}>No taskers available yet.</Text>
+            </View>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.taskerRow}>
+              {topTaskers.map((tasker) => (
+                <TaskerCard
+                  key={tasker.id}
+                  tasker={tasker}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/tasker-profile',
+                      params: { id: tasker.id, name: tasker.name },
+                    })
+                  }
+                />
+              ))}
+            </ScrollView>
+          )}
         </View>
 
         {/* Your Active Tasks */}
@@ -489,6 +524,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   // Top Taskers
+  taskerState: {
+    height: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  taskerEmpty: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 14,
+    letterSpacing: -0.16,
+    color: COLORS.textSecondary,
+  },
   taskerRow: {
     gap: 16,
     paddingRight: 16,
@@ -505,10 +551,24 @@ const styles = StyleSheet.create({
     height: 89,
     borderRadius: 8,
     overflow: 'hidden',
+    backgroundColor: COLORS.brandSubtle,
   },
   taskerImage: {
     width: '100%',
     height: '100%',
+  },
+  taskerImageFallback: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.brand,
+  },
+  taskerInitials: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 28,
+    letterSpacing: -0.45,
+    color: COLORS.onBrand,
   },
   taskerInfo: {
     gap: 4,

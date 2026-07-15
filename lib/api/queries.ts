@@ -8,8 +8,11 @@ import { getNotifications } from './notifications';
 import { getSavedTaskers } from './saved-taskers';
 import { getWalletBalance, getWalletTransactions } from './wallet';
 import {
+  getNearbyTaskers,
   getReviewsAboutMe,
   getTaskById,
+  getTaskerById,
+  getTaskerReviews,
   getTaskMatches,
   getTasks,
   getUserTasks,
@@ -23,6 +26,9 @@ export const queryKeys = {
   tasks: (params?: TaskListParams) => ['tasks', 'all', params ?? {}] as const,
   task: (id: string) => ['tasks', 'detail', id] as const,
   taskMatches: (id: string) => ['tasks', 'matches', id] as const,
+  nearbyTaskers: () => ['taskers', 'nearby'] as const,
+  tasker: (id: string) => ['taskers', 'detail', id] as const,
+  taskerReviews: (id: string) => ['taskers', 'reviews', id] as const,
   reviewsAboutMe: () => ['reviews', 'about-me'] as const,
   categories: () => ['categories'] as const,
   savedTaskers: () => ['saved-taskers'] as const,
@@ -88,6 +94,33 @@ export function useTaskMatches(id?: string) {
     queryKey: queryKeys.taskMatches(id ?? ''),
     queryFn: ({ signal }) => getTaskMatches(id as string, signal),
     enabled: Boolean(id),
+  });
+}
+
+/** A single tasker's public profile. */
+export function useTasker(id?: string) {
+  return useQuery({
+    queryKey: queryKeys.tasker(id ?? ''),
+    queryFn: ({ signal }) => getTaskerById(id as string, signal),
+    enabled: Boolean(id),
+  });
+}
+
+/** Reviews clients left about a tasker. */
+export function useTaskerReviews(id?: string) {
+  return useQuery({
+    queryKey: queryKeys.taskerReviews(id ?? ''),
+    queryFn: ({ signal }) => getTaskerReviews(id as string, signal),
+    enabled: Boolean(id),
+  });
+}
+
+/** Top taskers near the user (falls back to top-rated). Backs the home carousel. */
+export function useNearbyTaskers() {
+  return useQuery({
+    queryKey: queryKeys.nearbyTaskers(),
+    queryFn: ({ signal }) => getNearbyTaskers(undefined, signal),
+    staleTime: 5 * 60 * 1000,
   });
 }
 

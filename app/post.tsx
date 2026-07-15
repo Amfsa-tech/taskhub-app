@@ -1,7 +1,17 @@
+import { useMutation } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Microphone from '@/assets/icons/microphone.svg';
@@ -10,6 +20,8 @@ import SparkleWhite from '@/assets/icons/sparkle-white.svg';
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
 import { usePostTask } from '@/context/PostTaskContext';
+import { parseTaskFromPrompt } from '@/lib/api/ai';
+import { useCategories } from '@/lib/api/queries';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -34,6 +46,10 @@ export default function PostScreen() {
   const { reset, patch } = usePostTask();
   const [prompt, setPrompt] = useState('');
 
+  // Categories are needed to resolve the AI's matched ids back to the Category
+  // objects the draft/review flow expects.
+  const { data: categoriesData } = useCategories();
+
   // Start each post with a clean draft.
   useEffect(() => {
     reset();
@@ -44,6 +60,57 @@ export default function PostScreen() {
     if (prompt.trim()) patch({ description: prompt.trim() });
     router.push('/post-category');
   };
+
+  const aiParse = useMutation({
+    mutationFn: (text: string) => parseTaskFromPrompt(text),
+    onSuccess: ({ draft }) => {
+      const all = categoriesData?.categories ?? [];
+      const mainCategory = draft.mainCategoryId
+        ? all.find((c) => c._id === draft.mainCategoryId) ?? null
+        : null;
+      const subCategories = draft.subCategoryIds
+        .map((id) => all.find((c) => c._id === id))
+        .filter((c): c is NonNullable<typeof c> => Boolean(c));
+
+      patch({
+        title: draft.title,
+        description: draft.description || prompt.trim(),
+        budget: draft.budget != null && draft.budget > 0 ? String(draft.budget) : '',
+        mainCategory,
+        subCategories,
+      });
+
+      // If the AI matched a category and at least one service, the draft is
+      // complete enough to review. Otherwise drop the user into manual category
+      // selection with everything it could infer already filled in.
+      if (mainCategory && subCategories.length > 0) {
+        router.push('/post-review');
+      } else {
+        router.push('/post-category');
+      }
+    },
+    onError: (err: Error) => {
+      Alert.alert(
+        'AI couldn’t process that',
+        `${err.message}\n\nYou can continue and choose a category manually.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Continue manually', onPress: goToCategory },
+        ],
+      );
+    },
+  });
+
+  const runAi = () => {
+    const text = prompt.trim();
+    if (!text) {
+      Alert.alert('Describe your task', 'Type what you need done, then tap Continue.');
+      return;
+    }
+    aiParse.mutate(text);
+  };
+
+  const pending = aiParse.isPending;
 
   return (
     <View style={styles.container}>
@@ -75,9 +142,16 @@ export default function PostScreen() {
             <View style={[styles.roundIcon, { backgroundColor: COLORS.brandSubtle }]}>
               <Microphone width={24} height={24} />
             </View>
-            <View style={[styles.roundIcon, { backgroundColor: COLORS.brand }]}>
-              <PaperPlaneWhite width={24} height={24} />
-            </View>
+            <Pressable
+              style={[styles.roundIcon, { backgroundColor: COLORS.brand }, pending && styles.disabled]}
+              onPress={runAi}
+              disabled={pending}>
+              {pending ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <PaperPlaneWhite width={24} height={24} />
+              )}
+            </Pressable>
           </View>
         </View>
 
@@ -95,14 +169,16 @@ export default function PostScreen() {
       {/* Footer buttons */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
         <PrimaryButton
-          label="Continue"
-          leftIcon={<SparkleWhite width={18} height={18} />}
-          onPress={goToCategory}
+          label={pending ? 'Organizing…' : 'Continue with AI'}
+          leftIcon={pending ? undefined : <SparkleWhite width={18} height={18} />}
+          onPress={runAi}
+          disabled={pending}
         />
         <PrimaryButton
           label="Choose Manually Instead"
           variant="secondary"
           onPress={goToCategory}
+          disabled={pending}
         />
       </View>
     </View>
@@ -171,6 +247,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  disabled: {
+    opacity: 0.6,
   },
   tryLabel: {
     fontFamily: 'Geist_400Regular',

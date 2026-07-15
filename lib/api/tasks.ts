@@ -167,6 +167,77 @@ export function getTaskMatches(id: string, signal?: AbortSignal) {
   return api.get<TaskMatchesResponse>(`/api/tasks/${id}/matches`, { signal });
 }
 
+/** A single tasker's public profile (GET /api/taskers/:id). */
+export interface TaskerProfile {
+  _id: string;
+  firstName?: string;
+  lastName?: string;
+  profilePicture?: string;
+  bio: string;
+  averageRating: number;
+  completedJobs: number;
+  primaryCategory: string | null;
+  services: string[];
+  area: string | null;
+  residentState: string | null;
+  previousWork: { url: string; publicId?: string }[];
+  websiteLink: string;
+  isVerified: boolean;
+  memberSince: string | null;
+}
+
+/** A review a client left about a tasker (GET /api/taskers/:id/reviews). */
+export interface TaskerReview {
+  taskId: string;
+  taskTitle: string;
+  taskCategory: string | null;
+  rating: number;
+  reviewText: string | null;
+  ratedAt: string | null;
+  reviewer: { fullName: string | null; profilePicture: string | null } | null;
+}
+
+export interface TaskerReviewsResponse {
+  status: string;
+  data: {
+    taskerId: string;
+    taskerName: string;
+    taskerAverageRating: number;
+    reviews: TaskerReview[];
+    pagination: { total: number; page: number; limit: number; pages: number };
+  };
+}
+
+/** A single tasker's public profile. Public — no auth required. */
+export function getTaskerById(id: string, signal?: AbortSignal) {
+  return api.get<{ status: string; data: TaskerProfile }>(`/api/taskers/${id}`, {
+    signal,
+    auth: false,
+  });
+}
+
+/** Reviews clients left about a tasker. Public — no auth required. */
+export function getTaskerReviews(id: string, signal?: AbortSignal) {
+  return api.get<TaskerReviewsResponse>(`/api/taskers/${id}/reviews`, { signal, auth: false });
+}
+
+export interface NearbyTaskersResponse {
+  success: boolean;
+  data: TaskerMatch[];
+}
+
+/**
+ * Top taskers near a point, or top-rated taskers when no coordinates are given
+ * (the backend falls back gracefully). Public — no auth required.
+ */
+export function getNearbyTaskers(
+  coords?: { latitude: number; longitude: number },
+  signal?: AbortSignal,
+) {
+  const qs = coords ? toQuery({ latitude: coords.latitude, longitude: coords.longitude }) : '';
+  return api.get<NearbyTaskersResponse>(`/api/taskers/nearby${qs}`, { signal, auth: false });
+}
+
 export interface CreateTaskPayload {
   title: string;
   description: string;
