@@ -10,6 +10,7 @@ export default function MainTabsLayout() {
       screenOptions={{ headerShown: false }}
       tabBar={(props) => <BottomNav {...props} />}>
       <Tabs.Screen name="home" />
+      <Tabs.Screen name="discover" />
       <Tabs.Screen name="tasks" />
       <Tabs.Screen name="messages" />
       <Tabs.Screen name="profile" />

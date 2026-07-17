@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   FlatList,
   Modal,
@@ -28,19 +28,24 @@ const COLORS = {
   success: '#12b76a',
 };
 
-type FilterType = 'All' | 'In Escrow' | 'Failed' | 'Success' | 'Released';
+type FilterType = 'All' | 'Escrow' | 'Completed' | 'Failed' | 'Withdrawn';
 
 export default function TransactionHistoryScreen() {
   const insets = useSafeAreaInsets();
   const [filter, setFilter] = useState<FilterType>('All');
-  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [dropPos, setDropPos] = useState({ top: 0, right: 0 });
+  const filterBtnRef = useRef<View>(null);
 
-  const filterOptions: FilterType[] = ['All', 'In Escrow', 'Failed', 'Success', 'Released'];
+  const filterOptions: FilterType[] = ['All', 'Escrow', 'Completed', 'Failed', 'Withdrawn'];
 
   const filteredTransactions = MOCK_TRANSACTIONS.filter((item) => {
     if (filter === 'All') return true;
-    if (filter === 'In Escrow') return item.status === 'In -Escrow';
-    return item.status === filter;
+    if (filter === 'Escrow') return item.status === 'In -Escrow';
+    if (filter === 'Completed') return item.status === 'Success';
+    if (filter === 'Failed') return item.status === 'Failed';
+    if (filter === 'Withdrawn') return item.status === 'Released';
+    return true;
   });
 
   return (
@@ -52,11 +57,24 @@ export default function TransactionHistoryScreen() {
         <Text style={styles.subheaderText}>
           {filter === 'All' ? 'All Transactions' : `${filter} Transactions`}
         </Text>
-        <Pressable
-          style={({ pressed }) => [styles.filterBtn, pressed && styles.btnPressed]}
-          onPress={() => setIsFilterModalOpen(true)}>
-          <Ionicons name="options-outline" size={20} color={COLORS.textPrimary} />
-        </Pressable>
+        <View
+          ref={filterBtnRef}
+          onLayout={() => {
+            filterBtnRef.current?.measureInWindow((x, y, w, h) => {
+              setDropPos({ top: y + h + 4, right: 16 });
+            });
+          }}>
+          <Pressable
+            style={({ pressed }) => [styles.filterBtn, pressed && styles.btnPressed]}
+            onPress={() => {
+              filterBtnRef.current?.measureInWindow((x, y, w, h) => {
+                setDropPos({ top: y + h + 4, right: 16 });
+                setIsFilterOpen(true);
+              });
+            }}>
+            <Ionicons name="options-outline" size={20} color={COLORS.textPrimary} />
+          </Pressable>
+        </View>
       </View>
 
       <FlatList
@@ -98,34 +116,34 @@ export default function TransactionHistoryScreen() {
         }}
       />
 
-      {/* Filter Options Modal */}
+      {/* Filter Dropdown */}
       <Modal
-        visible={isFilterModalOpen}
+        visible={isFilterOpen}
         transparent
         animationType="fade"
-        onRequestClose={() => setIsFilterModalOpen(false)}>
-        <Pressable style={styles.modalOverlay} onPress={() => setIsFilterModalOpen(false)}>
-          <View style={[styles.modalContent, { bottom: insets.bottom + 80 }]}>
-            <Text style={styles.modalTitle}>Filter by Status</Text>
-            
-            {filterOptions.map((opt) => (
-              <Pressable
-                key={opt}
-                style={({ pressed }) => [styles.optionRow, pressed && styles.rowPressed]}
-                onPress={() => {
-                  setFilter(opt);
-                  setIsFilterModalOpen(false);
-                }}>
-                <Text style={[styles.optionText, filter === opt && styles.optionSelectedText]}>
-                  {opt === 'All' ? 'All Transactions' : opt}
-                </Text>
-                {filter === opt && (
-                  <Ionicons name="checkmark" size={20} color={COLORS.brand} />
-                )}
-              </Pressable>
-            ))}
-          </View>
-        </Pressable>
+        onRequestClose={() => setIsFilterOpen(false)}>
+        <Pressable style={styles.dropBackdrop} onPress={() => setIsFilterOpen(false)} />
+        <View style={[styles.dropdown, { top: dropPos.top, right: dropPos.right }]}>
+          {filterOptions.map((opt, idx) => (
+            <Pressable
+              key={opt}
+              style={[
+                styles.dropItem,
+                idx < filterOptions.length - 1 && styles.dropItemBorder,
+              ]}
+              onPress={() => {
+                setFilter(opt);
+                setIsFilterOpen(false);
+              }}>
+              <Text style={[styles.dropItemText, filter === opt && styles.dropItemTextActive]}>
+                {opt === 'All' ? 'All Transactions' : opt}
+              </Text>
+              {filter === opt && (
+                <Ionicons name="checkmark" size={16} color={COLORS.brand} />
+              )}
+            </Pressable>
+          ))}
+        </View>
       </Modal>
     </View>
   );
@@ -271,10 +289,49 @@ const styles = StyleSheet.create({
   },
   optionText: {
     fontFamily: 'Geist_500Medium',
-    fontSize: 15,
-    color: COLORS.textSecondary,
+    fontSize: 16,
+    color: COLORS.textPrimary,
   },
   optionSelectedText: {
+    fontFamily: 'Geist_600SemiBold',
+    color: COLORS.brand,
+  },
+  // Inline Dropdown
+  dropBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
+  },
+  dropdown: {
+    position: 'absolute',
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    minWidth: 160,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  dropItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+  },
+  dropItemBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#f2f2f7',
+  },
+  dropItemText: {
+    fontFamily: 'Geist_400Regular',
+    fontSize: 15,
+    color: COLORS.textPrimary,
+  },
+  dropItemTextActive: {
     fontFamily: 'Geist_600SemiBold',
     color: COLORS.brand,
   },

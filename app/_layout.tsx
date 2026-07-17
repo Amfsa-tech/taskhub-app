@@ -116,6 +116,10 @@ function RootNavigator() {
                     <Stack.Screen name="phone-number" options={{ headerShown: false }} />
                     <Stack.Screen name="wallet" options={{ headerShown: false }} />
                     <Stack.Screen name="transaction-history" options={{ headerShown: false }} />
+                    <Stack.Screen name="performance" options={{ headerShown: false }} />
+                    <Stack.Screen name="tasker-services" options={{ headerShown: false }} />
+                    <Stack.Screen name="tasker-portfolio" options={{ headerShown: false }} />
+                    <Stack.Screen name="bank-account" options={{ headerShown: false }} />
                     <Stack.Screen name="(main)" options={{ headerShown: false }} />
                     <Stack.Screen name="screens" options={{ headerShown: false }} />
                     <Stack.Screen name="location-selector-modal" options={{ presentation: 'modal', headerShown: false }} />
