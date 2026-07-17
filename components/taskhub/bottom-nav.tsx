@@ -13,6 +13,8 @@ import NavPlus from '@/assets/icons/nav-plus.svg';
 import NavUser from '@/assets/icons/nav-user.svg';
 import NavUserActive from '@/assets/icons/nav-user-active.svg';
 import { useChatUnreadCount } from '@/lib/api/queries';
+import { useAuth } from '@/lib/auth/auth-context';
+import { MagnifyingGlass } from '@/components/icons/magnifying-glass';
 
 const COLORS = {
   surface: '#ffffff',
@@ -61,12 +63,16 @@ export function BottomNav({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const messagesBadge = useChatUnreadCount();
+  const { accountType } = useAuth();
 
   const current = state.routes[state.index]?.name;
   const isHome = current === 'home';
+  const isDiscover = current === 'discover';
   const isTask = current === 'tasks';
   const isMessages = current === 'messages';
   const isProfile = current === 'profile';
+
+  const isTasker = accountType === 'tasker';
 
   // Switch tabs within the navigator (instant swap, no full-page slide).
   const go = (name: string) => {
@@ -81,6 +87,54 @@ export function BottomNav({ state, navigation }: BottomTabBarProps) {
       navigation.navigate(route.name as never);
     }
   };
+
+  if (isTasker) {
+    return (
+      <View style={styles.container}>
+        <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+          <TabButton label="Home" active={isHome} onPress={() => go('home')}>
+            {isHome ? (
+              <NavHouse width={24} height={24} color={COLORS.brand} />
+            ) : (
+              <NavHouseOutline width={24} height={24} color={COLORS.iconInactive} />
+            )}
+          </TabButton>
+
+          <TabButton label="Discover" active={isDiscover} onPress={() => go('discover')}>
+            <MagnifyingGlass size={24} color={isDiscover ? COLORS.brand : COLORS.iconInactive} />
+          </TabButton>
+
+          <TabButton label="Job" active={isTask} onPress={() => go('tasks')}>
+            {isTask ? (
+              <NavClipboardActive width={28} height={28} color={COLORS.brand} />
+            ) : (
+              <NavClipboard width={24} height={24} color={COLORS.iconInactive} />
+            )}
+          </TabButton>
+
+          <TabButton
+            label="Messages"
+            active={isMessages}
+            badge={messagesBadge}
+            onPress={() => go('messages')}>
+            {isMessages ? (
+              <NavChatActive width={24} height={24} color={COLORS.brand} />
+            ) : (
+              <NavChat width={24} height={24} color={COLORS.iconInactive} />
+            )}
+          </TabButton>
+
+          <TabButton label="Profile" active={isProfile} onPress={() => go('profile')}>
+            {isProfile ? (
+              <NavUserActive width={24} height={24} color={COLORS.brand} />
+            ) : (
+              <NavUser width={24} height={24} color={COLORS.iconInactive} />
+            )}
+          </TabButton>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>

@@ -1,14 +1,18 @@
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 
 import { ArrowLeft } from '@/components/icons/arrow-left';
 import { ArrowRight } from '@/components/icons/arrow-right';
 import { Hammer } from '@/components/icons/hammer';
 import { Headset } from '@/components/icons/headset';
 import { SuitcaseSimple } from '@/components/icons/suitcase-simple';
+import { useAuth } from '@/lib/auth/auth-context';
+import { loginOrCreateDevAccount } from '@/lib/auth/dev-auth';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -24,7 +28,7 @@ const COLORS = {
   green: '#4caf50',
 };
 
-type Role = 'hire' | 'earn';
+type Role = 'hire' | 'earn' | 'dev';
 
 type RoleCardProps = {
   selected: boolean;
@@ -52,7 +56,27 @@ function RoleCard({ selected, onPress, iconColor, icon, title, subtitle }: RoleC
 export default function PurposeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { signIn } = useAuth();
   const [role, setRole] = useState<Role | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const isExpoGo = Constants?.appOwnership === 'expo';
+
+  const handleContinue = async () => {
+    if (role === 'dev') {
+      setIsLoading(true);
+      try {
+        await loginOrCreateDevAccount('user', signIn);
+        router.replace('/home');
+      } catch (err: any) {
+        Alert.alert('Developer Login Failed', err.message || 'Something went wrong.');
+      } finally {
+        setIsLoading(false);
+      }
+    } else {
+      router.push('/login');
+    }
+  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -94,15 +118,36 @@ export default function PurposeScreen() {
           title="I want to Earn"
           subtitle="Find task, bid and get paid"
         />
+        {isExpoGo && (
+          <RoleCard
+            selected={role === 'dev'}
+            onPress={() => setRole('dev')}
+            iconColor={COLORS.primary}
+            icon={<MaterialCommunityIcons name="developer-board" size={24} color={COLORS.onBrand} />}
+            title="Developer Test"
+            subtitle="Login straight to a customer test account."
+          />
+        )}
       </View>
 
       {/* Footer */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
         <Pressable
-          style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-          onPress={() => router.push('/login')}>
-          <Text style={styles.buttonLabel}>Continue</Text>
-          <ArrowRight size={18} color={COLORS.onBrand} />
+          style={({ pressed }) => [
+            styles.button,
+            pressed && styles.buttonPressed,
+            isLoading && styles.buttonDisabled,
+          ]}
+          onPress={handleContinue}
+          disabled={isLoading}>
+          {isLoading ? (
+            <ActivityIndicator color={COLORS.onBrand} />
+          ) : (
+            <>
+              <Text style={styles.buttonLabel}>Continue</Text>
+              <ArrowRight size={18} color={COLORS.onBrand} />
+            </>
+          )}
         </Pressable>
 
         <Pressable hitSlop={8} onPress={() => router.push('/login-form')} style={styles.loginRow}>
@@ -217,6 +262,9 @@ const styles = StyleSheet.create({
   },
   buttonPressed: {
     opacity: 0.9,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   buttonLabel: {
     fontFamily: 'Geist_500Medium',
