@@ -8,9 +8,9 @@
 
 import { useSyncExternalStore } from 'react';
 
-export type Country = 'Ghana' | 'Nigeria' | 'United Kingdom (UK)';
+export type Country = 'Nigeria' | 'United Kingdom (UK)';
 
-export const COUNTRIES: Country[] = ['Ghana', 'Nigeria', 'United Kingdom (UK)'];
+export const COUNTRIES: Country[] = ['Nigeria', 'United Kingdom (UK)'];
 
 let selected: Country = 'Nigeria';
 const listeners = new Set<() => void>();
