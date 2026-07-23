@@ -28,7 +28,7 @@ const COLORS = {
   onBrand: '#ffffff',
 };
 
-const CODE_LENGTH = 6;
+const CODE_LENGTH = 5;
 
 export default function OtpScreen() {
   const insets = useSafeAreaInsets();
@@ -90,7 +90,7 @@ export default function OtpScreen() {
   const verify = () => {
     setError(null);
     if (code.length < CODE_LENGTH) {
-      setError('Enter the 6-digit code.');
+      setError(`Enter the ${CODE_LENGTH}-digit code.`);
       return;
     }
     verifyMutation.mutate();
@@ -119,7 +119,7 @@ export default function OtpScreen() {
         <View style={styles.heading}>
           <Text style={styles.title}>Verify your email</Text>
           <Text style={styles.subtitle}>
-            We sent a 6 digit Code to {email ?? 'ellioteniolsamuel@gmail.com'}
+            We sent a {CODE_LENGTH} digit Code to {email ?? 'ellioteniolsamuel@gmail.com'}
           </Text>
         </View>
 

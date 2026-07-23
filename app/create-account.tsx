@@ -107,7 +107,7 @@ export default function CreateAccountScreen() {
         country,
       }),
     onSuccess: (res) => {
-      // In non-production the backend echoes the 6-digit code — log it so the
+      // In non-production the backend echoes the 5-digit code — log it so the
       // OTP screen can be tested without a real inbox.
       if (__DEV__ && res.emailToken) {
         console.log('[dev] email verification code:', res.emailToken);
