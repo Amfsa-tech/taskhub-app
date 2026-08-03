@@ -198,3 +198,73 @@ export interface ResetPasswordPayload {
   emailAddress: string;
   type: AccountType;
 }
+
+/**
+ * `POST /api/auth/change-password` (authenticated). The backend enforces a
+ * 6-character minimum on `newPassword`.
+ *
+ * Google-only accounts have no stored password: the backend answers 400 with
+ * `code: 'no_password_set'` and expects `setPassword` instead.
+ */
+export interface ChangePasswordPayload {
+  currentPassword: string;
+  newPassword: string;
+}
+
+/** `POST /api/auth/set-password` — first password for a Google-only account. */
+export interface SetPasswordPayload {
+  newPassword: string;
+}
+
+/**
+ * Onboarding purposes. These slugs are a fixed backend enum
+ * (`utils/onboardingUtils.js` → `ALLOWED_INTERESTS`); anything else is a 400.
+ */
+export type Interest = 'campus' | 'local_services' | 'errands' | 'digital';
+
+export const ALLOWED_INTERESTS: Interest[] = [
+  'campus',
+  'local_services',
+  'errands',
+  'digital',
+];
+
+export interface UpdateInterestsResponse {
+  status: string;
+  message: string;
+  interests: Interest[];
+}
+
+/**
+ * `PUT /api/auth/user/location` — user-only (a tasker token gets a 403).
+ * Latitude/longitude must be **numbers**, not strings; `address` is optional and
+ * is persisted onto the profile's `address` field when non-empty.
+ */
+export interface UpdateUserLocationPayload {
+  latitude: number;
+  longitude: number;
+  address?: string;
+}
+
+export interface UpdateUserLocationResponse {
+  status: string;
+  message: string;
+  location: { latitude: number; longitude: number; lastUpdated: string };
+  address?: string;
+}
+
+/**
+ * `GET /api/auth/verification-status`. One KYC flag covers the whole account —
+ * the backend reads `isKYCVerified` (users) or `verifyIdentity` (taskers).
+ * There is no separate per-method (face vs NIN) status.
+ */
+export interface VerificationStatusResponse {
+  status: string;
+  data: {
+    accountId: string;
+    firstName: string;
+    lastName: string;
+    isVerified: boolean;
+    role: 'User' | 'Tasker';
+  };
+}

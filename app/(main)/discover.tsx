@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
-  Alert,
+  ActivityIndicator,
   FlatList,
   Modal,
   Pressable,
@@ -20,6 +20,13 @@ import Clock from '@/assets/icons/clock.svg';
 import CaretDown from '@/assets/icons/caret-down.svg';
 import CaretRight from '@/assets/icons/caret-right.svg';
 import { MagnifyingGlass } from '@/components/icons/magnifying-glass';
+import { useTasks } from '@/lib/api/queries';
+import {
+  formatNaira,
+  formatRelativeTime,
+  locationLabel,
+  type Task,
+} from '@/lib/api/tasks';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -33,47 +40,59 @@ const COLORS = {
   onBrand: '#ffffff',
 };
 
+type TaskCategory = 'Local' | 'Errand' | 'Remote' | 'Campus';
+
 type TaskItem = {
   id: string;
   title: string;
-  category: 'Local' | 'Errand' | 'Remote' | 'Campus';
+  category: TaskCategory;
   price: string;
-  bidsCount: number;
   location: string;
   timeAgo: string;
 };
 
-const MOCK_TASKS: TaskItem[] = [
-  {
-    id: 'discover-1',
-    title: 'Fix my Laptop Screen',
-    category: 'Local',
-    price: '₦20,000',
-    bidsCount: 0,
-    location: 'Remote', // matches design: location pin says 'Remote' for task 1
-    timeAgo: '2mins ago',
-  },
-  {
-    id: 'discover-2',
-    title: 'Deliver Package to Lekki',
-    category: 'Errand',
-    price: '₦2,000',
-    bidsCount: 5,
-    location: 'Yaba → Lekki',
-    timeAgo: '10mins ago',
-  },
-  {
-    id: 'discover-3',
-    title: 'Design a flyer for event',
-    category: 'Remote',
-    price: '₦2,000',
-    bidsCount: 5,
-    location: 'Remote',
-    timeAgo: '18 May',
-  },
-];
-
 const FILTER_PILLS = ['All', 'Campus', 'Local Services', 'Remote', 'Errands'];
+
+/** Which pill a task belongs under. Pills filter client-side — see `useTasks` below. */
+function taskCategory(task: Task): TaskCategory {
+  const main = task.mainCategory;
+  const name =
+    !main || typeof main === 'string' ? '' : (main.name || main.displayName || '').toLowerCase();
+
+  if (name.includes('campus')) return 'Campus';
+  if (name.includes('errand')) return 'Errand';
+  // No coordinates on the task means nothing to travel to.
+  if (!task.location) return 'Remote';
+  return 'Local';
+}
+
+function toTaskItem(task: Task): TaskItem {
+  return {
+    id: task._id,
+    title: task.title,
+    category: taskCategory(task),
+    price: formatNaira(task.budget),
+    location: locationLabel(task),
+    timeAgo: formatRelativeTime(task.createdAt),
+  };
+}
+
+const PILL_TO_CATEGORY: Record<string, TaskCategory> = {
+  Campus: 'Campus',
+  'Local Services': 'Local',
+  Remote: 'Remote',
+  Errands: 'Errand',
+};
+
+/**
+ * Only the two sorts that can be honoured on the data we have. `GET /api/tasks`
+ * always sorts `createdAt` descending and takes no sort parameter, so "Newest
+ * First" is the server order and "Highest Budget" is re-sorted client-side.
+ * "Nearest First" needs distances the list endpoint doesn't return, and "Best
+ * Match" needs server-side ranking — both are omitted rather than faked.
+ */
+const SORT_OPTIONS = ['Newest First', 'Highest Budget'] as const;
+type SortOption = (typeof SORT_OPTIONS)[number];
 
 export default function DiscoverScreen() {
   const insets = useSafeAreaInsets();
@@ -84,7 +103,34 @@ export default function DiscoverScreen() {
   // New modal states
   const [sortSheetVisible, setSortSheetVisible] = useState(false);
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
-  const [sortBy, setSortBy] = useState('Best Match');
+  const [sortBy, setSortBy] = useState<SortOption>('Newest First');
+
+  // Open tasks anyone can bid on. Public endpoint — no token required.
+  const tasksQ = useTasks({ status: 'open', limit: 50 });
+
+  const tasks = useMemo(() => {
+    const items = (tasksQ.data?.tasks ?? []).map(toTaskItem);
+
+    // Pills and search are applied client-side: `GET /api/tasks` takes neither a
+    // text query nor a working category filter (its `categories` param targets a
+    // field the Task model doesn't have, so passing it returns nothing).
+    const wanted = PILL_TO_CATEGORY[activeFilter];
+    const term = search.trim().toLowerCase();
+
+    const filtered = items.filter((item) => {
+      if (wanted && item.category !== wanted) return false;
+      if (term && !item.title.toLowerCase().includes(term)) return false;
+      return true;
+    });
+
+    if (sortBy === 'Highest Budget') {
+      const budgets = new Map(
+        (tasksQ.data?.tasks ?? []).map((t) => [t._id, t.budget] as const),
+      );
+      return [...filtered].sort((a, b) => (budgets.get(b.id) ?? 0) - (budgets.get(a.id) ?? 0));
+    }
+    return filtered;
+  }, [tasksQ.data, activeFilter, search, sortBy]);
 
   // Filter criteria states
   const [selectedDistance, setSelectedDistance] = useState('Any');
@@ -198,26 +244,56 @@ export default function DiscoverScreen() {
 
       {/* Search results summary */}
       <View style={styles.summaryRow}>
-        <Text style={styles.summaryText}>3 tasks found · Best Match</Text>
+        <Text style={styles.summaryText}>
+          {tasksQ.isLoading
+            ? 'Loading tasks…'
+            : `${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'} found · ${sortBy}`}
+        </Text>
       </View>
 
       {/* Task List */}
       <FlatList
-        data={MOCK_TASKS}
+        data={tasks}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[styles.listContainer, { paddingBottom: insets.bottom + 120 }]}
         showsVerticalScrollIndicator={false}
+        refreshing={tasksQ.isRefetching}
+        onRefresh={() => tasksQ.refetch()}
+        ListEmptyComponent={
+          tasksQ.isLoading ? (
+            <View style={styles.listState}>
+              <ActivityIndicator color={COLORS.primary} />
+            </View>
+          ) : tasksQ.isError ? (
+            <View style={styles.listState}>
+              <Text style={styles.listStateError}>Couldn’t load tasks.</Text>
+              <Pressable hitSlop={8} onPress={() => tasksQ.refetch()}>
+                <Text style={styles.listStateRetry}>Retry</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.listState}>
+              <Text style={styles.listStateText}>
+                {search.trim() || activeFilter !== 'All'
+                  ? 'No tasks match your filters.'
+                  : 'No open tasks right now.'}
+              </Text>
+            </View>
+          )
+        }
         renderItem={({ item }) => (
           <Pressable style={styles.taskCard} onPress={() => router.push({ pathname: '/task-details', params: { id: item.id } })}>
             <View style={styles.taskCardTop}>
               {renderTag(item.category)}
               <Text style={styles.taskCardPrice}>{item.price}</Text>
             </View>
+            {/*
+              The design shows a bid count here, but `GET /api/tasks` doesn't
+              attach one — `attachBidSummary` only runs on the user/tasker task
+              lists. Omitted rather than shown as a hardcoded 0.
+            */}
             <View style={styles.taskCardMain}>
               <Text style={styles.taskCardTitle}>{item.title}</Text>
-              <Text style={styles.taskCardBids}>
-                {item.bidsCount === 0 ? '0 Bids' : `${item.bidsCount} Bids`}
-              </Text>
             </View>
             <View style={styles.taskCardMeta}>
               <View style={styles.taskMetaItem}>
@@ -244,7 +320,7 @@ export default function DiscoverScreen() {
             <Text style={styles.sheetTitle}>Sort By</Text>
 
             <View style={{ gap: 4, marginTop: 12 }}>
-              {['Newest First', 'Nearest First', 'Highest Budget', 'Best Match'].map((option) => (
+              {SORT_OPTIONS.map((option) => (
                 <Pressable
                   key={option}
                   style={styles.actionRowBtn}
@@ -474,6 +550,27 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingTop: 8,
   },
+  listState: {
+    paddingTop: 72,
+    alignItems: 'center',
+    gap: 8,
+  },
+  listStateText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+  },
+  listStateError: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    color: '#dc2626',
+  },
+  listStateRetry: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 15,
+    color: COLORS.primary,
+  },
   taskCard: {
     backgroundColor: COLORS.surface,
     borderWidth: 1,
@@ -503,11 +600,6 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     flex: 1,
     marginRight: 16,
-  },
-  taskCardBids: {
-    fontFamily: 'Geist_500Medium',
-    fontSize: 15,
-    color: COLORS.primary,
   },
   taskCardMeta: {
     flexDirection: 'row',

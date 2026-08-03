@@ -1,21 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/taskhub/screen-header';
+import { useKycStatus, useVerificationStatus } from '@/lib/api/queries';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -25,56 +22,64 @@ const COLORS = {
   textSecondary: '#5a5a70',
   brand: '#6c3bff',
   success: '#12b76a',
+  warning: '#b45309',
+  error: '#dc2626',
   placeholder: '#a0a0ba',
 };
 
+/**
+ * Identity verification status.
+ *
+ * This screen used to collect an 11-digit NIN and fake a result on a timer.
+ * There is no endpoint that accepts a NIN: `POST /api/v1/nin/verify-nin` opens
+ * a **QoreID SDK session** and returns capture credentials, and the SDK — which
+ * is not installed in this app — does the ID/selfie capture and reports back
+ * out-of-band. So the screen reports real status and explains the gap instead
+ * of collecting a number it cannot submit. See `lib/api/kyc.ts`.
+ */
 export default function NinVerificationScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [nin, setNin] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [verified, setVerified] = useState(false);
-  const [error, setError] = useState('');
 
-  const handleVerify = () => {
-    if (nin.length !== 11 || !/^\d+$/.test(nin)) {
-      setError('NIN must be exactly 11 digits');
-      return;
-    }
+  // Account flag — provider-agnostic, the real answer to "am I verified?".
+  const accountQ = useVerificationStatus();
+  // Didit record detail — rejection reasons and masked NIN, when present.
+  const recordQ = useKycStatus();
 
-    setError('');
-    setLoading(true);
+  const isVerified = accountQ.data?.data.isVerified === true;
+  const record = recordQ.data?.data;
+  const rejectionReasons = record?.rejectionReasons ?? [];
+  const isRejected = record?.status === 'rejected';
+  const isPending = record?.status === 'pending';
 
-    // Simulate verification delay
-    setTimeout(() => {
-      setLoading(false);
-      setVerified(true);
-    }, 2000);
+  const refresh = () => {
+    accountQ.refetch();
+    recordQ.refetch();
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <View style={styles.container}>
       <StatusBar style="dark" />
-      <ScreenHeader title="NIN Verification" />
+      <ScreenHeader title="Identity Verification" />
 
       <ScrollView
         style={styles.flex}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 20 }]}
-        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
-        
-        {verified ? (
+        {accountQ.isLoading ? (
+          <View style={styles.successContainer}>
+            <ActivityIndicator color={COLORS.brand} />
+          </View>
+        ) : isVerified ? (
           <View style={styles.successContainer}>
             <View style={styles.successIconBox}>
               <Ionicons name="checkmark-circle" size={80} color={COLORS.success} />
             </View>
-            <Text style={styles.successTitle}>Verification Successful</Text>
+            <Text style={styles.successTitle}>Identity Verified</Text>
             <Text style={styles.successDescription}>
-              Your National Identification Number has been verified successfully. Your profile badge will update shortly.
+              Your identity has been verified{record?.maskedNin ? ` (NIN ${record.maskedNin})` : ''}.
+              Your profile badge is active.
             </Text>
-
             <Pressable
               style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
               onPress={() => router.replace('/settings')}>
@@ -83,46 +88,58 @@ export default function NinVerificationScreen() {
           </View>
         ) : (
           <View style={styles.formContainer}>
+            <View style={styles.card}>
+              <Text style={styles.inputLabel}>CURRENT STATUS</Text>
+              <Text
+                style={[
+                  styles.statusValue,
+                  isRejected && { color: COLORS.error },
+                  isPending && { color: COLORS.warning },
+                ]}>
+                {isRejected ? 'Rejected' : isPending ? 'In review' : 'Not verified'}
+              </Text>
+
+              {isRejected && rejectionReasons.length > 0 ? (
+                <View style={styles.reasonList}>
+                  {rejectionReasons.map((reason) => (
+                    <Text key={reason} style={styles.reasonText}>
+                      • {reason}
+                    </Text>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+
             <Text style={styles.instructions}>
-              Enter your 11-digit National Identification Number (NIN) to verify your account identity.
+              {isPending
+                ? 'Your documents are being reviewed. This usually takes a few minutes — check back shortly.'
+                : 'Identity verification uses a secure ID and selfie capture from our verification partner. That step isn’t available in this version of the app yet.'}
             </Text>
 
-            <View style={styles.card}>
-              <Text style={styles.inputLabel}>NATIONAL IDENTIFICATION NUMBER (NIN)</Text>
-              <TextInput
-                style={[styles.input, error ? styles.inputError : null]}
-                value={nin}
-                onChangeText={(text) => {
-                  setNin(text.replace(/[^\d]/g, ''));
-                  setError('');
-                }}
-                placeholder="Enter 11 digits"
-                placeholderTextColor={COLORS.placeholder}
-                keyboardType="numeric"
-                maxLength={11}
-                editable={!loading}
-              />
-              {error ? <Text style={styles.errorText}>{error}</Text> : null}
-            </View>
+            {!isPending ? (
+              <Text style={styles.instructions}>
+                If you’ve already verified elsewhere, refresh to pull your latest status.
+              </Text>
+            ) : null}
 
             <Pressable
               style={({ pressed }) => [
                 styles.btn,
-                (nin.length !== 11 || loading) && styles.btnDisabled,
+                (accountQ.isRefetching || recordQ.isRefetching) && styles.btnDisabled,
                 pressed && styles.btnPressed,
               ]}
-              disabled={nin.length !== 11 || loading}
-              onPress={handleVerify}>
-              {loading ? (
+              disabled={accountQ.isRefetching || recordQ.isRefetching}
+              onPress={refresh}>
+              {accountQ.isRefetching || recordQ.isRefetching ? (
                 <ActivityIndicator color="#ffffff" size="small" />
               ) : (
-                <Text style={styles.btnText}>Verify NIN</Text>
+                <Text style={styles.btnText}>Refresh status</Text>
               )}
             </Pressable>
           </View>
         )}
       </ScrollView>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -175,6 +192,22 @@ const styles = StyleSheet.create({
   },
   inputError: {
     borderColor: '#ef4444',
+  },
+  statusValue: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 20,
+    color: COLORS.textPrimary,
+    marginTop: 4,
+  },
+  reasonList: {
+    marginTop: 10,
+    gap: 4,
+  },
+  reasonText: {
+    fontFamily: 'Geist_400Regular',
+    fontSize: 14,
+    lineHeight: 20,
+    color: COLORS.textSecondary,
   },
   errorText: {
     fontFamily: 'Geist_500Medium',

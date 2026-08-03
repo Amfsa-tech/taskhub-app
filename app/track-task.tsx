@@ -1,12 +1,30 @@
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { RateTaskerModal } from '@/components/taskhub/rate-tasker-modal';
+import { queryKeys, useCompletionCode, useTask } from '@/lib/api/queries';
+import {
+  changeTaskStatus,
+  formatNaira,
+  rateTask,
+  type Task,
+  type TaskStatus,
+} from '@/lib/api/tasks';
 import { useAuth } from '@/lib/auth/auth-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 
@@ -33,52 +51,178 @@ type TimelineItem = {
   status: 'checked' | 'active' | 'future';
 };
 
-const TIMELINE: TimelineItem[] = [
-  { title: 'Task posted', time: '2:00PM', status: 'checked' },
-  { title: 'Tasker Hired', time: '2:15PM', status: 'checked' },
-  { title: 'Payment Secured', time: '2:16', status: 'checked' },
-  { title: 'Tasker On the Way', time: '2:16', status: 'checked' },
-  { title: 'In Progress', time: '2:16', status: 'checked' },
-  { title: 'Awaiting confirmation', status: 'active' },
-  { title: 'Completed', status: 'future' },
-];
+/** Order the backend actually moves a task through. */
+const STATUS_ORDER: TaskStatus[] = ['open', 'assigned', 'in-progress', 'completed'];
+
+function clockTime(iso?: string | null): string | undefined {
+  if (!iso) return undefined;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return undefined;
+  const hours = d.getHours();
+  const minutes = d.getMinutes().toString().padStart(2, '0');
+  const suffix = hours >= 12 ? 'PM' : 'AM';
+  const twelve = hours % 12 === 0 ? 12 : hours % 12;
+  return `${twelve}:${minutes}${suffix}`;
+}
+
+/**
+ * Build the timeline from the task itself.
+ *
+ * The backend stores no per-step history — only `status` plus `createdAt` /
+ * `completedAt` / `updatedAt` — so intermediate steps are shown as reached or
+ * not, and only the stamps that genuinely exist carry a time. The design's
+ * "Tasker On the Way" step has no backend equivalent and is dropped rather than
+ * invented.
+ */
+function buildTimeline(task: Task): TimelineItem[] {
+  if (task.status === 'cancelled') {
+    return [
+      { title: 'Task posted', time: clockTime(task.createdAt), status: 'checked' },
+      { title: 'Cancelled', time: clockTime(task.updatedAt), status: 'active' },
+    ];
+  }
+
+  const reached = STATUS_ORDER.indexOf(task.status);
+  const mark = (index: number): TimelineItem['status'] =>
+    index < reached ? 'checked' : index === reached ? 'active' : 'future';
+
+  return [
+    { title: 'Task posted', time: clockTime(task.createdAt), status: mark(0) },
+    { title: 'Tasker hired', status: mark(1) },
+    {
+      title: 'Payment secured',
+      status: task.escrowStatus && task.escrowStatus !== 'not_held' ? 'checked' : mark(1),
+    },
+    { title: 'In progress', status: mark(2) },
+    {
+      title: 'Completed',
+      time: clockTime(task.completedAt),
+      status: mark(3),
+    },
+  ];
+}
+
+function taskerDisplayName(task: Task): string {
+  const t = task.assignedTasker;
+  if (!t) return 'Tasker';
+  const first = t.firstName?.trim() ?? '';
+  const lastInitial = t.lastName?.trim()?.[0];
+  return [first, lastInitial ? `${lastInitial}.` : ''].filter(Boolean).join(' ') || 'Tasker';
+}
 
 export default function TrackTaskScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { accountType } = useAuth();
-  const [modalVisible, setModalVisible] = useState(false);
-  const [isCompleted, setIsCompleted] = useState(false);
+  const { id } = useLocalSearchParams<{ id?: string }>();
+
+  const taskQ = useTask(id);
+  const task = taskQ.data?.task;
+
   const [rateModalVisible, setRateModalVisible] = useState(false);
-  const [hasReviewed, setHasReviewed] = useState(false);
 
   const isTasker = accountType === 'tasker';
+
+  // --- Tasker-side mock state. The tasker surface is its own milestone (§3.6);
+  // none of the state below is wired to `PATCH /api/tasks/:id/status/tasker`.
   const [escrowStatus, setEscrowStatus] = useState<'pending' | 'secured'>('pending');
   const [reminderModalVisible, setReminderModalVisible] = useState(false);
   const [statusSheetVisible, setStatusSheetVisible] = useState(false);
   const [taskStatusStep, setTaskStatusStep] = useState<'start_task' | 'started' | 'completed'>('start_task');
 
-  const handleReleaseAndComplete = () => {
-    setModalVisible(false);
-    setIsCompleted(true);
-  };
+  /**
+   * The completion code exists only while the task is in progress, and only the
+   * poster can read it. Handing it to the tasker is what completes the task —
+   * the tasker submits it, and that release is what moves escrow.
+   */
+  const codeQ = useCompletionCode(id, !isTasker && task?.status === 'in-progress');
 
-  if (isCompleted) {
+  const cancel = useMutation({
+    mutationFn: () => changeTaskStatus(id as string, 'cancelled'),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+        queryClient.invalidateQueries({ queryKey: ['wallet'] }),
+      ]);
+      Alert.alert('Task cancelled', 'Any funds held in escrow have been returned to your wallet.');
+    },
+    onError: (err) =>
+      Alert.alert('Could not cancel', err instanceof Error ? err.message : 'Please try again.'),
+  });
+
+  const rate = useMutation({
+    mutationFn: (v: { rating: number; reviewText: string }) =>
+      rateTask(id as string, { rating: v.rating, reviewText: v.reviewText || undefined }),
+    onSuccess: async () => {
+      setRateModalVisible(false);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.task(id as string) });
+    },
+    onError: (err) =>
+      Alert.alert('Could not submit review', err instanceof Error ? err.message : 'Please try again.'),
+  });
+
+  const confirmCancel = () =>
+    Alert.alert('Cancel task', 'This releases the tasker and refunds any escrow. Continue?', [
+      { text: 'Keep task', style: 'cancel' },
+      { text: 'Cancel task', style: 'destructive', onPress: () => cancel.mutate() },
+    ]);
+
+  // ---- Loading / error / missing id ----
+  if (!id || taskQ.isLoading || taskQ.isError || !task) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <StatusBar style="dark" />
+        <View style={styles.topBar}>
+          <Pressable hitSlop={8} onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
+          </Pressable>
+          <Text style={styles.headerTitle}>Track Task</Text>
+          <View style={styles.backButton} />
+        </View>
+        <View style={styles.fullscreenCenter}>
+          {taskQ.isLoading ? (
+            <ActivityIndicator color={COLORS.brand} />
+          ) : (
+            <>
+              <Text style={styles.completedSubtitle}>
+                {id ? 'Couldn’t load this task.' : 'No task was selected.'}
+              </Text>
+              {id ? (
+                <Pressable hitSlop={8} onPress={() => taskQ.refetch()}>
+                  <Text style={styles.myTasksLabel}>Retry</Text>
+                </Pressable>
+              ) : null}
+            </>
+          )}
+        </View>
+      </View>
+    );
+  }
+
+  const timeline = buildTimeline(task);
+  const taskerName = taskerDisplayName(task);
+  const escrowHeld = Boolean(task.escrowStatus && task.escrowStatus !== 'not_held');
+  const canCancel = ['open', 'assigned', 'in-progress'].includes(task.status);
+
+  // ---- Terminal state: completed ----
+  if (task.status === 'completed') {
+    const alreadyRated = task.rating != null;
     return (
       <View style={styles.fullscreenCenter}>
         <StatusBar style="dark" />
         <Image source={PopperImage} style={styles.popperImage} contentFit="contain" />
-        <Text style={styles.completedTitle}>Payment Released</Text>
+        <Text style={styles.completedTitle}>Task Completed</Text>
         <Text style={styles.completedSubtitle}>
-          ₦4,400 is held safely in escrow until the task is completed
+          {formatNaira(task.budget)} has been released to {taskerName}.
         </Text>
         <View style={styles.completedButtons}>
-          {!hasReviewed && (
-            <PrimaryButton label="Rate Chioma. A" onPress={() => setRateModalVisible(true)} />
+          {!alreadyRated && (
+            <PrimaryButton label={`Rate ${taskerName}`} onPress={() => setRateModalVisible(true)} />
           )}
           <PrimaryButton
             label="Go to Dashboard"
-            variant={!hasReviewed ? "secondary" : "primary"}
+            variant={!alreadyRated ? 'secondary' : 'primary'}
             onPress={() => router.replace('/home')}
           />
           <Pressable
@@ -91,12 +235,9 @@ export default function TrackTaskScreen() {
         <RateTaskerModal
           visible={rateModalVisible}
           onClose={() => setRateModalVisible(false)}
-          taskerName="Chioma. A"
-          taskerAvatar="https://i.pravatar.cc/150?img=47"
-          onSubmit={(rating, comment) => {
-            setHasReviewed(true);
-            setRateModalVisible(false);
-          }}
+          taskerName={taskerName}
+          taskerAvatar={task.assignedTasker?.profilePicture || ''}
+          onSubmit={(rating, comment) => rate.mutate({ rating, reviewText: comment })}
         />
       </View>
     );
@@ -122,31 +263,48 @@ export default function TrackTaskScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
 
-        {/* Tasker Card */}
-        <View style={styles.card}>
-          <View style={styles.taskerRow}>
-            <View style={styles.avatarWrap}>
-              <Image source={AVATAR} style={styles.avatar} contentFit="cover" />
-            </View>
-            <View style={styles.taskerInfo}>
-              <Text style={styles.taskerName}>Chioma. A</Text>
-              <View style={styles.statsRow}>
-                <Ionicons name="star" size={14} color="#fbbf24" style={styles.starIcon} />
-                <Text style={styles.statsText}>4.9</Text>
-                <Text style={styles.bullet}>•</Text>
-                <Text style={styles.statsText}>Printing</Text>
+        {/* Tasker Card — only once someone is actually assigned. */}
+        {task.assignedTasker ? (
+          <View style={styles.card}>
+            <View style={styles.taskerRow}>
+              <View style={styles.avatarWrap}>
+                <Image
+                  source={
+                    task.assignedTasker.profilePicture
+                      ? { uri: task.assignedTasker.profilePicture }
+                      : AVATAR
+                  }
+                  style={styles.avatar}
+                  contentFit="cover"
+                />
+              </View>
+              <View style={styles.taskerInfo}>
+                <Text style={styles.taskerName}>{taskerName}</Text>
+                <View style={styles.statsRow}>
+                  <Text style={styles.statsText}>{task.title}</Text>
+                </View>
+              </View>
+              {/* Call is intentionally absent: the backend exposes no phone
+                  number for an assigned tasker, and chat is the supported channel. */}
+              <View style={styles.actionsWrap}>
+                <Pressable style={styles.actionIconBtn} onPress={() => router.push('/messages')}>
+                  <Ionicons name="chatbubble-outline" size={20} color={COLORS.brand} />
+                </Pressable>
               </View>
             </View>
-            <View style={styles.actionsWrap}>
-              <Pressable style={styles.actionIconBtn}>
-                <Ionicons name="chatbubble-outline" size={20} color={COLORS.brand} />
-              </Pressable>
-              <Pressable style={styles.actionIconBtn}>
-                <Ionicons name="call-outline" size={20} color={COLORS.brand} />
-              </Pressable>
+          </View>
+        ) : (
+          <View style={styles.card}>
+            <View style={styles.taskerRow}>
+              <View style={styles.taskerInfo}>
+                <Text style={styles.taskerName}>{task.title}</Text>
+                <View style={styles.statsRow}>
+                  <Text style={styles.statsText}>No tasker assigned yet</Text>
+                </View>
+              </View>
             </View>
           </View>
-        </View>
+        )}
 
         {/* Payment Secured Banner / Escrow Status Banner */}
         {isTasker ? (
@@ -171,26 +329,62 @@ export default function TrackTaskScreen() {
               </View>
             </View>
           )
-        ) : (
+        ) : escrowHeld ? (
           <View style={styles.securedBanner}>
             <View style={styles.walletIconWrap}>
               <Ionicons name="wallet-outline" size={20} color={COLORS.successText} />
             </View>
             <View style={styles.securedInfo}>
               <Text style={styles.securedTitle}>Payment Secured</Text>
-              <Text style={styles.securedSubtitle}>₦4,000 held in escrow</Text>
+              <Text style={styles.securedSubtitle}>
+                {formatNaira(task.budget)} held in escrow
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <View style={[styles.securedBanner, styles.pendingBanner]}>
+            <View style={[styles.walletIconWrap, styles.pendingWalletIconWrap]}>
+              <Ionicons name="wallet-outline" size={20} color="#b45309" />
+            </View>
+            <View style={styles.securedInfo}>
+              <Text style={[styles.securedTitle, { color: '#b45309' }]}>No escrow held yet</Text>
+              <Text style={[styles.securedSubtitle, { color: '#b45309' }]}>
+                Funds are held when you accept a bid
+              </Text>
             </View>
           </View>
         )}
 
+        {/* Completion code — the poster's half of the hand-off. */}
+        {!isTasker && task.status === 'in-progress' ? (
+          <View style={styles.card}>
+            <Text style={styles.timelineHeader}>Completion code</Text>
+            {codeQ.isLoading ? (
+              <ActivityIndicator color={COLORS.brand} />
+            ) : codeQ.isError || !codeQ.data ? (
+              <Text style={styles.securedSubtitle}>
+                The code isn’t available yet. It appears once the tasker starts work.
+              </Text>
+            ) : (
+              <>
+                <Text style={styles.completionCode}>{codeQ.data.data.completionCode}</Text>
+                <Text style={styles.securedSubtitle}>
+                  Give this code to {taskerName} only when the work is done. Entering it releases
+                  the payment from escrow.
+                </Text>
+              </>
+            )}
+          </View>
+        ) : null}
+
         {/* Task Timeline */}
         <Text style={styles.timelineHeader}>Task Timeline</Text>
         <View style={styles.timelineList}>
-          {TIMELINE.map((item, index) => {
+          {timeline.map((item, index) => {
             const isChecked = item.status === 'checked';
             const isActive = item.status === 'active';
             const isFuture = item.status === 'future';
-            const isLast = index === TIMELINE.length - 1;
+            const isLast = index === timeline.length - 1;
 
             return (
               <View key={item.title} style={styles.timelineRow}>
@@ -253,33 +447,34 @@ export default function TrackTaskScreen() {
             />
           )
         ) : (
-          <PrimaryButton label="Confirm Completion" onPress={() => setModalVisible(true)} />
+          /*
+           * The poster cannot mark a task complete: `PATCH /api/tasks/:id/status`
+           * only allows them to cancel. Completion is the tasker submitting the
+           * code above, which is what releases escrow — so the old "Confirm
+           * Completion → Release Payment" button described a flow the backend
+           * has never had. Cancel is the real action available here.
+           */
+          canCancel ? (
+            <PrimaryButton
+              label={cancel.isPending ? 'Cancelling…' : 'Cancel Task'}
+              variant="secondary"
+              disabled={cancel.isPending}
+              onPress={confirmCancel}
+            />
+          ) : null
         )}
         <Pressable
           style={({ pressed }) => [styles.reportButton, pressed && styles.pressed]}
-          onPress={() => router.push('/report-issue')}>
+          onPress={() =>
+            router.push({
+              pathname: '/report-issue',
+              params: { taskId: task._id, taskTitle: task.title },
+            })
+          }>
           <Ionicons name="warning-outline" size={18} color={COLORS.dangerText} />
           <Text style={styles.reportLabel}>Report Issue</Text>
         </Pressable>
       </View>
-
-      {/* Confirm Completion Modal (Customer Only) */}
-      <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => setModalVisible(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setModalVisible(false)}>
-          <Pressable style={[styles.modalSheet, { marginBottom: insets.bottom + 16 }]} onPress={() => { }}>
-            <Text style={styles.modalTitle}>Confirm Completion</Text>
-            <Text style={styles.modalSubtitle}>
-              Are you satisfied with the task? Once completed, the payment will be released to Chioma A.
-            </Text>
-            <View style={styles.modalButtons}>
-              <PrimaryButton label="Release Payment & Complete" onPress={handleReleaseAndComplete} />
-              <Pressable style={styles.notYetButton} hitSlop={8} onPress={() => setModalVisible(false)}>
-                <Text style={styles.notYetLabel}>Not Yet</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
 
       {/* Reminder Sent Modal (Tasker Only) */}
       <Modal visible={reminderModalVisible} transparent animationType="fade" onRequestClose={() => setReminderModalVisible(false)}>
@@ -527,6 +722,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Geist_500Medium',
     fontSize: 13,
     color: COLORS.successText,
+  },
+  completionCode: {
+    fontFamily: 'Geist_700Bold',
+    fontSize: 34,
+    letterSpacing: 6,
+    color: COLORS.brand,
+    paddingVertical: 8,
   },
   timelineHeader: {
     fontFamily: 'Geist_600SemiBold',

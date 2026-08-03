@@ -14,8 +14,11 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useMutation } from '@tanstack/react-query';
 
 import { ScreenHeader } from '@/components/taskhub/screen-header';
+import { updateProfile } from '@/lib/auth/auth-api';
+import { useAuth } from '@/lib/auth/auth-context';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -31,25 +34,34 @@ const COLORS = {
 
 export default function PhoneNumberScreen() {
   const insets = useSafeAreaInsets();
-  const [phoneNumber, setPhoneNumber] = useState('+234 8108294447');
+  const { user, refreshProfile } = useAuth();
   const [newNumber, setNewNumber] = useState('');
   const [isEditing, setIsEditing] = useState(false);
-  const [loading, setLoading] = useState(false);
 
-  const handleUpdateNumber = () => {
-    if (!newNumber.trim()) {
-      Alert.alert('Error', 'Please enter a valid phone number');
-      return;
-    }
+  const phoneNumber = user?.phoneNumber?.trim() || 'Not set';
 
-    setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      setPhoneNumber(newNumber);
+  const save = useMutation({
+    mutationFn: (value: string) => updateProfile({ phoneNumber: value }),
+    onSuccess: async () => {
+      // The screen reads `user.phoneNumber`, so pull the updated profile back in.
+      await refreshProfile();
       setNewNumber('');
       setIsEditing(false);
       Alert.alert('Success', 'Phone number updated successfully.');
-    }, 1500);
+    },
+    onError: (err) =>
+      Alert.alert('Could not update', err instanceof Error ? err.message : 'Please try again.'),
+  });
+
+  const loading = save.isPending;
+
+  const handleUpdateNumber = () => {
+    const value = newNumber.trim();
+    if (!value) {
+      Alert.alert('Error', 'Please enter a valid phone number');
+      return;
+    }
+    save.mutate(value);
   };
 
   return (
@@ -110,7 +122,10 @@ export default function PhoneNumberScreen() {
                 {loading ? (
                   <ActivityIndicator color="#ffffff" size="small" />
                 ) : (
-                  <Text style={styles.saveBtnText}>Verify & Save</Text>
+                  // "Verify &" dropped: `PUT /api/auth/profile` saves the number
+                  // outright. There's no phone-verification endpoint — only email
+                  // OTP exists — so the old label promised a step that never ran.
+                  <Text style={styles.saveBtnText}>Save</Text>
                 )}
               </Pressable>
             </View>

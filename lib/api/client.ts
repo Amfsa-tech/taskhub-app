@@ -47,6 +47,20 @@ export class ApiError extends Error {
     return Boolean(body && typeof body === 'object' && body.emailVerificationRequired);
   }
 
+  /** Machine-readable reason when the backend supplies one (e.g. `no_password_set`). */
+  get code(): string | undefined {
+    const body = this.body as ApiErrorBody | undefined;
+    return body && typeof body === 'object' ? body.code : undefined;
+  }
+
+  /**
+   * True when the account authenticates via Google only and has no password to
+   * change — `POST /api/auth/set-password` is the right call instead.
+   */
+  get isNoPasswordSet(): boolean {
+    return this.code === 'no_password_set';
+  }
+
   get isNetworkError(): boolean {
     return this.status === 0;
   }

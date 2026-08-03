@@ -10,6 +10,8 @@ import { CheckCircle } from '@/components/icons/check-circle';
 // Using Package as placeholder for a MapPin icon if it doesn't exist, though typically we'd have a MapPin
 import { Package } from '@/components/icons/package';
 import { useLocation } from '@/context/LocationContext';
+import { updateUserLocation } from '@/lib/auth/auth-api';
+import { useAuth } from '@/lib/auth/auth-context';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -34,6 +36,19 @@ export default function LocationConfirmScreen() {
   const [loading, setLoading] = useState(!customAddress);
   const [address, setAddress] = useState<string | null>(customAddress || null);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Kept so the confirmed spot can be persisted — `PUT /api/auth/user/location`
+   * wants numeric coordinates, not the display string. Seeded from the map
+   * picker's params when we arrived from there.
+   */
+  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(() => {
+    // Guard the empty string explicitly: `Number('')` is 0, which is finite.
+    if (!lat || !lon) return null;
+    const latitude = Number(lat);
+    const longitude = Number(lon);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+    return { latitude, longitude };
+  });
 
   useEffect(() => {
     let mounted = true;
@@ -47,7 +62,10 @@ export default function LocationConfirmScreen() {
       try {
         setLoading(true);
         const { coords } = await Location.getCurrentPositionAsync({});
-        
+        if (mounted) {
+          setCoords({ latitude: coords.latitude, longitude: coords.longitude });
+        }
+
         if (!GEOAPIFY_API_KEY) {
           if (mounted) {
             setAddress(`${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`);
@@ -90,9 +108,23 @@ export default function LocationConfirmScreen() {
   }, [customAddress]);
 
   const { setSelectedLocation } = useLocation();
+  const { isAuthenticated, accountType } = useAuth();
 
   const finish = async () => {
-    await setSelectedLocation(address || 'UI Main gate');
+    const resolved = address || 'UI Main gate';
+    await setSelectedLocation(resolved);
+
+    // `PUT /api/auth/user/location` is user-only (a tasker token gets a 403) and
+    // needs real coordinates. Persist when we have both; the local context holds
+    // the address either way, so a failure here never blocks onboarding.
+    if (coords && isAuthenticated && accountType === 'user') {
+      try {
+        await updateUserLocation({ ...coords, address: resolved });
+      } catch {
+        // Non-blocking by design.
+      }
+    }
+
     router.push('/success');
   };
   const adjustMap = () => router.push('/location-map');

@@ -4,10 +4,12 @@ import { api } from '@/lib/api/client';
 import type { PickedImage } from '@/lib/image-picker';
 import type {
   AccountType,
+  ChangePasswordPayload,
   ForgotPasswordPayload,
   GoogleAuthPayload,
   GoogleAuthResponse,
   GoogleCompleteSignupPayload,
+  Interest,
   LoginPayload,
   LoginResponse,
   MessageResponse,
@@ -15,10 +17,15 @@ import type {
   RegisterResponse,
   ResendVerificationPayload,
   ResetPasswordPayload,
+  SetPasswordPayload,
   TaskerRegisterPayload,
+  UpdateInterestsResponse,
   UpdateProfilePayload,
   UpdateProfilePictureResponse,
+  UpdateUserLocationPayload,
+  UpdateUserLocationResponse,
   UserRegisterPayload,
+  VerificationStatusResponse,
   VerifyEmailPayload,
 } from './types';
 
@@ -97,6 +104,37 @@ export function updateProfilePicture(image: PickedImage) {
     type: image.type,
   } as unknown as Blob);
   return api.put<UpdateProfilePictureResponse>(`${BASE}/profile-picture`, form);
+}
+
+/**
+ * Change the password of the signed-in account.
+ *
+ * A Google-only account has no stored password: the backend rejects with 400 and
+ * `body.code === 'no_password_set'`, meaning the caller should offer
+ * `setPassword` instead. Use `isNoPasswordSet` on the caught `ApiError`.
+ */
+export function changePassword(payload: ChangePasswordPayload) {
+  return api.post<MessageResponse>(`${BASE}/change-password`, payload);
+}
+
+/** Set a first password on a Google-only account (no current password needed). */
+export function setPassword(payload: SetPasswordPayload) {
+  return api.post<MessageResponse>(`${BASE}/set-password`, payload);
+}
+
+/** Persist the onboarding purpose picks. User accounts only. */
+export function updateInterests(interests: Interest[]) {
+  return api.patch<UpdateInterestsResponse>(`${BASE}/interests`, { interests });
+}
+
+/** Persist the user's approximate location (+ optional resolved address). */
+export function updateUserLocation(payload: UpdateUserLocationPayload) {
+  return api.put<UpdateUserLocationResponse>(`${BASE}/user/location`, payload);
+}
+
+/** Whether the account has completed KYC. One flag covers face + NIN. */
+export function getVerificationStatus(signal?: AbortSignal) {
+  return api.get<VerificationStatusResponse>(`${BASE}/verification-status`, { signal });
 }
 
 export function logout() {

@@ -17,6 +17,8 @@ interface Props {
   onEdit?: () => void;
   onBoost?: () => void;
   onCancel?: () => void;
+  /** Shown only when provided — the backend refuses to delete in-progress or completed tasks. */
+  onDelete?: () => void;
   onReport?: () => void;
 }
 
@@ -26,6 +28,7 @@ export function TaskActionsModal({
   onEdit,
   onBoost,
   onCancel,
+  onDelete,
   onReport,
 }: Props) {
   const insets = useSafeAreaInsets();
@@ -71,6 +74,19 @@ export function TaskActionsModal({
               <Ionicons name="close-circle-outline" size={22} color={COLORS.danger} />
               <Text style={styles.actionTextDanger}>Cancel task</Text>
             </Pressable>
+
+            {/* Delete Task */}
+            {onDelete ? (
+              <Pressable
+                style={({ pressed }) => [styles.actionRow, pressed && styles.pressed]}
+                onPress={() => {
+                  onClose();
+                  onDelete();
+                }}>
+                <Ionicons name="trash-outline" size={22} color={COLORS.danger} />
+                <Text style={styles.actionTextDanger}>Delete task</Text>
+              </Pressable>
+            ) : null}
 
             {/* Report Issue */}
             <Pressable

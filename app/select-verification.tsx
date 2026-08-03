@@ -5,6 +5,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/taskhub/screen-header';
+import { useVerificationStatus } from '@/lib/api/queries';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -13,11 +14,20 @@ const COLORS = {
   textPrimary: '#111122',
   textSecondary: '#5a5a70',
   brand: '#6c3bff',
+  success: '#12b76a',
 };
 
+/**
+ * The backend records one KYC result per account, not one per document type —
+ * so these rows choose how you'd verify, not separate verifications. Only the
+ * NIN row leads anywhere; the rest have no backend support at all.
+ */
 export default function SelectVerificationScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+
+  const verificationQ = useVerificationStatus();
+  const isVerified = verificationQ.data?.data.isVerified === true;
 
   const methods = [
     { label: 'NIN Verification', route: '/nin-verification' },
@@ -30,7 +40,10 @@ export default function SelectVerificationScreen() {
     if (method.route) {
       router.push(method.route as any);
     } else {
-      Alert.alert('Coming Soon', `${method.label} is currently not available in this demo.`);
+      Alert.alert(
+        'Not available',
+        `${method.label} isn’t supported yet. NIN verification is the only method available.`,
+      );
     }
   };
 
@@ -44,6 +57,15 @@ export default function SelectVerificationScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 20 }]}
         showsVerticalScrollIndicator={false}>
         
+        {isVerified ? (
+          <View style={styles.verifiedBanner}>
+            <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
+            <Text style={styles.verifiedText}>
+              Your identity is already verified — no further action needed.
+            </Text>
+          </View>
+        ) : null}
+
         <Text style={styles.sectionHeader}>SELECT A VERIFICATION METHOD</Text>
 
         <View style={styles.groupCard}>
@@ -75,6 +97,22 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 16,
     paddingTop: 24,
+  },
+  verifiedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#edfaf3',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 20,
+  },
+  verifiedText: {
+    flex: 1,
+    fontFamily: 'Geist_500Medium',
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#0d6639',
   },
   sectionHeader: {
     fontFamily: 'Geist_700Bold',

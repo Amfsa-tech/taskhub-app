@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useMutation } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
@@ -14,6 +15,11 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PrimaryButton } from '@/components/taskhub/primary-button';
+import { ApiError } from '@/lib/api/client';
+import { changePassword, setPassword } from '@/lib/auth/auth-api';
+
+/** Backend minimum for `newPassword`. */
+const MIN_PASSWORD_LENGTH = 6;
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -62,10 +68,48 @@ export default function ChangePasswordScreen() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const save = useMutation({
+    mutationFn: async () => {
+      try {
+        await changePassword({ currentPassword, newPassword });
+      } catch (err) {
+        // Google-only accounts have no password to verify against — the backend
+        // says so explicitly, and `set-password` is the correct call.
+        if (err instanceof ApiError && err.isNoPasswordSet) {
+          await setPassword({ newPassword });
+          return;
+        }
+        throw err;
+      }
+    },
+    onSuccess: () => router.replace('/change-password-success'),
+    onError: (err) =>
+      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.'),
+  });
 
   const handleSave = () => {
-    // Navigate to success screen after password change
-    router.replace('/change-password-success');
+    setError(null);
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setError('Please fill in every field.');
+      return;
+    }
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      setError(`New password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('New passwords don’t match.');
+      return;
+    }
+    if (newPassword === currentPassword) {
+      setError('Your new password must be different from the current one.');
+      return;
+    }
+
+    save.mutate();
   };
 
   return (
@@ -108,12 +152,18 @@ export default function ChangePasswordScreen() {
               value={confirmPassword}
               onChangeText={setConfirmPassword}
             />
+
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
           </View>
         </ScrollView>
 
         {/* Footer actions */}
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-          <PrimaryButton label="Save Changes" onPress={handleSave} />
+          <PrimaryButton
+            label={save.isPending ? 'Saving…' : 'Save Changes'}
+            disabled={save.isPending}
+            onPress={handleSave}
+          />
         </View>
       </KeyboardAvoidingView>
     </View>
@@ -161,6 +211,12 @@ const styles = StyleSheet.create({
   },
   field: {
     gap: 6,
+  },
+  errorText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    letterSpacing: -0.24,
+    color: '#dc2626',
   },
   fieldLabel: {
     fontFamily: 'Geist_500Medium',

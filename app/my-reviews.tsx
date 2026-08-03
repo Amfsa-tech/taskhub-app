@@ -2,8 +2,11 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { useReviewsAboutMe } from '@/lib/api/queries';
+import { formatRelativeTime, type ClientReview } from '@/lib/api/tasks';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -14,6 +17,7 @@ const COLORS = {
   textSecondary: '#5a5a70',
   pillBg: '#f2f2f7',
   border: '#e0e0ea',
+  error: '#dc2626',
 };
 
 type ReviewVM = {
@@ -26,54 +30,31 @@ type ReviewVM = {
   time: string;
 };
 
-const ABOUT_YOU_REVIEWS: ReviewVM[] = [
-  {
-    id: '1',
-    name: 'Chioma. A',
-    initials: 'CA',
-    rating: 5,
-    message: 'Super fast and reliable. Delivered my prints exactly on time.',
-    tag: 'Printing & Scanning',
-    time: '2 Days ago',
-  },
-  {
-    id: '2',
-    name: 'Amaka N.',
-    initials: 'AN',
-    rating: 5,
-    message: 'Good work, delivered on time.',
-    tag: 'Printing & Scanning',
-    time: '2 Days ago',
-  },
-];
+/** A review a tasker left about the signed-in client. */
+function toReviewVM(review: ClientReview): ReviewVM {
+  const first = review.tasker?.firstName?.trim() ?? '';
+  const last = review.tasker?.lastName?.trim() ?? '';
+  const name = [first, last ? `${last[0]}.` : ''].filter(Boolean).join(' ') || 'Tasker';
+  const initials = `${first[0] ?? ''}${last[0] ?? ''}`.toUpperCase() || 'T';
 
-const YOU_GAVE_REVIEWS: ReviewVM[] = [
-  {
-    id: '3',
-    name: 'Tunde. A',
-    initials: 'CA',
-    rating: 5,
-    message: 'Very punctual and professional.',
-    tag: 'Printing & Scanning',
-    time: '2 Days ago',
-  },
-  {
-    id: '4',
-    name: 'Ngozi B.',
-    initials: 'AN',
-    rating: 5,
-    message: 'Decent job, but slightly late.',
-    tag: 'Printing & Scanning',
-    time: '2 Days ago',
-  },
-];
+  return {
+    id: review._id,
+    name,
+    initials,
+    rating: review.rating,
+    message: review.reviewText ?? '',
+    tag: review.category ?? '',
+    time: formatRelativeTime(review.ratedAt),
+  };
+}
 
 export default function MyReviewsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'about' | 'gave'>('about');
 
-  const reviews = activeTab === 'about' ? ABOUT_YOU_REVIEWS : YOU_GAVE_REVIEWS;
+  const aboutQ = useReviewsAboutMe();
+  const reviews = (aboutQ.data?.reviews ?? []).map(toReviewVM);
 
   return (
     <View style={styles.container}>
@@ -113,7 +94,36 @@ export default function MyReviewsScreen() {
         style={styles.flex}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 40 }]}
         showsVerticalScrollIndicator={false}>
-        {reviews.map((review) => (
+        {/*
+          "You gave" has no backend: ratings a client leaves are written onto the
+          task itself (`POST /api/tasks/:id/rate`) and there's no endpoint that
+          lists them back. Showing a stub beats showing invented reviews.
+        */}
+        {activeTab === 'gave' ? (
+          <View style={styles.stateBox}>
+            <Text style={styles.stateText}>
+              Reviews you’ve written aren’t available yet.
+            </Text>
+          </View>
+        ) : aboutQ.isLoading ? (
+          <View style={styles.stateBox}>
+            <ActivityIndicator color={COLORS.brand} />
+          </View>
+        ) : aboutQ.isError ? (
+          <View style={styles.stateBox}>
+            <Text style={styles.stateErrorText}>Couldn’t load your reviews.</Text>
+            <Pressable hitSlop={8} onPress={() => aboutQ.refetch()}>
+              <Text style={styles.retry}>Retry</Text>
+            </Pressable>
+          </View>
+        ) : reviews.length === 0 ? (
+          <View style={styles.stateBox}>
+            <Text style={styles.stateText}>No reviews about you yet.</Text>
+          </View>
+        ) : null}
+
+        {activeTab === 'about' &&
+          reviews.map((review) => (
           <View key={review.id} style={styles.card}>
             <View style={styles.cardHeader}>
               <View style={styles.avatar}>
@@ -141,13 +151,17 @@ export default function MyReviewsScreen() {
             {review.message ? <Text style={styles.message}>{review.message}</Text> : null}
 
             <View style={styles.cardFooter}>
-              <View style={styles.tag}>
-                <Text style={styles.tagText}>{review.tag}</Text>
-              </View>
+              {review.tag ? (
+                <View style={styles.tag}>
+                  <Text style={styles.tagText}>{review.tag}</Text>
+                </View>
+              ) : (
+                <View />
+              )}
               <Text style={styles.timeText}>{review.time}</Text>
             </View>
           </View>
-        ))}
+          ))}
       </ScrollView>
     </View>
   );
@@ -224,6 +238,27 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 16,
     gap: 12,
+  },
+  stateBox: {
+    paddingTop: 72,
+    alignItems: 'center',
+    gap: 8,
+  },
+  stateText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+  },
+  stateErrorText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    color: COLORS.error,
+  },
+  retry: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 15,
+    color: COLORS.brand,
   },
   card: {
     backgroundColor: COLORS.surface,

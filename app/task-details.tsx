@@ -33,12 +33,12 @@ const CLIENT_AVATAR = require('@/assets/images/taskers/tasker-1.png');
 import { InviteToBidModal } from '@/components/taskhub/invite-to-bid-modal';
 import { ReadyToHireModal } from '@/components/taskhub/ready-to-hire-modal';
 import { TaskActionsModal } from '@/components/taskhub/task-actions-modal';
-import { ApiError } from '@/lib/api/client';
-import { acceptBid, inviteTasker, sendHireRequest } from '@/lib/api/bids';
+import { inviteTasker, sendHireRequest } from '@/lib/api/bids';
 import { createOrGetConversation } from '@/lib/api/chat';
 import { useTask, useTaskMatches } from '@/lib/api/queries';
 import {
   changeTaskStatus,
+  deleteTask,
   formatNaira,
   formatShortDate,
   locationLabel,
@@ -320,29 +320,6 @@ export default function TaskDetailsScreen() {
     onError: (err) => Alert.alert('Could not send invite', errorMessage(err)),
   });
 
-  const acceptMutation = useMutation({
-    mutationFn: (bidId: string) => acceptBid(bidId),
-    onSuccess: () => {
-      setHire(null);
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      Alert.alert('Bid accepted', 'Payment is held in escrow until the task is completed.', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
-    },
-    onError: (err) => {
-      // A short wallet balance returns 402 — offer to top up.
-      if (err instanceof ApiError && err.status === 402) {
-        setHire(null);
-        Alert.alert('Insufficient balance', errorMessage(err), [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Fund wallet', onPress: () => router.push('/wallet') },
-        ]);
-        return;
-      }
-      Alert.alert('Could not accept bid', errorMessage(err));
-    },
-  });
-
   const hireMutation = useMutation({
     mutationFn: (v: { taskerId: string; amount: number }) =>
       sendHireRequest({ taskId: id as string, taskerId: v.taskerId, amount: v.amount }),
@@ -369,6 +346,31 @@ export default function TaskDetailsScreen() {
       { text: 'No', style: 'cancel' },
       { text: 'Yes', style: 'destructive', onPress: () => cancelMutation.mutate() },
     ]);
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteTask(id as string),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      Alert.alert('Task deleted', 'The task has been removed.', [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    },
+    onError: (err) => Alert.alert('Could not delete task', errorMessage(err)),
+  });
+
+  // The backend refuses to delete once work has started; cancelling is the path
+  // for those, and it also handles the escrow refund.
+  const canDelete = task ? !['in-progress', 'completed'].includes(task.status) : false;
+
+  const confirmDelete = () =>
+    Alert.alert(
+      'Delete task',
+      'This permanently removes the task and notifies anyone who bid. This cannot be undone.',
+      [
+        { text: 'Keep task', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => deleteMutation.mutate() },
+      ],
+    );
 
   const openChatMutation = useMutation({
     mutationFn: (bidId: string) => createOrGetConversation({ taskId: id as string, bidId }),
@@ -861,7 +863,12 @@ export default function TaskDetailsScreen() {
             ]);
             setActionsVisible(false);
           }}
-          onReport={() => router.push('/report-issue')}
+          onReport={() =>
+            router.push({
+              pathname: '/report-issue',
+              params: { taskId: id ?? '', taskTitle: task?.title ?? '' },
+            })
+          }
         />
 
         {/* Withdraw Bid Modal */}
@@ -977,7 +984,10 @@ export default function TaskDetailsScreen() {
                 style={styles.actionRowBtn}
                 onPress={() => {
                   setTaskerActionsVisible(false);
-                  router.push('/report-issue');
+                  router.push({
+                    pathname: '/report-issue',
+                    params: { taskId: id ?? '', taskTitle: task?.title ?? '' },
+                  });
                 }}>
                 <Ionicons name="warning-outline" size={22} color="#ef4444" />
                 <Text style={[styles.actionRowText, { color: '#ef4444' }]}>Report Task</Text>
@@ -1274,22 +1284,42 @@ export default function TaskDetailsScreen() {
             taskerName={hire?.name ?? ''}
             taskerAvatar={hire?.avatar ? { uri: hire.avatar } : null}
             taskerPrice={hire?.price ?? null}
-            confirmLabel={hire?.kind === 'accept' ? 'Confirm & Pay' : 'Send Hire Request'}
-            pending={acceptMutation.isPending || hireMutation.isPending}
+            confirmLabel={hire?.kind === 'accept' ? 'Review & Pay' : 'Send Hire Request'}
+            pending={hireMutation.isPending}
             onConfirm={() => {
               if (!hire) return;
-              if (hire.kind === 'accept') acceptMutation.mutate(hire.bidId);
-              else hireMutation.mutate({ taskerId: hire.taskerId, amount: hire.amount });
+              if (hire.kind === 'accept') {
+                // Accepting debits the wallet for bid + platform fee in one call,
+                // so it goes through the confirm-and-pay screen — that's where the
+                // server-computed fee breakdown and balance check are shown.
+                setHire(null);
+                router.push({ pathname: '/task-agreement', params: { bidId: hire.bidId } });
+              } else {
+                hireMutation.mutate({ taskerId: hire.taskerId, amount: hire.amount });
+              }
             }}
             onClose={() => setHire(null)}
           />
           <TaskActionsModal
             visible={actionsVisible}
             onClose={() => setActionsVisible(false)}
-            onEdit={() => Alert.alert('Edit Task', 'Edit task functionality goes here.')}
-            onBoost={() => Alert.alert('Boost Task', 'Task boosted successfully!')}
+            onEdit={() =>
+              Alert.alert(
+                'Edit task',
+                'Editing a posted task isn’t available in the app yet. Cancel it and post again, or contact support.',
+              )
+            }
+            onBoost={() =>
+              Alert.alert('Boost task', 'Boosting isn’t available yet — it’s coming soon.')
+            }
             onCancel={confirmCancel}
-            onReport={() => router.push('/report-issue')}
+            onDelete={canDelete ? confirmDelete : undefined}
+            onReport={() =>
+              router.push({
+                pathname: '/report-issue',
+                params: { taskId: id ?? '', taskTitle: task?.title ?? '' },
+              })
+            }
           />
         </>
       )}

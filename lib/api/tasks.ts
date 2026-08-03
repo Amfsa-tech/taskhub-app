@@ -334,6 +334,31 @@ export function changeTaskStatus(id: string, status: TaskStatus) {
   );
 }
 
+/**
+ * Delete a task. Owner-only, and refused (400) once the task is `in-progress`
+ * or `completed` — cancel those instead.
+ */
+export function deleteTask(id: string) {
+  return api.delete<{ status: string; message: string }>(`/api/tasks/${id}`);
+}
+
+export interface CompletionCodeResponse {
+  status: string;
+  data: { taskId: string; completionCode: string };
+}
+
+/**
+ * The 6-digit code the task poster reads out to the tasker on completion.
+ *
+ * Owner-only, and **only available while the task is `in-progress`** (400
+ * otherwise) — the code is generated when the tasker starts work. The tasker
+ * submits it via `PATCH /api/tasks/:id/status/tasker` to release escrow, so
+ * this is the client's half of the hand-off, not a completion action itself.
+ */
+export function getCompletionCode(id: string, signal?: AbortSignal) {
+  return api.get<CompletionCodeResponse>(`/api/tasks/${id}/completion-code`, { signal });
+}
+
 // ---- View mappers ----
 
 const NAIRA = '₦';
@@ -365,6 +390,33 @@ export function formatLongDate(iso?: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   return `${MONTHS_LONG[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+}
+
+/**
+ * ISO date -> `2 days ago`, `Just now`, `3 weeks ago`. Falls back to
+ * `formatLongDate` past ~30 days so old items stay precise.
+ */
+export function formatRelativeTime(iso?: string | null): string {
+  if (!iso) return '';
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '';
+
+  const seconds = Math.floor((Date.now() - then) / 1000);
+  if (seconds < 60) return 'Just now';
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} ${minutes === 1 ? 'min' : 'mins'} ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} ${days === 1 ? 'day' : 'days'} ago`;
+
+  const weeks = Math.floor(days / 7);
+  if (days < 30) return `${weeks} ${weeks === 1 ? 'week' : 'weeks'} ago`;
+
+  return formatLongDate(iso);
 }
 
 /** Human label for a task status (e.g. for the detail header badge). */

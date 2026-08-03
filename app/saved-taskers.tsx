@@ -213,6 +213,18 @@ export default function SavedTaskersScreen() {
         taskerName={hireTasker ? savedTaskerName(hireTasker) : ''}
         taskerAvatar={hireTasker?.profilePicture ? { uri: hireTasker.profilePicture } : null}
         taskerPrice={null}
+        confirmLabel="Choose a task"
+        onConfirm={() => {
+          // Hiring needs a task to hire *for*. Without one the old path landed on
+          // the agreement screen with no task and no bid — a dead end.
+          const tasker = hireTasker;
+          setHireTasker(null);
+          if (!tasker) return;
+          router.push({
+            pathname: '/choose-existing-task',
+            params: { taskerId: tasker._id, taskerName: savedTaskerName(tasker) },
+          });
+        }}
         onClose={() => setHireTasker(null)}
       />
     </View>

@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Modal,
   Pressable,
@@ -12,11 +13,14 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/taskhub/screen-header';
+import { useWalletTransactionsPaged } from '@/lib/api/queries';
+import { formatLongDate, formatNaira } from '@/lib/api/tasks';
 import {
-  MOCK_TRANSACTIONS,
-  getStatusStyle,
-  getTransactionIcon,
-} from '@/lib/mock/transactions';
+  transactionIcon,
+  transactionStatus,
+  transactionTitle,
+  type WalletTransactionPurpose,
+} from '@/lib/api/wallet';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -26,27 +30,34 @@ const COLORS = {
   textSecondary: '#5a5a70',
   brand: '#6c3bff',
   success: '#12b76a',
+  error: '#dc2626',
 };
 
-type FilterType = 'All' | 'Escrow' | 'Completed' | 'Failed' | 'Withdrawn';
+/**
+ * Filters map 1:1 onto the backend's `?purpose=` whitelist so paging stays
+ * correct. `withdrawal` is deliberately absent — the user transaction endpoint
+ * rejects it (withdrawals belong to taskers).
+ */
+const FILTERS: { label: string; purpose?: WalletTransactionPurpose }[] = [
+  { label: 'All Transactions' },
+  { label: 'Funding', purpose: 'wallet_funding' },
+  { label: 'In Escrow', purpose: 'escrow_hold' },
+  { label: 'Released', purpose: 'escrow_release' },
+  { label: 'Refunds', purpose: 'escrow_refund' },
+];
 
 export default function TransactionHistoryScreen() {
   const insets = useSafeAreaInsets();
-  const [filter, setFilter] = useState<FilterType>('All');
+  const [filterIndex, setFilterIndex] = useState(0);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [dropPos, setDropPos] = useState({ top: 0, right: 0 });
   const filterBtnRef = useRef<View>(null);
 
-  const filterOptions: FilterType[] = ['All', 'Escrow', 'Completed', 'Failed', 'Withdrawn'];
+  const activeFilter = FILTERS[filterIndex];
+  const txQ = useWalletTransactionsPaged(activeFilter.purpose);
 
-  const filteredTransactions = MOCK_TRANSACTIONS.filter((item) => {
-    if (filter === 'All') return true;
-    if (filter === 'Escrow') return item.status === 'In -Escrow';
-    if (filter === 'Completed') return item.status === 'Success';
-    if (filter === 'Failed') return item.status === 'Failed';
-    if (filter === 'Withdrawn') return item.status === 'Released';
-    return true;
-  });
+  const transactions = txQ.data?.pages.flatMap((p) => p.transactions) ?? [];
+  const totalRecords = txQ.data?.pages[0]?.totalRecords ?? 0;
 
   return (
     <View style={styles.container}>
@@ -55,7 +66,8 @@ export default function TransactionHistoryScreen() {
 
       <View style={styles.subheaderRow}>
         <Text style={styles.subheaderText}>
-          {filter === 'All' ? 'All Transactions' : `${filter} Transactions`}
+          {activeFilter.label}
+          {totalRecords > 0 ? ` · ${totalRecords}` : ''}
         </Text>
         <View
           ref={filterBtnRef}
@@ -78,18 +90,45 @@ export default function TransactionHistoryScreen() {
       </View>
 
       <FlatList
-        data={filteredTransactions}
-        keyExtractor={(item) => item.id}
+        data={transactions}
+        keyExtractor={(item) => item._id}
         contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 20 }]}
         showsVerticalScrollIndicator={false}
+        refreshing={txQ.isRefetching && !txQ.isFetchingNextPage}
+        onRefresh={() => txQ.refetch()}
+        onEndReachedThreshold={0.4}
+        onEndReached={() => {
+          if (txQ.hasNextPage && !txQ.isFetchingNextPage) txQ.fetchNextPage();
+        }}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No transactions found for this filter.</Text>
-          </View>
+          txQ.isLoading ? (
+            <View style={styles.emptyContainer}>
+              <ActivityIndicator color={COLORS.brand} />
+            </View>
+          ) : txQ.isError ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.errorText}>Couldn’t load transactions.</Text>
+              <Pressable hitSlop={8} onPress={() => txQ.refetch()}>
+                <Text style={styles.retry}>Retry</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No transactions found for this filter.</Text>
+            </View>
+          )
+        }
+        ListFooterComponent={
+          txQ.isFetchingNextPage ? (
+            <View style={styles.footerLoading}>
+              <ActivityIndicator color={COLORS.brand} />
+            </View>
+          ) : null
         }
         renderItem={({ item, index }) => {
-          const icon = getTransactionIcon(item.type, item.status);
-          const statusStyle = getStatusStyle(item.status);
+          const icon = transactionIcon(item);
+          const status = transactionStatus(item);
+          const credit = item.type === 'credit';
 
           return (
             <View style={styles.card}>
@@ -99,16 +138,17 @@ export default function TransactionHistoryScreen() {
                   <Ionicons name={icon.name} size={22} color={icon.color} />
                 </View>
                 <View style={styles.txInfo}>
-                  <Text style={styles.txTitle} numberOfLines={1}>{item.title}</Text>
-                  <Text style={styles.txMeta}>{item.date} • {item.source}</Text>
+                  <Text style={styles.txTitle} numberOfLines={1}>
+                    {transactionTitle(item)}
+                  </Text>
+                  <Text style={styles.txMeta}>{formatLongDate(item.createdAt)}</Text>
                 </View>
                 <View style={styles.txPriceCol}>
-                  <Text style={[styles.txAmount, item.amount.startsWith('+') ? styles.creditText : styles.debitText]}>
-                    {item.amount}
+                  <Text style={[styles.txAmount, credit ? styles.creditText : styles.debitText]}>
+                    {credit ? '+ ' : '- '}
+                    {formatNaira(item.amount)}
                   </Text>
-                  <Text style={[styles.txStatus, { color: statusStyle.color }]}>
-                    {statusStyle.label}
-                  </Text>
+                  <Text style={[styles.txStatus, { color: status.color }]}>{status.label}</Text>
                 </View>
               </View>
             </View>
@@ -124,23 +164,18 @@ export default function TransactionHistoryScreen() {
         onRequestClose={() => setIsFilterOpen(false)}>
         <Pressable style={styles.dropBackdrop} onPress={() => setIsFilterOpen(false)} />
         <View style={[styles.dropdown, { top: dropPos.top, right: dropPos.right }]}>
-          {filterOptions.map((opt, idx) => (
+          {FILTERS.map((opt, idx) => (
             <Pressable
-              key={opt}
-              style={[
-                styles.dropItem,
-                idx < filterOptions.length - 1 && styles.dropItemBorder,
-              ]}
+              key={opt.label}
+              style={[styles.dropItem, idx < FILTERS.length - 1 && styles.dropItemBorder]}
               onPress={() => {
-                setFilter(opt);
+                setFilterIndex(idx);
                 setIsFilterOpen(false);
               }}>
-              <Text style={[styles.dropItemText, filter === opt && styles.dropItemTextActive]}>
-                {opt === 'All' ? 'All Transactions' : opt}
+              <Text style={[styles.dropItemText, filterIndex === idx && styles.dropItemTextActive]}>
+                {opt.label}
               </Text>
-              {filter === opt && (
-                <Ionicons name="checkmark" size={16} color={COLORS.brand} />
-              )}
+              {filterIndex === idx && <Ionicons name="checkmark" size={16} color={COLORS.brand} />}
             </Pressable>
           ))}
         </View>
@@ -250,6 +285,21 @@ const styles = StyleSheet.create({
     fontFamily: 'Geist_500Medium',
     fontSize: 15,
     color: COLORS.textSecondary,
+  },
+  errorText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    color: COLORS.error,
+  },
+  retry: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 15,
+    color: COLORS.brand,
+    marginTop: 8,
+  },
+  footerLoading: {
+    paddingVertical: 20,
+    alignItems: 'center',
   },
   modalOverlay: {
     flex: 1,

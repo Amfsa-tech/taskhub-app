@@ -1,3 +1,4 @@
+import { useMutation } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
@@ -9,6 +10,8 @@ import { Circle } from '@/components/icons/circle';
 import { GraduationCap } from '@/components/icons/graduation-cap';
 import { House } from '@/components/icons/house';
 import { Package } from '@/components/icons/package';
+import { updateInterests } from '@/lib/auth/auth-api';
+import type { Interest } from '@/lib/auth/types';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -25,7 +28,8 @@ const COLORS = {
 };
 
 type Category = {
-  key: string;
+  /** Must be one of the backend's `ALLOWED_INTERESTS` slugs — sent verbatim. */
+  key: Interest;
   title: string;
   subtitle: string;
   iconColor: string;
@@ -41,7 +45,7 @@ const CATEGORIES: Category[] = [
     renderIcon: () => <GraduationCap size={24} color={COLORS.onBrand} />,
   },
   {
-    key: 'local',
+    key: 'local_services',
     title: 'Local Services',
     subtitle: 'Repairs, cleaning, electricians, home services.',
     iconColor: '#f59e0b',
@@ -67,18 +71,37 @@ export default function PurposeSelectionScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   // Campus + Local pre-selected to match the design.
-  const [selected, setSelected] = useState<Record<string, boolean>>({
+  const [selected, setSelected] = useState<Partial<Record<Interest, boolean>>>({
     campus: true,
-    local: true,
+    local_services: true,
   });
 
-  const count = Object.values(selected).filter(Boolean).length;
+  const chosen = CATEGORIES.map((c) => c.key).filter((key) => selected[key]);
+  const count = chosen.length;
 
-  const toggle = (key: string) => setSelected((prev) => ({ ...prev, [key]: !prev[key] }));
+  const toggle = (key: Interest) => setSelected((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  const save = useMutation({ mutationFn: () => updateInterests(chosen) });
 
   // Campus task selected -> university picker; otherwise the location prompt.
-  const finish = () =>
+  const goNext = () =>
     router.push(selected.campus ? '/location-university' : '/location-permission');
+
+  /**
+   * Persist the picks, then continue. Onboarding must not dead-end on a network
+   * failure, so a rejected save still advances — interests are a personalization
+   * hint the user can change later in settings, not a gate.
+   */
+  const finish = async () => {
+    if (count > 0) {
+      try {
+        await save.mutateAsync();
+      } catch {
+        // Non-blocking by design.
+      }
+    }
+    goNext();
+  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -124,14 +147,23 @@ export default function PurposeSelectionScreen() {
       {/* Footer */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
         <Pressable
-          style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+          disabled={save.isPending}
+          style={({ pressed }) => [
+            styles.button,
+            (pressed || save.isPending) && styles.buttonPressed,
+          ]}
           onPress={finish}>
           <Text style={styles.buttonLabel}>
-            {count > 0 ? `Continue with ${count} Selected` : 'Continue'}
+            {save.isPending
+              ? 'Saving…'
+              : count > 0
+                ? `Continue with ${count} Selected`
+                : 'Continue'}
           </Text>
         </Pressable>
 
-        <Pressable hitSlop={8} onPress={finish} style={styles.skipRow}>
+        {/* Skip deliberately bypasses the save — nothing was chosen to persist. */}
+        <Pressable hitSlop={8} onPress={goNext} style={styles.skipRow}>
           <Text style={styles.skipLabel}>Skip for now</Text>
         </Pressable>
       </View>

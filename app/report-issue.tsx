@@ -1,4 +1,5 @@
-import { useRouter } from 'expo-router';
+import { useMutation } from '@tanstack/react-query';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import {
@@ -19,6 +20,8 @@ import RadioOff from '@/assets/icons/radio-off.svg';
 import RadioOn from '@/assets/icons/radio-on.svg';
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
+import { buildIssueReportMessage, submitSupportRequest } from '@/lib/api/support';
+import { useAuth } from '@/lib/auth/auth-context';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -26,6 +29,7 @@ const COLORS = {
   border: '#e0e0ea',
   textPrimary: '#111122',
   placeholder: '#a0a0ba',
+  error: '#dc2626',
 };
 
 const ISSUES = [
@@ -41,12 +45,49 @@ const ISSUES = [
 export default function ReportIssueScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  // Optional task context, passed by the report entry points on `task-details`.
+  const { taskId, taskTitle } = useLocalSearchParams<{
+    taskId?: string;
+    taskTitle?: string;
+  }>();
+  const { user } = useAuth();
   const [selected, setSelected] = useState(ISSUES[0]);
   const [details, setDetails] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const reporterName = user?.fullName?.trim() || user?.firstName?.trim() || '';
+  const reporterEmail = user?.emailAddress?.trim() || '';
+
+  const send = useMutation({
+    mutationFn: () =>
+      submitSupportRequest({
+        name: reporterName,
+        email: reporterEmail,
+        message: buildIssueReportMessage({
+          issue: selected,
+          details,
+          taskId,
+          taskTitle,
+        }),
+      }),
+    onSuccess: () => router.push('/report-submitted'),
+    onError: (err) =>
+      setError(
+        err instanceof Error ? err.message : 'Couldn’t send your report. Please try again.',
+      ),
+  });
 
   const submit = () => {
-    // Send to the backend when available; then show the confirmation screen.
-    router.push('/report-submitted');
+    setError(null);
+
+    // The endpoint requires a name and a valid email, and takes them from the
+    // body rather than the token — so a session without them can't report.
+    if (!reporterName || !reporterEmail) {
+      setError('We couldn’t read your account details. Please sign in again and retry.');
+      return;
+    }
+
+    send.mutate();
   };
 
   return (
@@ -105,15 +146,27 @@ export default function ReportIssueScreen() {
                 placeholderTextColor={COLORS.placeholder}
                 multiline
                 textAlignVertical="top"
+                editable={!send.isPending}
               />
             </View>
           </View>
+
+          {/* Tell the user what's attached — the task reference goes into the
+              message body, so it isn't otherwise visible anywhere. */}
+          {taskTitle || taskId ? (
+            <Text style={styles.contextNote}>
+              This report will reference “{taskTitle || taskId}”.
+            </Text>
+          ) : null}
+
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
         </ScrollView>
 
         {/* Footer */}
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
           <PrimaryButton
-            label="Submit Report"
+            label={send.isPending ? 'Sending…' : 'Submit Report'}
+            disabled={send.isPending}
             onPress={submit}
             leftIcon={<FlagWhite width={18} height={18} />}
           />
@@ -178,6 +231,19 @@ const styles = StyleSheet.create({
     letterSpacing: -0.41,
     color: COLORS.textPrimary,
     padding: 0,
+  },
+  contextNote: {
+    fontFamily: 'Geist_400Regular',
+    fontSize: 14,
+    lineHeight: 19,
+    letterSpacing: -0.08,
+    color: '#5a5a70',
+  },
+  errorText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    letterSpacing: -0.24,
+    color: COLORS.error,
   },
   footer: {
     paddingHorizontal: 16,

@@ -1,13 +1,24 @@
 // React Query hooks + query keys for the TaskHub API.
 
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQueries, useQuery } from '@tanstack/react-query';
 
 import { getCategories } from './categories';
 import { getChatNotifications, getConversations, getMessages } from './chat';
 import { getNotifications } from './notifications';
 import { getSavedTaskers } from './saved-taskers';
-import { getWalletBalance, getWalletTransactions } from './wallet';
+import { getKycStatus } from './kyc';
+import { getUniversities } from './universities';
+import { getVerificationStatus } from '@/lib/auth/auth-api';
 import {
+  getBanks,
+  getTaskerBankAccount,
+  getWalletBalance,
+  getWalletTransactions,
+  type WalletTransactionPurpose,
+} from './wallet';
+import { getBidPaymentSummary } from './bids';
+import {
+  getCompletionCode,
   getNearbyTaskers,
   getReviewsAboutMe,
   getTaskById,
@@ -38,6 +49,15 @@ export const queryKeys = {
   chatUnread: () => ['chat', 'unread'] as const,
   walletBalance: () => ['wallet', 'balance'] as const,
   walletTransactions: () => ['wallet', 'transactions'] as const,
+  walletTransactionsPaged: (purpose?: WalletTransactionPurpose) =>
+    ['wallet', 'transactions', 'paged', purpose ?? 'all'] as const,
+  universities: () => ['universities'] as const,
+  verificationStatus: () => ['verification-status'] as const,
+  kycStatus: () => ['kyc', 'status'] as const,
+  banks: () => ['wallet', 'banks'] as const,
+  taskerBankAccount: () => ['wallet', 'tasker', 'bank-account'] as const,
+  paymentSummary: (bidId: string) => ['bids', 'payment-summary', bidId] as const,
+  completionCode: (taskId: string) => ['tasks', 'completion-code', taskId] as const,
 };
 
 /** Tasks posted by the signed-in user. */
@@ -132,6 +152,88 @@ export function useReviewsAboutMe() {
   });
 }
 
+/**
+ * Cost breakdown for accepting a bid. Never cached across mounts: it embeds the
+ * live wallet balance, and a stale `sufficientBalance` would show the user a
+ * "Pay" button the backend then rejects.
+ */
+export function usePaymentSummary(bidId?: string) {
+  return useQuery({
+    queryKey: queryKeys.paymentSummary(bidId ?? ''),
+    queryFn: ({ signal }) => getBidPaymentSummary(bidId as string, signal),
+    enabled: Boolean(bidId),
+    staleTime: 0,
+    gcTime: 0,
+  });
+}
+
+/**
+ * The completion code for an in-progress task. The backend 400s for any other
+ * status, so this only runs once the task is actually in progress.
+ */
+export function useCompletionCode(taskId?: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.completionCode(taskId ?? ''),
+    queryFn: ({ signal }) => getCompletionCode(taskId as string, signal),
+    enabled: Boolean(taskId) && enabled,
+    retry: false,
+  });
+}
+
+/** Every active university. Public, unpaginated, and effectively static. */
+export function useUniversities() {
+  return useQuery({
+    queryKey: queryKeys.universities(),
+    queryFn: ({ signal }) => getUniversities(signal),
+    staleTime: 30 * 60 * 1000,
+  });
+}
+
+/** KYC state for the signed-in account (one flag covers face + NIN). */
+export function useVerificationStatus() {
+  return useQuery({
+    queryKey: queryKeys.verificationStatus(),
+    queryFn: ({ signal }) => getVerificationStatus(signal),
+    staleTime: 60 * 1000,
+  });
+}
+
+/**
+ * Detail of the latest Didit KYC record — rejection reasons, masked NIN.
+ * Not a verification source of truth (it ignores QoreID records); pair it with
+ * `useVerificationStatus`, which reads the account flag.
+ */
+export function useKycStatus() {
+  return useQuery({
+    queryKey: queryKeys.kycStatus(),
+    queryFn: ({ signal }) => getKycStatus(signal),
+    staleTime: 30 * 1000,
+  });
+}
+
+/** Bank list from the payment gateway. Effectively static within a session. */
+export function useBanks(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.banks(),
+    queryFn: ({ signal }) => getBanks(signal),
+    enabled,
+    staleTime: 60 * 60 * 1000,
+  });
+}
+
+/**
+ * The signed-in tasker's payout account (`null` when unset).
+ * Tasker-only — pass `enabled: false` for client accounts, which get a 404.
+ */
+export function useTaskerBankAccount(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.taskerBankAccount(),
+    queryFn: ({ signal }) => getTaskerBankAccount(signal),
+    enabled,
+    retry: false,
+  });
+}
+
 /** All categories (main + sub). Cached longer — they rarely change. */
 export function useCategories() {
   return useQuery({
@@ -197,10 +299,29 @@ export function useWalletBalance() {
   });
 }
 
-/** The user's wallet transaction history. */
+/** The user's wallet transaction history. First page only — backs the wallet screen. */
 export function useWalletTransactions() {
   return useQuery({
     queryKey: queryKeys.walletTransactions(),
     queryFn: ({ signal }) => getWalletTransactions({ limit: 20 }, signal),
+  });
+}
+
+/**
+ * Paged transaction history for the dedicated history screen.
+ *
+ * `purpose` is applied **server-side**, so filtering stays correct across pages
+ * — which client-side filtering of a single page would not be. The backend has
+ * no `status` filter, so there's deliberately no "Failed"-only view here; the
+ * per-row status pill carries that instead.
+ */
+export function useWalletTransactionsPaged(purpose?: WalletTransactionPurpose) {
+  return useInfiniteQuery({
+    queryKey: queryKeys.walletTransactionsPaged(purpose),
+    queryFn: ({ pageParam, signal }) =>
+      getWalletTransactions({ page: pageParam, limit: 20, purpose }, signal),
+    initialPageParam: 1,
+    getNextPageParam: (last) =>
+      last.currentPage < last.totalPages ? last.currentPage + 1 : undefined,
   });
 }

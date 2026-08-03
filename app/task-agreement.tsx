@@ -1,11 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PrimaryButton } from '@/components/taskhub/primary-button';
+import { acceptBid, type PaymentSummary } from '@/lib/api/bids';
+import { usePaymentSummary } from '@/lib/api/queries';
+import { formatNaira } from '@/lib/api/tasks';
 
 const PopperImage = require('@/assets/images/party_popper_3d.png');
 
@@ -20,47 +24,7 @@ const COLORS = {
   successBg: '#edfaf3',
   successText: '#0d6639',
   border: '#e0e0ea',
-};
-
-const TASKERS_DATA: Record<
-  string,
-  {
-    name: string;
-    rating: string;
-    jobs: string;
-    distance: string;
-    avatar: any;
-    message: string;
-    delivery: string;
-  }
-> = {
-  'Chioma. A': {
-    name: 'Chioma. A',
-    rating: '4.9',
-    jobs: '127 Jobs',
-    distance: '0.3km',
-    avatar: require('@/assets/images/chats/chat-1.png'),
-    message: "I can print and deliver within 30 minutes. I'm close to Zik Hall.",
-    delivery: 'Zik Hall , UI',
-  },
-  'Tunde .O': {
-    name: 'Tunde .O',
-    rating: '4.9',
-    jobs: '127 Jobs',
-    distance: '0.3km',
-    avatar: require('@/assets/images/chats/chat-2.jpg'),
-    message: 'I have a fast laser printer and can deliver to any campus hall.',
-    delivery: 'Mellanby Hall, UI',
-  },
-  'Hassan. A': {
-    name: 'Hassan. A',
-    rating: '4.9',
-    jobs: '127 Jobs',
-    distance: '0.3km',
-    avatar: require('@/assets/images/chats/chat-3.jpg'),
-    message: 'Will handle this right away. Sharp printing guaranteed.',
-    delivery: 'Zik Hall , UI',
-  },
+  error: '#dc2626',
 };
 
 function SectionHeader({ title }: { title: string }) {
@@ -76,82 +40,48 @@ function DetailRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function taskerLabel(tasker: PaymentSummary['tasker']): string {
+  if (!tasker) return 'Tasker';
+  const first = tasker.firstName?.trim() ?? '';
+  const lastInitial = tasker.lastName?.trim()?.[0];
+  return [first, lastInitial ? `${lastInitial}.` : ''].filter(Boolean).join(' ') || 'Tasker';
+}
+
+/**
+ * Confirm-and-pay for a bid.
+ *
+ * The backend has no "agreement" or separate payment step: `POST /api/bids/:id/accept`
+ * atomically assigns the task and moves bid + platform fee into escrow. This
+ * screen is therefore a *confirmation* of that one call, and every figure on it
+ * comes from `GET /api/bids/:id/payment-summary` — the fee is computed
+ * server-side, so it is never re-derived here.
+ */
 export default function TaskAgreementScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ taskerName: string; taskerPrice: string; step?: string }>();
+  const queryClient = useQueryClient();
+  const { bidId } = useLocalSearchParams<{ bidId?: string }>();
 
-  const selectedName = params.taskerName || 'Chioma. A';
-  const tasker = TASKERS_DATA[selectedName] || TASKERS_DATA['Chioma. A'];
-  const price = params.taskerPrice || '₦1,500';
+  const summaryQ = usePaymentSummary(bidId);
+  const summary = summaryQ.data?.summary;
 
-  // Dynamic pricing calculation
-  const amountNum = parseInt(price.replace(/[^0-9]/g, ''), 10) || 4000;
-  const formattedAmount = `₦${amountNum.toLocaleString()}`;
-  const platformFeeNum = Math.round(amountNum * 0.1);
-  const formattedFee = `₦${platformFeeNum.toLocaleString()}`;
-  const totalNum = amountNum + platformFeeNum;
-  const formattedTotal = `₦${totalNum.toLocaleString()}`;
+  const [step, setStep] = useState<'summary' | 'hired'>('summary');
 
-  const [step, setStep] = useState<'agreement' | 'confirmed' | 'payment' | 'processing' | 'payment-success' | 'hired'>(
-    (params.step as any) || 'agreement'
-  );
+  const pay = useMutation({
+    mutationFn: () => acceptBid(bidId as string),
+    onSuccess: async () => {
+      // Escrow moved: the task, its list, and the wallet are all stale now.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+        queryClient.invalidateQueries({ queryKey: ['wallet'] }),
+      ]);
+      setStep('hired');
+    },
+    onError: (err) =>
+      Alert.alert('Payment failed', err instanceof Error ? err.message : 'Please try again.'),
+  });
 
-  useEffect(() => {
-    let t: any;
-    if (step === 'confirmed') {
-      t = setTimeout(() => {
-        setStep('payment');
-      }, 2000);
-    } else if (step === 'processing') {
-      t = setTimeout(() => {
-        setStep('payment-success');
-      }, 2000);
-    } else if (step === 'payment-success') {
-      t = setTimeout(() => {
-        setStep('hired');
-      }, 1500);
-    }
-    return () => clearTimeout(t);
-  }, [step]);
-
-  // Render different views based on flow step
-  if (step === 'confirmed') {
-    return (
-      <View style={styles.fullscreenCenter}>
-        <StatusBar style="dark" />
-        <View style={styles.scallopedBadge}>
-          <Ionicons name="checkmark-sharp" size={64} color="#ffffff" />
-        </View>
-        <Text style={styles.confirmedTitle}>Agreement Confirmed</Text>
-        <Text style={styles.confirmedSubtitle}>Proceeding to payment...</Text>
-      </View>
-    );
-  }
-
-  if (step === 'processing') {
-    return (
-      <View style={styles.fullscreenCenter}>
-        <StatusBar style="dark" />
-        <ActivityIndicator size="large" color="#12b76a" />
-        <Text style={styles.confirmedTitle}>Processing Payment</Text>
-        <Text style={styles.confirmedSubtitle}>Please wait a moment</Text>
-      </View>
-    );
-  }
-
-  if (step === 'payment-success') {
-    return (
-      <View style={styles.fullscreenCenter}>
-        <StatusBar style="dark" />
-        <View style={styles.successCheckBadge}>
-          <Ionicons name="checkmark-sharp" size={24} color="#ffffff" />
-        </View>
-        <Text style={styles.confirmedTitle}>Payment Successful</Text>
-      </View>
-    );
-  }
-
+  // ---- Terminal state: hired ----
   if (step === 'hired') {
     return (
       <View style={styles.fullscreenCenter}>
@@ -159,10 +89,21 @@ export default function TaskAgreementScreen() {
         <Image source={PopperImage} style={styles.popperImage} contentFit="contain" />
         <Text style={styles.confirmedTitle}>Tasker Hired Successfully</Text>
         <Text style={styles.hiredSubtitle}>
-          Tasker has been hired and payment is securely held in escrow.
+          {summary
+            ? `${formatNaira(summary.total)} is held securely in escrow until the task is complete.`
+            : 'Payment is securely held in escrow.'}
         </Text>
         <View style={styles.hiredButtons}>
-          <PrimaryButton label="Track my Task" onPress={() => router.replace('/track-task')} />
+          <PrimaryButton
+            label="Track my Task"
+            onPress={() =>
+              router.replace(
+                summary
+                  ? { pathname: '/track-task', params: { id: summary.taskId } }
+                  : '/tasks',
+              )
+            }
+          />
           <Pressable
             style={({ pressed }) => [styles.myTasksButton, pressed && styles.pressed]}
             onPress={() => router.replace('/tasks')}>
@@ -173,83 +114,62 @@ export default function TaskAgreementScreen() {
     );
   }
 
-  if (step === 'payment') {
+  // ---- Paying ----
+  if (pay.isPending) {
+    return (
+      <View style={styles.fullscreenCenter}>
+        <StatusBar style="dark" />
+        <ActivityIndicator size="large" color="#12b76a" />
+        <Text style={styles.confirmedTitle}>Processing Payment</Text>
+        <Text style={styles.confirmedSubtitle}>Please wait a moment</Text>
+      </View>
+    );
+  }
+
+  // ---- Loading / error ----
+  if (summaryQ.isLoading || summaryQ.isError || !summary) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <StatusBar style="dark" />
-
-        {/* Payment Top Bar */}
         <View style={styles.topBar}>
-          <Pressable hitSlop={8} onPress={() => setStep('agreement')} style={styles.backButton}>
+          <Pressable hitSlop={8} onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
           </Pressable>
-          <Text style={styles.headerTitle}>Payment</Text>
-          <Pressable hitSlop={8} style={styles.backButton}>
-            <Ionicons name="headset-outline" size={24} color={COLORS.textPrimary} />
-          </Pressable>
+          <Text style={styles.headerTitle}>Confirm & Pay</Text>
+          <View style={styles.placeholderButton} />
         </View>
-
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}>
-          {/* Payment Summary Card */}
-          <View style={styles.card}>
-            <SectionHeader title="Payment Summary" />
-            <View style={styles.cardBody}>
-              <DetailRow label="Task" value="Printing & Photocopying, Assignment" />
-              <DetailRow label="Tasker" value={selectedName} />
-              <DetailRow label="Task Amount" value={formattedAmount} />
-              <DetailRow label="Platform Fee" value={formattedFee} />
-              <View style={styles.divider} />
-              <View style={styles.priceRow}>
-                <Text style={styles.priceLabel}>Total</Text>
-                <Text style={styles.priceValue}>{formattedTotal}</Text>
-              </View>
-            </View>
-            {/* Escrow Protected Banner */}
-            <View style={styles.escrowBanner}>
-              <Ionicons name="shield-checkmark" size={20} color="#0d6639" />
-              <Text style={styles.escrowText}>
-                Escrow Protected — your payment is only released when the task is complete.
+        <View style={styles.fullscreenCenter}>
+          {summaryQ.isLoading ? (
+            <ActivityIndicator color={COLORS.brand} />
+          ) : (
+            <>
+              <Text style={styles.confirmedSubtitle}>
+                {bidId ? 'Couldn’t load the payment summary.' : 'No bid was selected.'}
               </Text>
-            </View>
-          </View>
-
-          {/* Choose Payment Method */}
-          <Text style={styles.sectionTitle}>Choose Payment Method</Text>
-          <View style={styles.walletRow}>
-            <View style={styles.walletIconWrap}>
-              <Ionicons name="wallet-outline" size={20} color={COLORS.brand} />
-            </View>
-            <View style={styles.walletInfo}>
-              <Text style={styles.walletLabel}>Wallet</Text>
-              <Text style={styles.walletBalance}>₦15,000</Text>
-            </View>
-            <View style={styles.radioOutline}>
-              <View style={styles.radioDot} />
-            </View>
-          </View>
-        </ScrollView>
-
-        <View style={[styles.bottomPayBar, { paddingBottom: insets.bottom + 16 }]}>
-          <PrimaryButton label={`Pay ${formattedTotal} from wallet`} onPress={() => setStep('processing')} />
+              {bidId ? (
+                <Pressable hitSlop={8} onPress={() => summaryQ.refetch()}>
+                  <Text style={styles.editLabel}>Retry</Text>
+                </Pressable>
+              ) : null}
+            </>
+          )}
         </View>
       </View>
     );
   }
 
-  // Step 'agreement'
+  const shortfall = summary.total - summary.walletBalance;
+
+  // ---- Summary ----
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar style="dark" />
 
-      {/* Top Bar */}
       <View style={styles.topBar}>
         <Pressable hitSlop={8} onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
         </Pressable>
-        <Text style={styles.headerTitle}>Confirm Task Agreement</Text>
+        <Text style={styles.headerTitle}>Confirm & Pay</Text>
         <View style={styles.placeholderButton} />
       </View>
 
@@ -257,91 +177,82 @@ export default function TaskAgreementScreen() {
         style={styles.flex}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
-        {/* Task Summary Card */}
+        {/* Payment summary — every figure is server-computed */}
         <View style={styles.card}>
-          <SectionHeader title="TASK SUMMARY" />
+          <SectionHeader title="PAYMENT SUMMARY" />
           <View style={styles.cardBody}>
-            <DetailRow label="Service" value="Printing & Photocopying, Assignment" />
-            <DetailRow label="Location" value="UI, Ibadan" />
-            <DetailRow label="Title" value="Someone to print and do my assignment" />
-            <DetailRow label="Deadline" value="18th of May, 2026" />
-          </View>
-        </View>
-
-        {/* Tasker Card */}
-        <View style={styles.card}>
-          <SectionHeader title="TASKER" />
-          <View style={styles.taskerHeader}>
-            <View style={styles.avatarWrap}>
-              <Image source={tasker.avatar} style={styles.avatar} contentFit="cover" />
-            </View>
-            <View style={styles.taskerInfo}>
-              <View style={styles.nameRow}>
-                <Text style={styles.taskerName}>{tasker.name}</Text>
-                <View style={styles.verifiedBadge}>
-                  <Ionicons name="checkmark-sharp" size={10} color={COLORS.successText} />
-                  <Text style={styles.verifiedText}>Verified</Text>
-                </View>
-              </View>
-              <View style={styles.statsRow}>
-                <Ionicons name="star" size={14} color="#fbbf24" style={styles.starIcon} />
-                <Text style={styles.statsText}>{tasker.rating}</Text>
-                <Text style={styles.bullet}>•</Text>
-                <Text style={styles.statsText}>{tasker.jobs}</Text>
-                <Text style={styles.bullet}>•</Text>
-                <Text style={styles.statsText}>{tasker.distance}</Text>
-              </View>
+            <DetailRow label="Task" value={summary.taskTitle} />
+            <DetailRow label="Tasker" value={taskerLabel(summary.tasker)} />
+            <DetailRow label="Task Amount" value={formatNaira(summary.taskAmount)} />
+            <DetailRow
+              label={`Platform Fee (${Math.round(summary.feeRate * 100)}%)`}
+              value={formatNaira(summary.platformFee)}
+            />
+            <View style={styles.divider} />
+            <View style={styles.priceRow}>
+              <Text style={styles.priceLabel}>Total</Text>
+              <Text style={styles.priceValue}>{formatNaira(summary.total)}</Text>
             </View>
           </View>
-          <View style={styles.divider} />
-          <View style={styles.priceRow}>
-            <Text style={styles.priceLabel}>Bid Price</Text>
-            <Text style={styles.priceValue}>{price}</Text>
+
+          <View style={styles.escrowBanner}>
+            <Ionicons name="shield-checkmark" size={20} color="#0d6639" />
+            <Text style={styles.escrowText}>
+              Escrow Protected — your payment is only released when the task is complete.
+            </Text>
           </View>
         </View>
 
-        {/* Final Details Card */}
-        <View style={styles.card}>
-          <SectionHeader title="FINAL DETAILS" />
-          <View style={styles.cardBody}>
-            <DetailRow label="Delivery" value={tasker.delivery} />
-            <DetailRow label="Deadline" value="UI, Ibadan" />
-            <DetailRow label="Details" value={tasker.message} />
+        {/* Wallet is the only funding source: accept debits the wallet directly. */}
+        <Text style={styles.sectionTitle}>Payment Method</Text>
+        <View style={styles.walletRow}>
+          <View style={styles.walletIconWrap}>
+            <Ionicons name="wallet-outline" size={20} color={COLORS.brand} />
           </View>
-          <View style={styles.divider} />
-          <View style={styles.priceRow}>
-            <Text style={styles.priceLabel}>Final Agreed Price</Text>
-            <Text style={styles.priceValue}>{price}</Text>
+          <View style={styles.walletInfo}>
+            <Text style={styles.walletLabel}>Wallet</Text>
+            <Text style={styles.walletBalance}>{formatNaira(summary.walletBalance)}</Text>
+          </View>
+          <View style={styles.radioOutline}>
+            <View style={styles.radioDot} />
           </View>
         </View>
 
-        {/* Warning Banner */}
-        <View style={styles.warningBanner}>
-          <Ionicons name="warning" size={20} color="#d97706" style={styles.warningIcon} />
-          <Text style={styles.warningText}>
-            Only continue when both sides understand the task clearly. Payment is held in escrow
-            until the task is complete.
-          </Text>
-        </View>
-
-        {/* Action Buttons */}
-        <View style={styles.buttonContainer}>
-          <PrimaryButton label="Send Agreement to Tasker" onPress={() => setStep('confirmed')} />
-
-          <Pressable
-            style={({ pressed }) => [styles.editButton, pressed && styles.pressed]}
-            onPress={() => Alert.alert('Edit', 'Edit Details functionality.')}>
-            <Ionicons name="pencil" size={16} color={COLORS.brand} />
-            <Text style={styles.editLabel}>Edit Details</Text>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
-            onPress={() => router.back()}>
-            <Text style={styles.cancelLabel}>Cancel</Text>
-          </Pressable>
-        </View>
+        {!summary.sufficientBalance ? (
+          <View style={styles.warningBanner}>
+            <Ionicons name="warning" size={20} color="#d97706" style={styles.warningIcon} />
+            <Text style={styles.warningText}>
+              You need {formatNaira(shortfall)} more to cover this payment. Fund your wallet to
+              continue.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.warningBanner}>
+            <Ionicons name="warning" size={20} color="#d97706" style={styles.warningIcon} />
+            <Text style={styles.warningText}>
+              Only continue when both sides understand the task clearly. Paying assigns the task to
+              this tasker straight away.
+            </Text>
+          </View>
+        )}
       </ScrollView>
+
+      <View style={[styles.bottomPayBar, { paddingBottom: insets.bottom + 16 }]}>
+        {summary.sufficientBalance ? (
+          <PrimaryButton
+            label={`Pay ${formatNaira(summary.total)} from wallet`}
+            onPress={() => pay.mutate()}
+          />
+        ) : (
+          <PrimaryButton label="Fund Wallet" onPress={() => router.push('/wallet')} />
+        )}
+
+        <Pressable
+          style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
+          onPress={() => router.back()}>
+          <Text style={styles.cancelLabel}>Cancel</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }

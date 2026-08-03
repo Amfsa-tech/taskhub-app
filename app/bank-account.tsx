@@ -1,9 +1,10 @@
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useRef, useState } from 'react';
 import {
-  Image,
+  ActivityIndicator,
   Modal,
   Pressable,
   ScrollView,
@@ -13,6 +14,10 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { queryKeys, useBanks, useTaskerBankAccount } from '@/lib/api/queries';
+import { setTaskerBankAccount, type Bank } from '@/lib/api/wallet';
+import { useAuth } from '@/lib/auth/auth-context';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -28,41 +33,36 @@ const COLORS = {
   dangerText: '#ef4444',
 };
 
-const NIGERIAN_BANKS = [
-  'OPAY',
-  'Kuda Bank',
-  'Guaranty Trust Bank (GTB)',
-  'Zenith Bank',
-  'Access Bank',
-  'United Bank for Africa (UBA)',
-  'First Bank of Nigeria',
-];
-
-type BankAccount = {
-  id: string;
-  bankName: string;
-  accountName: string;
-  accountNumber: string;
-};
-
+/**
+ * Payout bank account — **tasker only**.
+ *
+ * Three things the previous mock got structurally wrong, all fixed here:
+ *   1. The backend stores exactly **one** account (`Tasker.bankAccount` is a
+ *      single embedded object). Saving replaces it; there is no delete endpoint.
+ *      The old screen kept an array with add/remove.
+ *   2. The **account name is not entered** — the backend resolves it with the
+ *      payment gateway from the number + bank code. That resolution is the
+ *      validation, so a typo fails loudly instead of saving a wrong name.
+ *   3. Banks come from `GET /api/wallet/banks` because saving needs the bank
+ *      `code`, which a hardcoded list of display names can't supply.
+ */
 export default function BankAccountScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
+  const { accountType } = useAuth();
+
+  const isTasker = accountType === 'tasker';
+
+  const accountQ = useTaskerBankAccount(isTasker);
+  const banksQ = useBanks(isTasker);
+  const account = accountQ.data?.data ?? null;
 
   // UI state: 'list' | 'add'
   const [view, setView] = useState<'list' | 'add'>('list');
-  const [accounts, setAccounts] = useState<BankAccount[]>([
-    {
-      id: '1',
-      accountNumber: '8108294447',
-      accountName: 'Elliot Eniola Samuel',
-      bankName: 'OPAY',
-    },
-  ]);
 
   // Form state
-  const [selectedBank, setSelectedBank] = useState('');
-  const [accountName, setAccountName] = useState('');
+  const [selectedBank, setSelectedBank] = useState<Bank | null>(null);
   const [accountNumber, setAccountNumber] = useState('');
 
   // Dropdown state
@@ -70,36 +70,50 @@ export default function BankAccountScreen() {
   const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0 });
   const bankBtnRef = useRef<View>(null);
 
-  // Success modal state
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-  const canSave = selectedBank && accountName.trim() && accountNumber.trim().length === 10;
+  const banks = banksQ.data?.data ?? [];
+  const canSave = Boolean(selectedBank) && accountNumber.trim().length === 10;
 
-  const handleSave = () => {
-    if (!canSave) return;
-    const newAccount: BankAccount = {
-      id: Date.now().toString(),
-      bankName: selectedBank,
-      accountName: accountName.trim(),
-      accountNumber: accountNumber.trim(),
-    };
-    setAccounts((prev) => [...prev, newAccount]);
-    // Reset form
-    setSelectedBank('');
-    setAccountName('');
-    setAccountNumber('');
-    
-    // Show success modal & auto-dismiss
-    setShowSuccessModal(true);
-    setTimeout(() => {
-      setShowSuccessModal(false);
-      setView('list');
-    }, 2000);
-  };
+  const save = useMutation({
+    mutationFn: () =>
+      setTaskerBankAccount({
+        accountNumber: accountNumber.trim(),
+        bankCode: (selectedBank as Bank).code,
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.taskerBankAccount() });
+      setSelectedBank(null);
+      setAccountNumber('');
+      setShowSuccessModal(true);
+      setTimeout(() => {
+        setShowSuccessModal(false);
+        setView('list');
+      }, 1600);
+    },
+  });
 
-  const handleDelete = (id: string) => {
-    setAccounts((prev) => prev.filter((a) => a.id !== id));
-  };
+  // Client accounts have no payout account to manage — every endpoint here
+  // resolves a Tasker and 404s for them.
+  if (!isTasker) {
+    return (
+      <View style={styles.container}>
+        <StatusBar style="dark" />
+        <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+          <Pressable onPress={() => router.back()} hitSlop={8} style={styles.backBtn}>
+            <MaterialCommunityIcons name="chevron-left" size={26} color={COLORS.textPrimary} />
+          </Pressable>
+          <Text style={styles.headerTitle}>Bank Account</Text>
+          <View style={{ width: 34 }} />
+        </View>
+        <View style={styles.successContainer}>
+          <Text style={styles.infoCardSub}>
+            Payout accounts belong to tasker profiles. Switch to tasker mode to add one.
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -139,22 +153,36 @@ export default function BankAccountScreen() {
         {view === 'list' ? (
           // ─── List View ───
           <View style={styles.listSection}>
-            {accounts.map((acc) => (
-              <View key={acc.id} style={styles.accountCard}>
-                <View style={styles.accountDetails}>
-                  <Text style={styles.accountNo}>{acc.accountNumber}</Text>
-                  <Text style={styles.accountHolder}>{acc.accountName}</Text>
-                  <Text style={styles.bankNameLabel}>{acc.bankName}</Text>
-                </View>
-                <Pressable onPress={() => handleDelete(acc.id)} hitSlop={8} style={styles.deleteBtn}>
-                  <MaterialCommunityIcons name="trash-can-outline" size={20} color={COLORS.dangerText} />
+            {accountQ.isLoading ? (
+              <View style={styles.successContainer}>
+                <ActivityIndicator color={COLORS.brand} />
+              </View>
+            ) : accountQ.isError ? (
+              <View style={styles.successContainer}>
+                <Text style={styles.infoCardSub}>Couldn’t load your payout account.</Text>
+                <Pressable hitSlop={8} onPress={() => accountQ.refetch()}>
+                  <Text style={styles.addBankText}>Retry</Text>
                 </Pressable>
               </View>
-            ))}
+            ) : account ? (
+              <View style={styles.accountCard}>
+                <View style={styles.accountDetails}>
+                  <Text style={styles.accountNo}>{account.accountNumber}</Text>
+                  <Text style={styles.accountHolder}>{account.accountName}</Text>
+                  <Text style={styles.bankNameLabel}>{account.bankName}</Text>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.successContainer}>
+                <Text style={styles.infoCardSub}>No payout account saved yet.</Text>
+              </View>
+            )}
 
-            {/* Add new bank box */}
+            {/* One account per tasker: saving another replaces this one. */}
             <Pressable style={styles.addBankBox} onPress={() => setView('add')}>
-              <Text style={styles.addBankText}>Add new bank</Text>
+              <Text style={styles.addBankText}>
+                {account ? 'Replace bank account' : 'Add bank account'}
+              </Text>
             </Pressable>
           </View>
         ) : (
@@ -163,10 +191,7 @@ export default function BankAccountScreen() {
             {/* Bank Name Field */}
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>Bank name</Text>
-              <View
-                ref={bankBtnRef}
-                onLayout={() => {}}
-                style={styles.dropdownAnchor}>
+              <View ref={bankBtnRef} style={styles.dropdownAnchor}>
                 <Pressable
                   style={styles.dropdownBtn}
                   onPress={() => {
@@ -176,7 +201,8 @@ export default function BankAccountScreen() {
                     });
                   }}>
                   <Text style={[styles.dropdownBtnText, !selectedBank && styles.placeholderText]}>
-                    {selectedBank || 'Select your bank'}
+                    {selectedBank?.name ||
+                      (banksQ.isLoading ? 'Loading banks…' : 'Select your bank')}
                   </Text>
                   <MaterialCommunityIcons
                     name={showBankDrop ? 'chevron-up' : 'chevron-down'}
@@ -185,18 +211,11 @@ export default function BankAccountScreen() {
                   />
                 </Pressable>
               </View>
-            </View>
-
-            {/* Account Name Field */}
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Account name</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Account holder name"
-                placeholderTextColor={COLORS.textSecondary}
-                value={accountName}
-                onChangeText={setAccountName}
-              />
+              {banksQ.isError ? (
+                <Pressable hitSlop={8} onPress={() => banksQ.refetch()}>
+                  <Text style={styles.errorText}>Couldn’t load banks. Tap to retry.</Text>
+                </Pressable>
+              ) : null}
             </View>
 
             {/* Account Number Field */}
@@ -210,6 +229,7 @@ export default function BankAccountScreen() {
                 onChangeText={(text) => setAccountNumber(text.replace(/[^0-9]/g, ''))}
                 keyboardType="number-pad"
                 maxLength={10}
+                editable={!save.isPending}
               />
             </View>
 
@@ -217,9 +237,18 @@ export default function BankAccountScreen() {
             <View style={styles.calloutCard}>
               <Ionicons name="information-circle-outline" size={20} color={COLORS.infoText} />
               <Text style={styles.calloutText}>
-                Payouts typically arrive in 1–2 business days. You can update these details anytime.
+                We’ll confirm the account name with your bank before saving. Payouts typically
+                arrive in 1–2 business days.
               </Text>
             </View>
+
+            {save.isError ? (
+              <Text style={styles.errorText}>
+                {save.error instanceof Error
+                  ? save.error.message
+                  : 'Could not verify those bank details.'}
+              </Text>
+            ) : null}
           </View>
         )}
       </ScrollView>
@@ -228,12 +257,16 @@ export default function BankAccountScreen() {
       {view === 'add' && (
         <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 16 }]}>
           <Pressable
-            style={[styles.saveBtn, !canSave && styles.saveBtnDisabled]}
-            disabled={!canSave}
-            onPress={handleSave}>
-            <Text style={[styles.saveBtnText, !canSave && styles.saveBtnTextDisabled]}>
-              Save bank Details
-            </Text>
+            style={[styles.saveBtn, (!canSave || save.isPending) && styles.saveBtnDisabled]}
+            disabled={!canSave || save.isPending}
+            onPress={() => save.mutate()}>
+            {save.isPending ? (
+              <ActivityIndicator color="#ffffff" size="small" />
+            ) : (
+              <Text style={[styles.saveBtnText, !canSave && styles.saveBtnTextDisabled]}>
+                Save bank Details
+              </Text>
+            )}
           </Pressable>
         </View>
       )}
@@ -246,24 +279,22 @@ export default function BankAccountScreen() {
         onRequestClose={() => setShowBankDrop(false)}>
         <Pressable style={styles.dropBackdrop} onPress={() => setShowBankDrop(false)} />
         <View style={[styles.dropdownList, { top: dropPos.top, left: dropPos.left, width: dropPos.width }]}>
-          <ScrollView style={{ maxHeight: 200 }}>
-            {NIGERIAN_BANKS.map((bank, idx) => (
+          <ScrollView style={{ maxHeight: 240 }}>
+            {banks.map((bank, idx) => (
               <Pressable
-                key={bank}
-                style={[
-                  styles.dropItem,
-                  idx < NIGERIAN_BANKS.length - 1 && styles.dropItemBorder,
-                ]}
+                key={bank.code}
+                style={[styles.dropItem, idx < banks.length - 1 && styles.dropItemBorder]}
                 onPress={() => {
                   setSelectedBank(bank);
                   setShowBankDrop(false);
                 }}>
-                <Text style={[styles.dropItemText, selectedBank === bank && styles.dropItemTextActive]}>
-                  {bank}
+                <Text
+                  style={[
+                    styles.dropItemText,
+                    selectedBank?.code === bank.code && styles.dropItemTextActive,
+                  ]}>
+                  {bank.name}
                 </Text>
-                {selectedBank === bank && (
-                  <MaterialCommunityIcons name="check" size={16} color={COLORS.brand} />
-                )}
               </Pressable>
             ))}
           </ScrollView>
@@ -271,27 +302,15 @@ export default function BankAccountScreen() {
       </Modal>
 
       {/* Success Modal */}
-      <Modal
-        visible={showSuccessModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowSuccessModal(false)}>
-        <Pressable 
-          style={styles.modalOverlay} 
-          onPress={() => {
-            setShowSuccessModal(false);
-            setView('list');
-          }}>
+      <Modal visible={showSuccessModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
           <View style={styles.successContainer}>
-            <Image
-              source={require('../assets/images/SealCheck.png')}
-              style={styles.sealCheck}
-              resizeMode="contain"
-            />
-            <Text style={styles.successText}>Bank Account Successfully</Text>
-            <Text style={styles.successText}>added</Text>
+            <View style={styles.sealCheck}>
+              <Ionicons name="checkmark-sharp" size={28} color="#ffffff" />
+            </View>
+            <Text style={styles.successText}>Bank account saved</Text>
           </View>
-        </Pressable>
+        </View>
       </Modal>
     </View>
   );
@@ -423,6 +442,13 @@ const styles = StyleSheet.create({
     fontFamily: 'Geist_400Regular',
     fontSize: 15,
     color: COLORS.textPrimary,
+  },
+  errorText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 14,
+    lineHeight: 20,
+    color: COLORS.dangerText,
+    marginTop: 6,
   },
   placeholderText: { color: COLORS.textSecondary },
   input: {

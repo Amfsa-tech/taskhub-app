@@ -1,14 +1,17 @@
+import { useMutation } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Clock from '@/assets/icons/clock.svg';
 import MapPin from '@/assets/icons/map-pin.svg';
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
-import { useTasks } from '@/context/TaskContext';
+import { inviteTasker } from '@/lib/api/bids';
+import { useUserTasks } from '@/lib/api/queries';
+import { formatNaira, formatShortDate, locationLabel } from '@/lib/api/tasks';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -21,75 +24,47 @@ const COLORS = {
   border: '#e0e0ea',
 };
 
-const DEFAULT_OPEN_TASKS = [
-  {
-    id: 'sample-open-1',
-    title: 'Print My Assignment',
-    price: '₦1,000',
-    location: 'UI Main gate',
-    date: '18 May',
-  },
-  {
-    id: 'sample-open-2',
-    title: 'Deliver Package to Lekki',
-    price: '₦1,000',
-    location: 'Yaba - Lekki',
-    date: '18 May',
-  },
-  {
-    id: 'sample-open-3',
-    title: 'Design a flyer for event',
-    price: '₦1,000',
-    location: 'Remote',
-    date: '18 May',
-  },
-  {
-    id: 'sample-open-4',
-    title: 'Need a Plumber in yaba',
-    price: '₦1,000',
-    location: 'Yaba Lagos',
-    date: '18 May',
-  },
-];
-
 export default function ChooseExistingTaskScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { taskerName } = useLocalSearchParams<{ taskerName?: string }>();
-  const name = taskerName || 'Chioma A.';
-  
-  const { tasks } = useTasks();
+  const { taskerId, taskerName } = useLocalSearchParams<{
+    taskerId?: string;
+    taskerName?: string;
+  }>();
+  const name = taskerName || 'this tasker';
+
+  // Only the user's own open tasks can take an invite.
+  const tasksQ = useUserTasks({ status: 'open' });
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Merge context tasks (posted by user) and sample open tasks for a rich visual selection
-  const displayTasks = [
-    ...tasks.map((t) => ({
-      id: t.id,
-      title: t.title,
-      price: t.price,
-      location: t.location,
-      date: t.date,
-    })),
-    ...DEFAULT_OPEN_TASKS.filter(
-      (def) => !tasks.some((t) => t.title.toLowerCase() === def.title.toLowerCase())
-    ),
-  ];
+  const displayTasks = (tasksQ.data?.tasks ?? []).map((t) => ({
+    id: t._id,
+    title: t.title,
+    price: formatNaira(t.budget),
+    location: locationLabel(t),
+    date: formatShortDate(t.deadline || t.createdAt),
+  }));
+
+  const invite = useMutation({
+    mutationFn: (taskId: string) => inviteTasker({ taskId, taskerId: taskerId as string }),
+    onSuccess: () => {
+      // The backend opens (or reuses) the conversation and posts the invite as a
+      // system message, so the inbox is where the user picks the thread up.
+      Alert.alert('Invite sent', `${name} has been invited to bid on your task.`, [
+        { text: 'OK', onPress: () => router.replace('/messages') },
+      ]);
+    },
+    onError: (err) =>
+      Alert.alert('Could not send invite', err instanceof Error ? err.message : 'Please try again.'),
+  });
 
   const handleContinue = () => {
     if (!selectedId) return;
-    const selectedTask = displayTasks.find((t) => t.id === selectedId);
-    if (!selectedTask) return;
-
-    router.push({
-      pathname: '/chat',
-      params: {
-        name,
-        showInviteBanner: 'true',
-        invitedTaskTitle: selectedTask.title,
-        taskTitle: selectedTask.title,
-        taskPrice: selectedTask.price,
-      },
-    });
+    if (!taskerId) {
+      Alert.alert('No tasker selected', 'Open a tasker’s profile and try again.');
+      return;
+    }
+    invite.mutate(selectedId);
   };
 
   return (
@@ -101,6 +76,28 @@ export default function ChooseExistingTaskScreen() {
         <Text style={styles.subtitle}>
           Select a task to invite <Text style={styles.bold}>{name}</Text> to.
         </Text>
+
+        {tasksQ.isLoading ? (
+          <View style={styles.listState}>
+            <ActivityIndicator color={COLORS.brand} />
+          </View>
+        ) : tasksQ.isError ? (
+          <View style={styles.listState}>
+            <Text style={styles.listStateText}>Couldn’t load your open tasks.</Text>
+            <Pressable hitSlop={8} onPress={() => tasksQ.refetch()}>
+              <Text style={styles.listStateRetry}>Retry</Text>
+            </Pressable>
+          </View>
+        ) : displayTasks.length === 0 ? (
+          <View style={styles.listState}>
+            <Text style={styles.listStateText}>
+              You have no open tasks to invite anyone to. Post one first.
+            </Text>
+            <Pressable hitSlop={8} onPress={() => router.replace('/post')}>
+              <Text style={styles.listStateRetry}>Post a task</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         <View style={styles.list}>
           {displayTasks.map((task) => {
@@ -137,7 +134,11 @@ export default function ChooseExistingTaskScreen() {
 
       {/* Footer Continue Button */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-        <PrimaryButton label="Continue" onPress={handleContinue} disabled={!selectedId} />
+        <PrimaryButton
+          label={invite.isPending ? 'Sending invite…' : 'Continue'}
+          onPress={handleContinue}
+          disabled={!selectedId || invite.isPending}
+        />
       </View>
     </View>
   );
@@ -155,6 +156,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 20,
     paddingBottom: 40,
+  },
+  listState: {
+    paddingTop: 48,
+    alignItems: 'center',
+    gap: 8,
+  },
+  listStateText: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+  },
+  listStateRetry: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 15,
+    color: COLORS.brand,
   },
   subtitle: {
     fontFamily: 'Geist_400Regular',

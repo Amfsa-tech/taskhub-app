@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useVerificationStatus } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth/auth-context';
 
 const COLORS = {
@@ -68,6 +69,21 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { signOut } = useAuth();
+
+  /**
+   * The backend exposes a single KYC boolean per account (`isKYCVerified` for
+   * users, `verifyIdentity` for taskers) — there's no per-method breakdown, so
+   * both security rows below read from the same flag. Splitting them would need
+   * separate backend fields.
+   */
+  const verificationQ = useVerificationStatus();
+  const isVerified = verificationQ.data?.data.isVerified;
+  const verificationLabel = verificationQ.isLoading
+    ? '…'
+    : isVerified
+      ? 'Verified'
+      : 'Not verified';
+  const verificationColor = isVerified ? COLORS.successText : '#d97706';
 
   // Notification toggles state
   const [notifications, setNotifications] = useState({
@@ -281,9 +297,9 @@ export default function SettingsScreen() {
               iconBg="#eff6ff"
               iconColor="#1d4ed8"
               label="Face verification"
-              value="Verified"
-              valueColor={COLORS.successText}
-              onPress={() => Alert.alert('Security', 'Face verification details.')}
+              value={verificationLabel}
+              valueColor={verificationColor}
+              onPress={() => router.push('/select-verification')}
             />
             <View style={styles.divider} />
             <SettingRow
@@ -291,8 +307,8 @@ export default function SettingsScreen() {
               iconBg="#fff1f1"
               iconColor="#b01515"
               label="NIN Verification"
-              value="Pending"
-              valueColor="#d97706"
+              value={verificationLabel}
+              valueColor={verificationColor}
               onPress={() => router.push('/select-verification')}
             />
             <View style={styles.divider} />
