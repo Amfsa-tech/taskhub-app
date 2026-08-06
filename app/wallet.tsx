@@ -1,4 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
@@ -58,6 +59,7 @@ function TransactionRow({ tx }: { tx: WalletTransaction }) {
 
 export default function WalletScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const { accountType } = useAuth();
   const isTasker = accountType === 'tasker';
@@ -165,6 +167,13 @@ export default function WalletScreen() {
               style={({ pressed }) => [styles.fundButton, pressed && styles.pressed]}
               onPress={() => setFundOpen(true)}>
               <Text style={styles.fundLabel}>Fund Wallet</Text>
+            </Pressable>
+          )}
+          {isTasker && (
+            <Pressable
+              style={({ pressed }) => [styles.fundButton, pressed && styles.pressed]}
+              onPress={() => router.push('/withdraw')}>
+              <Text style={styles.fundLabel}>Withdraw</Text>
             </Pressable>
           )}
         </View>

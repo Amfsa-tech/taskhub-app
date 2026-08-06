@@ -113,6 +113,7 @@ function RootNavigator() {
                     <Stack.Screen name="nin-verification" options={{ headerShown: false }} />
                     <Stack.Screen name="phone-number" options={{ headerShown: false }} />
                     <Stack.Screen name="wallet" options={{ headerShown: false }} />
+                    <Stack.Screen name="withdraw" options={{ headerShown: false }} />
                     <Stack.Screen name="transaction-history" options={{ headerShown: false }} />
                     <Stack.Screen name="performance" options={{ headerShown: false }} />
                     <Stack.Screen name="tasker-services" options={{ headerShown: false }} />
