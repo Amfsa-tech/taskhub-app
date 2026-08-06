@@ -29,17 +29,24 @@ import Shield from '@/assets/icons/shield.svg';
 import Star from '@/assets/icons/star.svg';
 
 const SHIELD_IMAGE = require('@/assets/images/3d-shield.png');
-const CLIENT_AVATAR = require('@/assets/images/taskers/tasker-1.png');
 import { InviteToBidModal } from '@/components/taskhub/invite-to-bid-modal';
 import { ReadyToHireModal } from '@/components/taskhub/ready-to-hire-modal';
 import { TaskActionsModal } from '@/components/taskhub/task-actions-modal';
-import { inviteTasker, sendHireRequest } from '@/lib/api/bids';
+import {
+  createBid,
+  deleteBid,
+  inviteTasker,
+  respondToHireRequest,
+  sendHireRequest,
+  updateBid,
+} from '@/lib/api/bids';
 import { createOrGetConversation } from '@/lib/api/chat';
-import { useTask, useTaskMatches } from '@/lib/api/queries';
+import { useTask, useTaskMatches, useTaskerBids } from '@/lib/api/queries';
 import {
   changeTaskStatus,
   deleteTask,
   formatNaira,
+  formatRelativeTime,
   formatShortDate,
   locationLabel,
   statusLabel,
@@ -271,20 +278,26 @@ export default function TaskDetailsScreen() {
 
   const { accountType } = useAuth();
   const isTasker = accountType === 'tasker';
-  const [nudgeModalVisible, setNudgeModalVisible] = useState(false);
 
-  const getMockState = () => {
-    if (id && id.toString().startsWith('discover-')) {
-      return 'open';
-    }
-    if (id === '1') return 'in_progress';
-    if (id === '2') return 'bid_sent';
-    if (id === '3') return 'invitation_received';
-    if (id === '4') return 'awaiting_confirmation';
-    return 'open';
-  };
+  // The detail endpoint returns no tasker-side bid info, so the tasker's own
+  // bid on this task comes from their bids list (same query the Jobs tab uses).
+  const taskerBidsQ = useTaskerBids('pending', isTasker);
+  const myBid = isTasker
+    ? ((taskerBidsQ.data?.bids ?? []).find((b) => b.task?._id === id) ?? null)
+    : null;
 
-  const [taskerState, setTaskerState] = useState<'open' | 'bid_sent' | 'invitation_received' | 'in_progress' | 'awaiting_confirmation'>(getMockState());
+  // Derived, not stored: refetching the bids list after a mutation moves the
+  // screen between states. Start/complete of assigned work lives in the Jobs
+  // tab and track-task, not here — hence no in-progress states.
+  type TaskerViewState = 'open' | 'bid_sent' | 'invitation_received' | 'closed';
+  const taskerState: TaskerViewState = myBid
+    ? myBid.invitedByUser && !myBid.taskerConfirmed
+      ? 'invitation_received'
+      : 'bid_sent'
+    : task?.status === 'open'
+      ? 'open'
+      : 'closed';
+
   const [acceptSheetVisible, setAcceptSheetVisible] = useState(false);
   const [declineSheetVisible, setDeclineSheetVisible] = useState(false);
   const [acceptedSuccessVisible, setAcceptedSuccessVisible] = useState(false);
@@ -292,11 +305,9 @@ export default function TaskDetailsScreen() {
   const [editBidSheetVisible, setEditBidSheetVisible] = useState(false);
   const [bidUpdatedVisible, setBidUpdatedVisible] = useState(false);
   const [taskerActionsVisible, setTaskerActionsVisible] = useState(false);
-  const [bidAmountInput, setBidAmountInput] = useState('1,000');
+  const [bidAmountInput, setBidAmountInput] = useState('');
   const [placeBidVisible, setPlaceBidVisible] = useState(false);
   const [bidMessageInput, setBidMessageInput] = useState('');
-  const [completionSheetVisible, setCompletionSheetVisible] = useState(false);
-  const [requestSentVisible, setRequestSentVisible] = useState(false);
   const [successDialogType, setSuccessDialogType] = useState<'submitted' | 'updated'>('submitted');
 
   const queryClient = useQueryClient();
@@ -394,7 +405,107 @@ export default function TaskDetailsScreen() {
     if (next !== tab) setTab(next);
   };
 
+  // ---- Tasker-side mutations ----
 
+  const refetchBidState = () => {
+    queryClient.invalidateQueries({ queryKey: ['bids', 'tasker'] });
+    queryClient.invalidateQueries({ queryKey: ['tasks'] });
+  };
+
+  const placeBidMutation = useMutation({
+    mutationFn: () =>
+      createBid({
+        taskId: id as string,
+        // Fixed-price tasks ignore the amount server-side; only send one for
+        // bidding-enabled tasks, where it's required.
+        amount: task?.isBiddingEnabled ? Number(bidAmountInput.replace(/[^0-9.]/g, '')) : undefined,
+        message: bidMessageInput.trim() || undefined,
+      }),
+    onSuccess: () => {
+      refetchBidState();
+      setPlaceBidVisible(false);
+      setSuccessDialogType('submitted');
+      setBidUpdatedVisible(true);
+    },
+    onError: (err) => Alert.alert('Could not place bid', errorMessage(err)),
+  });
+
+  const submitBid = () => {
+    if (task?.isBiddingEnabled) {
+      const amount = Number(bidAmountInput.replace(/[^0-9.]/g, ''));
+      if (!Number.isFinite(amount) || amount <= 0) {
+        Alert.alert('Enter your bid amount', 'The amount must be a number greater than zero.');
+        return;
+      }
+    }
+    placeBidMutation.mutate();
+  };
+
+  const withdrawMutation = useMutation({
+    mutationFn: (bidId: string) => deleteBid(bidId),
+    onSuccess: () => {
+      refetchBidState();
+      setWithdrawModalVisible(false);
+    },
+    onError: (err) => Alert.alert('Could not withdraw bid', errorMessage(err)),
+  });
+
+  const editBidMutation = useMutation({
+    mutationFn: (v: { bidId: string; amount?: number; message?: string }) =>
+      updateBid(v.bidId, { amount: v.amount, message: v.message }),
+    onSuccess: () => {
+      refetchBidState();
+      setEditBidSheetVisible(false);
+      setSuccessDialogType('updated');
+      setBidUpdatedVisible(true);
+    },
+    onError: (err) => Alert.alert('Could not update bid', errorMessage(err)),
+  });
+
+  const submitBidEdit = () => {
+    if (!myBid) return;
+    let amount: number | undefined;
+    // A fixed-price application has no editable amount — message only.
+    if (myBid.bidType !== 'fixed') {
+      amount = Number(bidAmountInput.replace(/[^0-9.]/g, ''));
+      if (!Number.isFinite(amount) || amount <= 0) {
+        Alert.alert('Enter your bid amount', 'The amount must be a number greater than zero.');
+        return;
+      }
+    }
+    editBidMutation.mutate({
+      bidId: myBid._id,
+      amount,
+      message: bidMessageInput.trim() || undefined,
+    });
+  };
+
+  const hireResponseMutation = useMutation({
+    mutationFn: (v: { bidId: string; action: 'accept' | 'decline' }) =>
+      respondToHireRequest(v.bidId, v.action),
+    onSuccess: (_res, v) => {
+      refetchBidState();
+      if (v.action === 'accept') {
+        setAcceptSheetVisible(false);
+        setAcceptedSuccessVisible(true);
+      } else {
+        setDeclineSheetVisible(false);
+        router.back();
+      }
+    },
+    onError: (err) => Alert.alert('Could not respond to the invitation', errorMessage(err)),
+  });
+
+  // Prefill the shared amount/message inputs with the live bid before editing.
+  const openEditBidSheet = () => {
+    if (!myBid) return;
+    setBidAmountInput(String(myBid.amount));
+    setBidMessageInput(myBid.message ?? '');
+    setEditBidSheetVisible(true);
+  };
+
+  const clientRef = task && typeof task.user === 'object' ? task.user : null;
+  const clientName = clientRef?.fullName || 'the client';
 
   if (isTasker) {
     return (
@@ -420,78 +531,81 @@ export default function TaskDetailsScreen() {
           </View>
         </View>
 
+        {taskQ.isLoading ? (
+          <View style={styles.centerState}>
+            <ActivityIndicator color={COLORS.brand} />
+          </View>
+        ) : !task ? (
+          <View style={styles.centerState}>
+            <Text style={styles.stateText}>Couldn’t load this task.</Text>
+            <Pressable hitSlop={8} onPress={() => taskQ.refetch()}>
+              <Text style={styles.retry}>Retry</Text>
+            </Pressable>
+          </View>
+        ) : (
+        <>
         <ScrollView style={styles.flex} contentContainerStyle={styles.taskerScrollContent} showsVerticalScrollIndicator={false}>
           {/* Remote tag */}
-          <View style={styles.taskerRemoteBadge}>
-            <MaterialCommunityIcons name="laptop" size={14} color="#0d6639" />
-            <Text style={styles.taskerRemoteBadgeText}>Remote</Text>
-          </View>
+          {!task.location && (
+            <View style={styles.taskerRemoteBadge}>
+              <MaterialCommunityIcons name="laptop" size={14} color="#0d6639" />
+              <Text style={styles.taskerRemoteBadgeText}>Remote</Text>
+            </View>
+          )}
 
           {/* Title */}
-          <Text style={styles.taskerTitleText}>
-            {taskerState === 'bid_sent' ? 'Design a flyer for event' : 'Build a Landing page'}
-          </Text>
+          <Text style={styles.taskerTitleText}>{task.title}</Text>
 
           {/* Meta items */}
           <View style={styles.taskerMetaRow}>
             <View style={styles.taskerMetaItem}>
               <MapPin width={14} height={14} color="#5a5a70" />
-              <Text style={styles.taskerMetaText}>Remote</Text>
+              <Text style={styles.taskerMetaText}>{locationLabel(task)}</Text>
             </View>
             <View style={styles.taskerMetaItem}>
               <Clock width={14} height={14} color="#5a5a70" />
-              <Text style={styles.taskerMetaText}>18 May</Text>
-            </View>
-            <View style={styles.taskerMetaItem}>
-              <Ionicons name="people-outline" size={14} color="#5a5a70" />
-              <Text style={styles.taskerMetaText}>3 Bids</Text>
+              <Text style={styles.taskerMetaText}>
+                {formatShortDate(task.deadline || task.createdAt)}
+              </Text>
             </View>
             <View style={styles.taskerMetaItem}>
               <Ionicons name="shield-outline" size={14} color="#5a5a70" />
-              <Text style={styles.taskerMetaText}>Safe</Text>
+              <Text style={styles.taskerMetaText}>Escrow protected</Text>
             </View>
           </View>
 
-          {/* Secured Banner or Budget Card */}
-          {taskerState === 'in_progress' || taskerState === 'awaiting_confirmation' ? (
-            <View style={styles.taskerSecuredBanner}>
-              <View style={styles.taskerWalletIconWrap}>
-                <Ionicons name="wallet-outline" size={20} color="#0d6639" />
-              </View>
-              <View style={styles.taskerSecuredInfo}>
-                <Text style={styles.taskerSecuredTitle}>Payment Secured</Text>
-                <Text style={styles.taskerSecuredSubtitle}>₦500,000 held in escrow</Text>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.taskerBudgetCard}>
-              <Text style={styles.taskerBudgetLabel}>Budget</Text>
-              <Text style={styles.taskerBudgetValue}>₦500,000</Text>
-            </View>
-          )}
+          {/* Budget Card */}
+          <View style={styles.taskerBudgetCard}>
+            <Text style={styles.taskerBudgetLabel}>
+              {task.isBiddingEnabled ? 'Budget (open to bids)' : 'Fixed price'}
+            </Text>
+            <Text style={styles.taskerBudgetValue}>{formatNaira(task.budget)}</Text>
+          </View>
 
           {/* Description Section */}
           <View style={styles.taskerDetailCard}>
             <Text style={styles.taskerCardSectionTitle}>Description</Text>
-            <Text style={styles.taskerDescriptionText}>
-              I need someone that can build a luxurious landing page for my startup business
-            </Text>
+            <Text style={styles.taskerDescriptionText}>{task.description}</Text>
           </View>
 
           {/* Client Card */}
-          <View style={styles.taskerDetailCard}>
-            <Text style={styles.taskerCardSectionTitle}>Client</Text>
-            <View style={styles.taskerClientRow}>
-              <Image source={CLIENT_AVATAR} style={styles.taskerClientAvatar} contentFit="cover" />
-              <View style={styles.taskerClientInfo}>
-                <Text style={styles.taskerClientName}>Sarah K.</Text>
-                <Text style={styles.taskerClientMeta}>Joined 2025 • 4 tasks posted</Text>
+          {clientRef && (
+            <View style={styles.taskerDetailCard}>
+              <Text style={styles.taskerCardSectionTitle}>Client</Text>
+              <View style={styles.taskerClientRow}>
+                <Avatar uri={clientRef.profilePicture || ''} />
+                <View style={styles.taskerClientInfo}>
+                  <Text style={styles.taskerClientName}>{clientRef.fullName || 'Client'}</Text>
+                  <Text style={styles.taskerClientMeta}>
+                    Posted {formatRelativeTime(task.createdAt)}
+                  </Text>
+                </View>
               </View>
             </View>
-          </View>
+          )}
 
-          {/* Your Bid Card (Image 2) */}
-          {taskerState === 'bid_sent' && (
+          {/* Your Bid Card */}
+          {taskerState === 'bid_sent' && myBid && (
             <View style={styles.yourBidContainer}>
               <View style={styles.yourBidHeader}>
                 <Ionicons name="checkmark-circle" size={18} color="#6c3bff" />
@@ -499,174 +613,68 @@ export default function TaskDetailsScreen() {
               </View>
               <View style={styles.yourBidCard}>
                 <View style={styles.yourBidCardHeader}>
-                  <Text style={styles.yourBidCardTitle}>Design a flyer for event</Text>
-                  <Text style={styles.yourBidCardPrice}>₦{bidAmountInput}</Text>
+                  <Text style={styles.yourBidCardTitle}>{task.title}</Text>
+                  <Text style={styles.yourBidCardPrice}>{formatNaira(myBid.amount)}</Text>
                 </View>
                 <View style={styles.yourBidCardMetaRow}>
                   <View style={styles.yourBidCardMetaItem}>
                     <MapPin width={12} height={12} color="#5a5a70" />
-                    <Text style={styles.yourBidCardMetaText}>Remote</Text>
+                    <Text style={styles.yourBidCardMetaText}>{locationLabel(task)}</Text>
                   </View>
                   <View style={styles.yourBidCardMetaItem}>
                     <Clock width={12} height={12} color="#5a5a70" />
-                    <Text style={styles.yourBidCardMetaText}>2mins ago</Text>
+                    <Text style={styles.yourBidCardMetaText}>
+                      {formatRelativeTime(myBid.createdAt)}
+                    </Text>
                   </View>
                   <View style={styles.yourBidTagPending}>
                     <Text style={styles.yourBidTagText}>Pending</Text>
                   </View>
                 </View>
-                <View style={styles.yourBidMessageCard}>
-                  <Text style={styles.yourBidMessageText}>
-                    {bidMessageInput ? `"${bidMessageInput}"` : '"Will deliver 3 design concepts within 24 hours."'}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          )}
-
-          {/* Timeline Section (Images 1 & 5) */}
-          {(taskerState === 'in_progress' || taskerState === 'awaiting_confirmation') && (
-            <View style={styles.taskerDetailCard}>
-              <Text style={styles.taskerCardSectionTitle}>Task Timeline</Text>
-              <View style={styles.taskerTimelineList}>
-                {/* 1. Accepted (checked) */}
-                <View style={styles.taskerTimelineRow}>
-                  <View style={styles.taskerTimelineLeftColumn}>
-                    <View style={[styles.taskerTimelineDot, styles.taskerTimelineDotChecked]}>
-                      <Ionicons name="checkmark-sharp" size={14} color="#ffffff" />
-                    </View>
-                    <View style={styles.taskerTimelineLine} />
+                {!!myBid.message && (
+                  <View style={styles.yourBidMessageCard}>
+                    <Text style={styles.yourBidMessageText}>&quot;{myBid.message}&quot;</Text>
                   </View>
-                  <View style={styles.taskerTimelineContent}>
-                    <Text style={styles.taskerTimelineText}>Accepted</Text>
-                    <Text style={styles.taskerTimelineTime}>2:00PM</Text>
-                  </View>
-                </View>
-
-                {/* 2. Escrow funded (checked) */}
-                <View style={styles.taskerTimelineRow}>
-                  <View style={styles.taskerTimelineLeftColumn}>
-                    <View style={[styles.taskerTimelineDot, styles.taskerTimelineDotChecked]}>
-                      <Ionicons name="checkmark-sharp" size={14} color="#ffffff" />
-                    </View>
-                    <View style={styles.taskerTimelineLine} />
-                  </View>
-                  <View style={styles.taskerTimelineContent}>
-                    <Text style={styles.taskerTimelineText}>Escrow funded</Text>
-                    <Text style={styles.taskerTimelineTime}>2:15PM</Text>
-                  </View>
-                </View>
-
-                {/* 3. Task Started (checked) */}
-                <View style={styles.taskerTimelineRow}>
-                  <View style={styles.taskerTimelineLeftColumn}>
-                    <View style={[styles.taskerTimelineDot, styles.taskerTimelineDotChecked]}>
-                      <Ionicons name="checkmark-sharp" size={14} color="#ffffff" />
-                    </View>
-                    <View style={styles.taskerTimelineLine} />
-                  </View>
-                  <View style={styles.taskerTimelineContent}>
-                    <Text style={styles.taskerTimelineText}>Task Started</Text>
-                    <Text style={styles.taskerTimelineTime}>2:16PM</Text>
-                  </View>
-                </View>
-
-                {/* 4. Request confirmation / Awaiting confirmation */}
-                <View style={styles.taskerTimelineRow}>
-                  <View style={styles.taskerTimelineLeftColumn}>
-                    {taskerState === 'awaiting_confirmation' ? (
-                      <View style={[styles.taskerTimelineDot, styles.taskerTimelineDotChecked]}>
-                        <Ionicons name="checkmark-sharp" size={14} color="#ffffff" />
-                      </View>
-                    ) : (
-                      <View style={[styles.taskerTimelineDot, styles.taskerTimelineDotActive]}>
-                        <View style={styles.taskerTimelineInnerDot} />
-                      </View>
-                    )}
-                    <View style={styles.taskerTimelineLine} />
-                  </View>
-                  <View style={styles.taskerTimelineContent}>
-                    <Text style={[styles.taskerTimelineText, taskerState === 'in_progress' && styles.taskerTimelineTextActive]}>
-                      {taskerState === 'awaiting_confirmation' ? 'Awaiting confirmation' : 'Request confirmation'}
-                    </Text>
-                    <Text style={styles.taskerTimelineTime}>2:00PM</Text>
-                  </View>
-                </View>
-
-                {/* 5. Completed */}
-                <View style={styles.taskerTimelineRow}>
-                  <View style={styles.taskerTimelineLeftColumn}>
-                    <View style={[styles.taskerTimelineDot, styles.taskerTimelineDotFuture]} />
-                  </View>
-                  <View style={styles.taskerTimelineContent}>
-                    <Text style={[styles.taskerTimelineText, styles.taskerTimelineTextFuture]}>Completed</Text>
-                  </View>
-                </View>
+                )}
               </View>
             </View>
           )}
 
           {/* Attachments Section */}
-          <View style={styles.taskerDetailCard}>
-            <Text style={styles.taskerCardSectionTitle}>Image & Attachment</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.attachmentRow}>
-              <Image source={{ uri: 'https://picsum.photos/id/1/200/200' }} style={styles.attachmentImage} />
-              <Image source={{ uri: 'https://picsum.photos/id/3/200/200' }} style={styles.attachmentImage} />
-              <Image source={{ uri: 'https://picsum.photos/id/48/200/200' }} style={styles.attachmentImage} />
-              <Image source={{ uri: 'https://picsum.photos/id/60/200/200' }} style={styles.attachmentImage} />
-            </ScrollView>
-          </View>
+          {!!task.images?.length && (
+            <View style={styles.taskerDetailCard}>
+              <Text style={styles.taskerCardSectionTitle}>Image & Attachment</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.attachmentRow}>
+                {task.images.map((img) => (
+                  <Image key={img.url} source={{ uri: img.url }} style={styles.attachmentImage} />
+                ))}
+              </ScrollView>
+            </View>
+          )}
         </ScrollView>
 
         {/* Bottom Actions for Tasker */}
         <View style={[styles.bottomBarTasker, { paddingBottom: insets.bottom + 16 }]}>
           {taskerState === 'open' && (
-            <>
-              <Pressable
-                style={[styles.sheetButton, { backgroundColor: COLORS.brand }]}
-                onPress={() => {
-                  setPlaceBidVisible(true);
-                }}>
-                <Text style={styles.sheetButtonText}>Place Bid</Text>
-              </Pressable>
-              <Pressable style={styles.btnSecondaryTasker} onPress={() => router.push('/chat')}>
-                <Text style={styles.btnSecondaryTextTasker}>Chat (1)</Text>
-              </Pressable>
-            </>
+            <Pressable
+              style={[styles.sheetButton, { backgroundColor: COLORS.brand }]}
+              onPress={() => {
+                setBidAmountInput('');
+                setBidMessageInput('');
+                setPlaceBidVisible(true);
+              }}>
+              <Text style={styles.sheetButtonText}>
+                {task.isBiddingEnabled ? 'Place Bid' : 'Apply for Task'}
+              </Text>
+            </Pressable>
           )}
-          {taskerState === 'in_progress' && (
-              <>
-                <Pressable
-                  style={[styles.sheetButton, { backgroundColor: COLORS.brand }]}
-                  onPress={() => {
-                    setCompletionSheetVisible(true);
-                  }}>
-                  <Text style={styles.sheetButtonText}>Request Completion</Text>
-                </Pressable>
-                <Pressable style={styles.btnSecondaryTasker} onPress={() => router.push('/chat')}>
-                  <Text style={styles.btnSecondaryTextTasker}>Chat</Text>
-                </Pressable>
-              </>
-            )}
-
-            {taskerState === 'awaiting_confirmation' && (
-              <>
-                <Pressable
-                  style={[styles.sheetButton, { backgroundColor: COLORS.brand, flexDirection: 'row', gap: 8 }]}
-                  onPress={() => {
-                    setNudgeModalVisible(true);
-                    setTimeout(() => {
-                      setNudgeModalVisible(false);
-                    }, 2500);
-                  }}>
-                  <Ionicons name="notifications-outline" size={18} color="#ffffff" />
-                  <Text style={styles.sheetButtonText}>Nudge</Text>
-                </Pressable>
-                <Pressable style={styles.btnSecondaryTasker} onPress={() => router.push('/chat')}>
-                  <Text style={styles.btnSecondaryTextTasker}>Chat</Text>
-                </Pressable>
-              </>
-            )}
+          {taskerState === 'closed' && (
+            <View style={styles.taskerBudgetCard}>
+              <Text style={styles.taskerBudgetLabel}>
+                This task is no longer open for applications ({statusLabel(task.status)}).
+              </Text>
+            </View>
+          )}
 
             {taskerState === 'bid_sent' && (
               <>
@@ -677,45 +685,22 @@ export default function TaskDetailsScreen() {
                   }}>
                   <Text style={styles.sheetButtonText}>Withdraw Bid</Text>
                 </Pressable>
-                <Pressable style={styles.btnSecondaryTasker} onPress={() => setEditBidSheetVisible(true)}>
+                <Pressable style={styles.btnSecondaryTasker} onPress={openEditBidSheet}>
                   <Text style={styles.btnSecondaryTextTasker}>Edit Bid</Text>
                 </Pressable>
               </>
             )}
 
             {taskerState === 'invitation_received' && (
-              <>
-                <Pressable
-                  style={[styles.sheetButton, { backgroundColor: COLORS.brand }]}
-                  onPress={() => {
-                    setAcceptSheetVisible(true);
-                  }}>
-                  <Text style={styles.sheetButtonText}>Accept</Text>
-                </Pressable>
-                <Pressable style={styles.btnSecondaryTasker} onPress={() => router.push('/chat')}>
-                  <Text style={styles.btnSecondaryTextTasker}>Chat (1)</Text>
-                </Pressable>
-              </>
+              <Pressable
+                style={[styles.sheetButton, { backgroundColor: COLORS.brand }]}
+                onPress={() => {
+                  setAcceptSheetVisible(true);
+                }}>
+                <Text style={styles.sheetButtonText}>Accept</Text>
+              </Pressable>
             )}
           </View>
-
-        {/* Reminder Sent Modal (Tasker Only) */}
-        <Modal visible={nudgeModalVisible} transparent animationType="fade" onRequestClose={() => setNudgeModalVisible(false)}>
-          <Pressable style={styles.modalBackdrop} onPress={() => setNudgeModalVisible(false)}>
-            <View style={styles.reminderModalBox}>
-              <View style={{ position: 'relative', width: 80, height: 80 }}>
-                <Image source={SHIELD_IMAGE} style={styles.shield3d} contentFit="contain" />
-                <View style={styles.reminderBadge}>
-                  <Ionicons name="checkmark-sharp" size={12} color="#ffffff" />
-                </View>
-              </View>
-              <Text style={styles.reminderTitle}>Reminder Sent</Text>
-              <Text style={styles.reminderSubtitle}>
-                We've notified Aisha M.. You'll receive a notification when they respond.
-              </Text>
-            </View>
-          </Pressable>
-        </Modal>
 
         {/* Decline Invitation Modal */}
         <Modal visible={declineSheetVisible} transparent animationType="fade" onRequestClose={() => setDeclineSheetVisible(false)}>
@@ -723,17 +708,21 @@ export default function TaskDetailsScreen() {
             <View style={styles.successDialog}>
               <Text style={styles.dialogTitle}>Decline Invitation?</Text>
               <Text style={styles.dialogSubtitle}>
-                Are you sure you want to decline "Clean my apartment" from Musa K.? This can't be undone.
+                Are you sure you want to decline &quot;{task.title}&quot; from {clientName}? This
+                can&apos;t be undone.
               </Text>
 
               <Pressable
                 style={[styles.dialogButton, { backgroundColor: '#ef4444' }]}
+                disabled={hireResponseMutation.isPending}
                 onPress={() => {
-                  setTaskerState('open');
-                  setDeclineSheetVisible(false);
-                  router.back();
+                  if (myBid) hireResponseMutation.mutate({ bidId: myBid._id, action: 'decline' });
                 }}>
-                <Text style={styles.sheetButtonText}>Yes, Decline</Text>
+                {hireResponseMutation.isPending ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={styles.sheetButtonText}>Yes, Decline</Text>
+                )}
               </Pressable>
 
               <Pressable
@@ -751,17 +740,21 @@ export default function TaskDetailsScreen() {
             <View style={styles.successDialog}>
               <Text style={styles.dialogTitle}>Accept Invitation?</Text>
               <Text style={styles.dialogSubtitle}>
-                You'll be hired for "Build a landing page" by Sarah K.. You can start chatting immediately after.
+                You&apos;re accepting &quot;{task.title}&quot; from {clientName}. The job becomes
+                active once the client completes payment.
               </Text>
 
               <Pressable
                 style={[styles.dialogButton, { backgroundColor: '#10b981' }]}
+                disabled={hireResponseMutation.isPending}
                 onPress={() => {
-                  setTaskerState('in_progress');
-                  setAcceptSheetVisible(false);
-                  setAcceptedSuccessVisible(true);
+                  if (myBid) hireResponseMutation.mutate({ bidId: myBid._id, action: 'accept' });
                 }}>
-                <Text style={styles.sheetButtonText}>Yes, Accept</Text>
+                {hireResponseMutation.isPending ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={styles.sheetButtonText}>Yes, Accept</Text>
+                )}
               </Pressable>
 
               <Pressable
@@ -793,7 +786,7 @@ export default function TaskDetailsScreen() {
 
               <Text style={[styles.sheetTitle, { textAlign: 'center', marginTop: 12 }]}>Invitation Accepted!</Text>
               <Text style={[styles.sheetSubtitle, { textAlign: 'center', color: '#5a5a70', marginBottom: 12 }]}>
-                "Build a landing page" is now in your Active Jobs.
+                {clientName} has been asked to complete payment for &quot;{task.title}&quot;.
               </Text>
 
               {/* Steps Container */}
@@ -801,11 +794,11 @@ export default function TaskDetailsScreen() {
                 {/* Step 1 */}
                 <View style={styles.stepRow}>
                   <View style={[styles.stepIconWrap, { backgroundColor: '#f3eeff' }]}>
-                    <Ionicons name="play" size={16} color={COLORS.brand} />
+                    <Ionicons name="card" size={16} color={COLORS.brand} />
                   </View>
                   <View style={styles.stepInfo}>
-                    <Text style={styles.stepTitle}>Find it in Active Jobs</Text>
-                    <Text style={styles.stepSubtitle}>Go to Current → Active to see your task card and start working.</Text>
+                    <Text style={styles.stepTitle}>The client pays into escrow</Text>
+                    <Text style={styles.stepSubtitle}>The job becomes active only once payment is secured.</Text>
                   </View>
                 </View>
 
@@ -815,7 +808,7 @@ export default function TaskDetailsScreen() {
                     <Ionicons name="chatbubble" size={16} color="#1d4ed8" />
                   </View>
                   <View style={styles.stepInfo}>
-                    <Text style={styles.stepTitle}>Chat with Sarah K.</Text>
+                    <Text style={styles.stepTitle}>Chat with {clientName}</Text>
                     <Text style={styles.stepSubtitle}>Coordinate details and confirm the task scope.</Text>
                   </View>
                 </View>
@@ -826,8 +819,8 @@ export default function TaskDetailsScreen() {
                     <Ionicons name="checkmark-circle" size={16} color="#0d6639" />
                   </View>
                   <View style={styles.stepInfo}>
-                    <Text style={styles.stepTitle}>Update progress</Text>
-                    <Text style={styles.stepSubtitle}>Use the "Update" button on the card to move through task stages.</Text>
+                    <Text style={styles.stepTitle}>Start working</Text>
+                    <Text style={styles.stepSubtitle}>Once it appears in your Jobs tab, use it to start and complete the task.</Text>
                   </View>
                 </View>
               </View>
@@ -839,7 +832,7 @@ export default function TaskDetailsScreen() {
                   setAcceptedSuccessVisible(false);
                   router.push('/tasks');
                 }}>
-                <Text style={styles.sheetButtonText}>Go to Active Jobs</Text>
+                <Text style={styles.sheetButtonText}>Go to Jobs</Text>
               </Pressable>
 
               <Pressable
@@ -851,43 +844,27 @@ export default function TaskDetailsScreen() {
           </Pressable>
         </Modal>
 
-        {/* Task Actions Modal */}
-        <TaskActionsModal
-          visible={actionsVisible}
-          onClose={() => setActionsVisible(false)}
-          onEdit={() => Alert.alert('Edit Task', 'Edit task functionality goes here.')}
-          onCancel={() => {
-            Alert.alert('Cancel Task', 'Are you sure?', [
-              { text: 'No' },
-              { text: 'Yes', onPress: () => setTaskerState('open') }
-            ]);
-            setActionsVisible(false);
-          }}
-          onReport={() =>
-            router.push({
-              pathname: '/report-issue',
-              params: { taskId: id ?? '', taskTitle: task?.title ?? '' },
-            })
-          }
-        />
-
         {/* Withdraw Bid Modal */}
         <Modal visible={withdrawModalVisible} transparent animationType="fade" onRequestClose={() => setWithdrawModalVisible(false)}>
           <Pressable style={styles.modalBackdrop} onPress={() => setWithdrawModalVisible(false)}>
             <View style={styles.successDialog}>
               <Text style={styles.dialogTitle}>Withdraw Bid?</Text>
               <Text style={styles.dialogSubtitle}>
-                Are you sure you want to withdraw your bid for "Print my assignment"? You can't undo this.
+                Are you sure you want to withdraw your bid for &quot;{task.title}&quot;? You
+                can&apos;t undo this.
               </Text>
 
               <Pressable
                 style={[styles.dialogButton, { backgroundColor: '#ef4444' }]}
+                disabled={withdrawMutation.isPending}
                 onPress={() => {
-                  setTaskerState('open');
-                  setWithdrawModalVisible(false);
-                  router.back();
+                  if (myBid) withdrawMutation.mutate(myBid._id);
                 }}>
-                <Text style={styles.sheetButtonText}>Yes, Withdraw Bid</Text>
+                {withdrawMutation.isPending ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={styles.sheetButtonText}>Yes, Withdraw Bid</Text>
+                )}
               </Pressable>
 
               <Pressable
@@ -907,29 +884,43 @@ export default function TaskDetailsScreen() {
               <Text style={styles.sheetTitle}>Edit Your Bid</Text>
 
               <View style={[styles.sheetJobCard, { backgroundColor: '#f2f2f7', marginTop: 8 }]}>
-                <Text style={[styles.sheetJobTitle, { color: '#5a5a70' }]}>
-                  Design a flyer for event
-                </Text>
+                <Text style={[styles.sheetJobTitle, { color: '#5a5a70' }]}>{task.title}</Text>
               </View>
 
+              {/* Fixed-price applications have no editable amount — message only. */}
+              {myBid?.bidType !== 'fixed' && (
+                <View style={{ gap: 8, width: '100%', marginTop: 8 }}>
+                  <Text style={{ fontFamily: 'Geist_600SemiBold', fontSize: 14, color: '#111122', paddingHorizontal: 16 }}>Bid Amount (₦)</Text>
+                  <TextInput
+                    style={styles.dialogTextInput}
+                    value={bidAmountInput}
+                    onChangeText={setBidAmountInput}
+                    keyboardType="numeric"
+                  />
+                </View>
+              )}
+
               <View style={{ gap: 8, width: '100%', marginTop: 8 }}>
-                <Text style={{ fontFamily: 'Geist_600SemiBold', fontSize: 14, color: '#111122', paddingHorizontal: 16 }}>Bid Amount (₦)</Text>
+                <Text style={{ fontFamily: 'Geist_600SemiBold', fontSize: 14, color: '#111122', paddingHorizontal: 16 }}>Message</Text>
                 <TextInput
-                  style={styles.dialogTextInput}
-                  value={bidAmountInput}
-                  onChangeText={setBidAmountInput}
-                  keyboardType="numeric"
+                  style={[styles.dialogTextInput, { height: 96, textAlignVertical: 'top', paddingTop: 12 }]}
+                  value={bidMessageInput}
+                  onChangeText={setBidMessageInput}
+                  placeholder="Tell the client why you are the best fit..."
+                  placeholderTextColor="#a0a0ba"
+                  multiline
                 />
               </View>
 
               <Pressable
-                style={[styles.sheetButton, { backgroundColor: COLORS.brand, marginTop: 16 }]}
-                onPress={() => {
-                  setEditBidSheetVisible(false);
-                  setSuccessDialogType('updated');
-                  setBidUpdatedVisible(true);
-                }}>
-                <Text style={styles.sheetButtonText}>Update bid</Text>
+                style={[styles.sheetButton, { backgroundColor: COLORS.brand, marginTop: 16 }, editBidMutation.isPending && { opacity: 0.6 }]}
+                disabled={editBidMutation.isPending}
+                onPress={submitBidEdit}>
+                {editBidMutation.isPending ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={styles.sheetButtonText}>Update bid</Text>
+                )}
               </Pressable>
             </Pressable>
           </Pressable>
@@ -949,8 +940,8 @@ export default function TaskDetailsScreen() {
               </Text>
               <Text style={styles.dialogSubtitle}>
                 {successDialogType === 'submitted'
-                  ? 'You will be notified when the Client responds'
-                  : 'You have successfully updated you bid for the task "Design a flyer for event"'}
+                  ? 'You will be notified when the client responds.'
+                  : `Your bid for "${task.title}" has been updated.`}
               </Text>
               <Pressable
                 style={styles.dialogButton}
@@ -1015,20 +1006,27 @@ export default function TaskDetailsScreen() {
                 Place Your Bid
               </Text>
 
-              {/* Amount input */}
-              <View style={{ gap: 8 }}>
-                <Text style={{ fontFamily: 'Geist_600SemiBold', fontSize: 15, color: '#111122' }}>
-                  Enter your Bid Amount (₦)
-                </Text>
-                <TextInput
-                  style={styles.dialogTextInput}
-                  placeholder="e.g 1000"
-                  placeholderTextColor="#a0a0ba"
-                  value={bidAmountInput}
-                  onChangeText={setBidAmountInput}
-                  keyboardType="numeric"
-                />
-              </View>
+              {/* Amount input — fixed-price tasks apply at the poster's price. */}
+              {task.isBiddingEnabled ? (
+                <View style={{ gap: 8 }}>
+                  <Text style={{ fontFamily: 'Geist_600SemiBold', fontSize: 15, color: '#111122' }}>
+                    Enter your Bid Amount (₦)
+                  </Text>
+                  <TextInput
+                    style={styles.dialogTextInput}
+                    placeholder="e.g 1000"
+                    placeholderTextColor="#a0a0ba"
+                    value={bidAmountInput}
+                    onChangeText={setBidAmountInput}
+                    keyboardType="numeric"
+                  />
+                </View>
+              ) : (
+                <View style={styles.taskerBudgetCard}>
+                  <Text style={styles.taskerBudgetLabel}>You&apos;re applying at the fixed price</Text>
+                  <Text style={styles.taskerBudgetValue}>{formatNaira(task.budget)}</Text>
+                </View>
+              )}
 
               {/* Message input */}
               <View style={{ gap: 8 }}>
@@ -1049,72 +1047,22 @@ export default function TaskDetailsScreen() {
             {/* Bottom action button */}
             <View style={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 16 }}>
               <Pressable
-                style={[styles.sheetButton, { backgroundColor: COLORS.brand }]}
-                onPress={() => {
-                  setPlaceBidVisible(false);
-                  setTaskerState('bid_sent');
-                  setSuccessDialogType('submitted');
-                  setBidUpdatedVisible(true);
-                }}>
-                <Text style={styles.sheetButtonText}>Submit Bid</Text>
+                style={[styles.sheetButton, { backgroundColor: COLORS.brand }, placeBidMutation.isPending && { opacity: 0.6 }]}
+                disabled={placeBidMutation.isPending}
+                onPress={submitBid}>
+                {placeBidMutation.isPending ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={styles.sheetButtonText}>
+                    {task.isBiddingEnabled ? 'Submit Bid' : 'Apply for Task'}
+                  </Text>
+                )}
               </Pressable>
             </View>
           </View>
         </Modal>
-
-        {/* Update Completion Bottom Sheet (Tasker Only) */}
-        <Modal visible={completionSheetVisible} transparent animationType="slide" onRequestClose={() => setCompletionSheetVisible(false)}>
-          <Pressable style={styles.sheetBackdrop} onPress={() => setCompletionSheetVisible(false)}>
-            <Pressable style={[styles.bottomSheet, { paddingBottom: insets.bottom + 16 }]} onPress={() => {}}>
-              <View style={styles.sheetHandle} />
-              <Text style={styles.sheetTitle}>Update Completion</Text>
-              <Text style={styles.sheetSubtitle}>
-                Once you request completion, the customer will be notified to review and confirm the work. Payment will be released from escrow after confirmation.
-              </Text>
-
-              {/* Job Details Card inside Sheet */}
-              <View style={styles.sheetJobCard}>
-                <Text style={styles.sheetJobTitle}>Build a Landing page</Text>
-              </View>
-
-              {/* Buttons */}
-              <Pressable
-                style={[styles.sheetButton, { backgroundColor: COLORS.brand }]}
-                onPress={() => {
-                  setCompletionSheetVisible(false);
-                  setRequestSentVisible(true);
-                }}>
-                <Text style={styles.sheetButtonText}>Request completion</Text>
-              </Pressable>
-
-              <Pressable
-                style={styles.btnNotYet}
-                onPress={() => setCompletionSheetVisible(false)}>
-                <Text style={styles.btnNotYetText}>Not Yet</Text>
-              </Pressable>
-            </Pressable>
-          </Pressable>
-        </Modal>
-
-        {/* Request Sent Dialog (Tasker Only) */}
-        <Modal visible={requestSentVisible} transparent animationType="fade" onRequestClose={() => setRequestSentVisible(false)}>
-          <Pressable style={styles.modalBackdrop} onPress={() => setRequestSentVisible(false)}>
-            <View style={styles.successDialog}>
-              <Text style={styles.dialogTitle}>Request Sent</Text>
-              <Text style={styles.dialogSubtitle}>
-                The customer will be notified to review and confirm the work.
-              </Text>
-              <Pressable
-                style={styles.dialogButton}
-                onPress={() => {
-                  setTaskerState('awaiting_confirmation');
-                  setRequestSentVisible(false);
-                }}>
-                <Text style={styles.dialogButtonText}>Okay</Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Modal>
+        </>
+        )}
       </View>
     );
   }
