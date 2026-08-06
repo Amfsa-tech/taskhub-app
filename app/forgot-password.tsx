@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import {
@@ -29,18 +29,22 @@ const COLORS = {
 export default function ForgotPasswordScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { type } = useLocalSearchParams<{ type?: string }>();
+  // The backend keys the reset code on the collection — a tasker's code must
+  // be issued (and later redeemed) with type 'tasker' or it never arrives.
+  const accountType = type === 'tasker' ? 'tasker' : 'user';
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const forgotMutation = useMutation({
     mutationFn: () =>
-      forgotPassword({ emailAddress: email.trim().toLowerCase(), type: 'user' }),
+      forgotPassword({ emailAddress: email.trim().toLowerCase(), type: accountType }),
     onSuccess: () => {
       // Go straight to the screen that collects the code + new password — the
       // old interstitial "check your email" screen was a dead end with no input.
       router.push({
         pathname: '/create-new-password',
-        params: { email: email.trim().toLowerCase() },
+        params: { email: email.trim().toLowerCase(), type: accountType },
       });
     },
     onError: (err) => {

@@ -74,7 +74,12 @@ export default function PurposeScreen() {
         setIsLoading(false);
       }
     } else {
-      router.push('/login');
+      // "Earn" signs up as a tasker; "hire" as a user. The choice rides along
+      // to login/create-account, which pick the matching backend endpoints.
+      router.push({
+        pathname: '/login',
+        params: { type: role === 'earn' ? 'tasker' : 'user' },
+      });
     }
   };
 
@@ -150,7 +155,15 @@ export default function PurposeScreen() {
           )}
         </Pressable>
 
-        <Pressable hitSlop={8} onPress={() => router.push('/login-form')} style={styles.loginRow}>
+        <Pressable
+          hitSlop={8}
+          onPress={() =>
+            router.push({
+              pathname: '/login-form',
+              params: { type: role === 'earn' ? 'tasker' : 'user' },
+            })
+          }
+          style={styles.loginRow}>
           <Text style={styles.loginMuted}>
             Already have an account? <Text style={styles.loginLink}>Login</Text>
           </Text>

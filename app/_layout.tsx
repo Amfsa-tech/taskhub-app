@@ -82,6 +82,7 @@ function RootNavigator() {
                     <Stack.Screen name="purpose" options={{ headerShown: false }} />
                     <Stack.Screen name="login" options={{ headerShown: false }} />
                     <Stack.Screen name="create-account" options={{ headerShown: false }} />
+                    <Stack.Screen name="tasker-details" options={{ headerShown: false }} />
                     <Stack.Screen name="country-selection" options={{ headerShown: false }} />
                     <Stack.Screen name="google-complete-signup" options={{ headerShown: false }} />
                     <Stack.Screen name="otp" options={{ headerShown: false }} />

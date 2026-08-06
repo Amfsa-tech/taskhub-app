@@ -76,7 +76,13 @@ export default function OtpScreen() {
       return false;
     },
     onSuccess: (loggedIn) => {
-      router.replace(loggedIn ? '/purpose-selection' : '/login-form');
+      // purpose-selection collects *user* interests; a fresh tasker goes
+      // straight home, where the empty feed routes them to service selection.
+      if (!loggedIn) {
+        router.replace({ pathname: '/login-form', params: { type: accountType } });
+      } else {
+        router.replace(accountType === 'tasker' ? '/home' : '/purpose-selection');
+      }
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : 'Verification failed. Please try again.');

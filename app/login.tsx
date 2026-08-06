@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -24,6 +24,9 @@ const COLORS = {
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { type } = useLocalSearchParams<{ type?: string }>();
+  // Set by the purpose screen ("I want to Earn" → tasker). Defaults to user.
+  const accountType = type === 'tasker' ? 'tasker' : 'user';
   const { signInWithGoogle } = useAuth();
   const [googleBusy, setGoogleBusy] = useState(false);
 
@@ -31,9 +34,17 @@ export default function LoginScreen() {
     if (googleBusy) return;
     setGoogleBusy(true);
     try {
-      const outcome = await signInWithGoogle('user');
+      const outcome = await signInWithGoogle(accountType);
       if (outcome.kind === 'signed-in') {
         router.replace('/home');
+      } else if (accountType === 'tasker') {
+        // google-complete-signup only collects the user-side fields; the
+        // tasker endpoint requires phone/DOB/states/address, which the email
+        // flow's second step gathers. Send new taskers there.
+        Alert.alert(
+          'No tasker account yet',
+          'There is no tasker account for this Google account. Please sign up with email first.',
+        );
       } else {
         // No account yet — carry the verified token to the completion screen.
         setPendingGoogleSignup({ idToken: outcome.idToken, profile: outcome.profile });
@@ -88,7 +99,7 @@ export default function LoginScreen() {
         <View style={styles.buttons}>
           <Pressable
             style={({ pressed }) => [styles.button, styles.emailButton, pressed && styles.pressed]}
-            onPress={() => router.push('/create-account')}>
+            onPress={() => router.push({ pathname: '/create-account', params: { type: accountType } })}>
             <Text style={styles.emailLabel}>Continue with Email</Text>
           </Pressable>
 

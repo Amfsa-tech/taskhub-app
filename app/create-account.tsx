@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import {
@@ -91,7 +91,14 @@ function Field({
 export default function CreateAccountScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { type } = useLocalSearchParams<{ type?: string }>();
+  // Tasker signup runs in two steps: this screen collects the account basics,
+  // then /tasker-details gathers the rest of what `tasker-register` requires
+  // (phone, DOB, states, address) — the endpoint 400s without all ten fields.
+  const isTasker = type === 'tasker';
   const [fullName, setFullName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [agreed, setAgreed] = useState(false);
@@ -124,7 +131,8 @@ export default function CreateAccountScreen() {
 
   const submit = () => {
     setError(null);
-    if (!fullName.trim() || !email.trim() || !password) {
+    const nameMissing = isTasker ? !firstName.trim() || !lastName.trim() : !fullName.trim();
+    if (nameMissing || !email.trim() || !password) {
       setError('Please fill in your name, email, and password.');
       return;
     }
@@ -134,6 +142,20 @@ export default function CreateAccountScreen() {
     }
     if (!agreed) {
       setError('Please agree to the Terms of Service to continue.');
+      return;
+    }
+    if (isTasker) {
+      // No API call yet — registration happens on the details step.
+      router.push({
+        pathname: '/tasker-details',
+        params: {
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          email: email.trim().toLowerCase(),
+          password,
+          country,
+        },
+      });
       return;
     }
     registerMutation.mutate();
@@ -166,19 +188,40 @@ export default function CreateAccountScreen() {
 
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>Create Account</Text>
-            <Text style={styles.subtitle}>Join NGTaskHub today</Text>
+            <Text style={styles.title}>{isTasker ? 'Become a Tasker' : 'Create Account'}</Text>
+            <Text style={styles.subtitle}>
+              {isTasker ? 'Earn on NGTaskHub — step 1 of 2' : 'Join NGTaskHub today'}
+            </Text>
           </View>
 
           {/* Fields */}
           <View style={styles.fields}>
-            <Field
-              label="Full name"
-              placeholder="e.g Elliot Eniola"
-              value={fullName}
-              onChangeText={setFullName}
-              autoCapitalize="words"
-            />
+            {isTasker ? (
+              <>
+                <Field
+                  label="First name"
+                  placeholder="e.g Elliot"
+                  value={firstName}
+                  onChangeText={setFirstName}
+                  autoCapitalize="words"
+                />
+                <Field
+                  label="Last name"
+                  placeholder="e.g Eniola"
+                  value={lastName}
+                  onChangeText={setLastName}
+                  autoCapitalize="words"
+                />
+              </>
+            ) : (
+              <Field
+                label="Full name"
+                placeholder="e.g Elliot Eniola"
+                value={fullName}
+                onChangeText={setFullName}
+                autoCapitalize="words"
+              />
+            )}
             <Field
               label="Email Address"
               placeholder="Enter your email address"
@@ -239,13 +282,16 @@ export default function CreateAccountScreen() {
               <ActivityIndicator color={COLORS.onBrand} />
             ) : (
               <>
-                <Text style={styles.buttonLabel}>Create Account</Text>
+                <Text style={styles.buttonLabel}>{isTasker ? 'Continue' : 'Create Account'}</Text>
                 <ArrowRight size={18} color={COLORS.onBrand} />
               </>
             )}
           </Pressable>
 
-          <Pressable hitSlop={8} onPress={() => router.replace('/login-form')} style={styles.loginRow}>
+          <Pressable
+            hitSlop={8}
+            onPress={() => router.replace({ pathname: '/login-form', params: { type } })}
+            style={styles.loginRow}>
             <Text style={styles.loginMuted}>
               Already have an account? <Text style={styles.loginLink}>Login</Text>
             </Text>

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import {
@@ -41,6 +41,10 @@ const COLORS = {
 export default function LoginFormScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { type } = useLocalSearchParams<{ type?: string }>();
+  // Carried from the purpose/login screens; picks between the user and tasker
+  // backend endpoints (same payload either way).
+  const accountType = type === 'tasker' ? 'tasker' : 'user';
   const { signIn, signInWithGoogle } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -50,7 +54,7 @@ export default function LoginFormScreen() {
 
   const loginMutation = useMutation({
     mutationFn: () =>
-      signIn('user', { emailAddress: email.trim().toLowerCase(), password }),
+      signIn(accountType, { emailAddress: email.trim().toLowerCase(), password }),
     onSuccess: () => router.replace('/home'),
     onError: (err) => {
       if (err instanceof ApiError && err.emailVerificationRequired) {
@@ -58,7 +62,7 @@ export default function LoginFormScreen() {
         // the password so verification can log the user straight in.
         router.push({
           pathname: '/otp',
-          params: { email: email.trim().toLowerCase(), password, type: 'user' },
+          params: { email: email.trim().toLowerCase(), password, type: accountType },
         });
         return;
       }
@@ -80,9 +84,13 @@ export default function LoginFormScreen() {
     setError(null);
     setGoogleBusy(true);
     try {
-      const outcome = await signInWithGoogle('user');
+      const outcome = await signInWithGoogle(accountType);
       if (outcome.kind === 'signed-in') {
         router.replace('/home');
+      } else if (accountType === 'tasker') {
+        // google-complete-signup collects user-side fields only; new taskers
+        // go through the email flow's two-step signup instead.
+        setError('No tasker account for this Google account yet. Please sign up with email first.');
       } else {
         // No account yet — carry the verified token to the completion screen.
         setPendingGoogleSignup({ idToken: outcome.idToken, profile: outcome.profile });
@@ -125,7 +133,9 @@ export default function LoginFormScreen() {
           {/* Welcome */}
           <View style={styles.welcome}>
             <Text style={styles.title}>Welcome back</Text>
-            <Text style={styles.subtitle}>Sign in to your account</Text>
+            <Text style={styles.subtitle}>
+              {accountType === 'tasker' ? 'Sign in to your tasker account' : 'Sign in to your account'}
+            </Text>
           </View>
 
           {/* Inputs */}
@@ -166,7 +176,9 @@ export default function LoginFormScreen() {
             </View>
           </View>
 
-          <Pressable hitSlop={8} onPress={() => router.push('/forgot-password')}>
+          <Pressable
+            hitSlop={8}
+            onPress={() => router.push({ pathname: '/forgot-password', params: { type: accountType } })}>
             <Text style={styles.forgot}>Forgot Password?</Text>
           </Pressable>
 
@@ -225,7 +237,10 @@ export default function LoginFormScreen() {
 
         {/* Footer */}
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-          <Pressable hitSlop={8} onPress={() => router.replace('/create-account')} style={styles.altRow}>
+          <Pressable
+            hitSlop={8}
+            onPress={() => router.replace({ pathname: '/create-account', params: { type: accountType } })}
+            style={styles.altRow}>
             <Text style={styles.altMuted}>
               Don’t have an account? <Text style={styles.altLink}>Create account</Text>
             </Text>

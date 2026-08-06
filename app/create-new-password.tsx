@@ -68,7 +68,8 @@ function PasswordField({ label, placeholder, value, onChangeText }: PasswordFiel
 export default function CreateNewPasswordScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { email } = useLocalSearchParams<{ email?: string }>();
+  const { email, type } = useLocalSearchParams<{ email?: string; type?: string }>();
+  const accountType = type === 'tasker' ? 'tasker' : 'user';
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -81,7 +82,7 @@ export default function CreateNewPasswordScreen() {
         code: code.trim(),
         newPassword: password,
         emailAddress: email,
-        type: 'user',
+        type: accountType,
       });
     },
     onSuccess: () => router.replace('/reset-success'),
