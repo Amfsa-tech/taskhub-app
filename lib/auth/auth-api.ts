@@ -137,6 +137,67 @@ export function getVerificationStatus(signal?: AbortSignal) {
   return api.get<VerificationStatusResponse>(`${BASE}/verification-status`, { signal });
 }
 
+/* ------------------------------------------------------------------ *
+ * Tasker profile — `protectTasker`
+ * ------------------------------------------------------------------ */
+
+export interface PreviousWorkItem {
+  url: string;
+  publicId: string;
+  _id?: string;
+}
+
+export interface PreviousWorkResponse {
+  status: string;
+  message: string;
+  previousWork: PreviousWorkItem[];
+}
+
+/**
+ * Append portfolio images (multipart, field name `images`).
+ *
+ * **Appends, never replaces** — and the backend caps the total at 10, rejecting
+ * the whole batch with 400 if `existing + new > 10`. Check the current count
+ * before offering a picker limit.
+ */
+export function uploadPreviousWork(images: PickedImage[]) {
+  const form = new FormData();
+  for (const image of images) {
+    form.append('images', {
+      uri: image.uri,
+      name: image.name,
+      type: image.type,
+    } as unknown as Blob);
+  }
+  return api.post<PreviousWorkResponse>(`${BASE}/previous-work`, form);
+}
+
+/** Remove one portfolio image by its subdocument id. */
+export function deletePreviousWork(id: string) {
+  return api.delete<PreviousWorkResponse>(`${BASE}/previous-work/${id}`);
+}
+
+export interface UpdateTaskerCategoriesPayload {
+  /** Both arrays are required, and every entry must be a valid active category id. */
+  mainCategories: string[];
+  subCategories: string[];
+  university?: string;
+}
+
+/**
+ * Set the services a tasker offers. This is what populates `GET
+ * /api/tasks/tasker/feed` — a tasker with no `subCategories` gets an empty feed,
+ * so this screen is a prerequisite for seeing any work at all.
+ */
+export function updateTaskerCategories(payload: UpdateTaskerCategoriesPayload) {
+  return api.put<MessageResponse>(`${BASE}/categories`, payload);
+}
+
+/** The tasker's service-area centre. Also narrows the feed (default 200 miles). */
+export function updateTaskerLocation(payload: UpdateUserLocationPayload) {
+  return api.put<UpdateUserLocationResponse>(`${BASE}/location`, payload);
+}
+
 export function logout() {
   return api.post<MessageResponse>(`${BASE}/logout`);
 }

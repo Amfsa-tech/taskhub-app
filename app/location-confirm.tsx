@@ -12,6 +12,7 @@ import { Package } from '@/components/icons/package';
 import { useLocation } from '@/context/LocationContext';
 import { updateUserLocation } from '@/lib/auth/auth-api';
 import { useAuth } from '@/lib/auth/auth-context';
+import { reverseGeocode } from '@/lib/location/geocoding';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -24,9 +25,6 @@ const COLORS = {
   onBrand: '#ffffff',
   success: '#4caf50',
 };
-
-// Replace with a real API key from environment variable
-const GEOAPIFY_API_KEY = process.env.EXPO_PUBLIC_GEOAPIFY_API_KEY || '';
 
 export default function LocationConfirmScreen() {
   const insets = useSafeAreaInsets();
@@ -66,27 +64,14 @@ export default function LocationConfirmScreen() {
           setCoords({ latitude: coords.latitude, longitude: coords.longitude });
         }
 
-        if (!GEOAPIFY_API_KEY) {
-          if (mounted) {
-            setAddress(`${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`);
-            setError('Geoapify API Key not found. Showing coordinates instead.');
-            setLoading(false);
-          }
-          return;
-        }
+        const formatted = await reverseGeocode(coords.latitude, coords.longitude);
 
-        const url = `https://api.geoapify.com/v1/geocode/reverse?lat=${coords.latitude}&lon=${coords.longitude}&apiKey=${GEOAPIFY_API_KEY}`;
-        const response = await fetch(url);
-        const data = await response.json();
-        
         if (mounted) {
-          if (data.features && data.features.length > 0) {
-            // Try to extract a sensible address
-            const props = data.features[0].properties;
-            const formatted = props.formatted || `${props.street}, ${props.city}`;
+          if (formatted) {
             setAddress(formatted);
           } else {
             setAddress(`${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`);
+            setError('Could not find your address name. You can adjust on map.');
           }
           setLoading(false);
         }

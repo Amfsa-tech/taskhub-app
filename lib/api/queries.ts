@@ -11,12 +11,14 @@ import { getUniversities } from './universities';
 import { getVerificationStatus } from '@/lib/auth/auth-api';
 import {
   getBanks,
+  getTaskerBalance,
   getTaskerBankAccount,
+  getTaskerTransactions,
   getWalletBalance,
   getWalletTransactions,
   type WalletTransactionPurpose,
 } from './wallet';
-import { getBidPaymentSummary } from './bids';
+import { getBidPaymentSummary, getTaskerBids, type BidStatus } from './bids';
 import {
   getCompletionCode,
   getNearbyTaskers,
@@ -26,6 +28,8 @@ import {
   getTaskerReviews,
   getTaskMatches,
   getTasks,
+  getTaskerFeed,
+  getTaskerTasks,
   getUserTasks,
   type Task,
   type TaskListParams,
@@ -58,6 +62,12 @@ export const queryKeys = {
   taskerBankAccount: () => ['wallet', 'tasker', 'bank-account'] as const,
   paymentSummary: (bidId: string) => ['bids', 'payment-summary', bidId] as const,
   completionCode: (taskId: string) => ['tasks', 'completion-code', taskId] as const,
+  // Tasker side
+  taskerFeed: () => ['tasks', 'tasker', 'feed'] as const,
+  taskerTasks: (status?: TaskStatus) => ['tasks', 'tasker', 'assigned', status ?? 'all'] as const,
+  taskerBids: (status?: BidStatus) => ['bids', 'tasker', status ?? 'all'] as const,
+  taskerBalance: () => ['wallet', 'tasker', 'balance'] as const,
+  taskerTransactions: () => ['wallet', 'tasker', 'transactions'] as const,
 };
 
 /** Tasks posted by the signed-in user. */
@@ -292,18 +302,20 @@ export function useChatUnreadCount(): number {
 }
 
 /** The user's wallet balance (+ escrow). */
-export function useWalletBalance() {
+export function useWalletBalance(enabled = true) {
   return useQuery({
     queryKey: queryKeys.walletBalance(),
     queryFn: ({ signal }) => getWalletBalance(signal),
+    enabled,
   });
 }
 
 /** The user's wallet transaction history. First page only — backs the wallet screen. */
-export function useWalletTransactions() {
+export function useWalletTransactions(enabled = true) {
   return useQuery({
     queryKey: queryKeys.walletTransactions(),
     queryFn: ({ signal }) => getWalletTransactions({ limit: 20 }, signal),
+    enabled,
   });
 }
 
@@ -315,7 +327,10 @@ export function useWalletTransactions() {
  * no `status` filter, so there's deliberately no "Failed"-only view here; the
  * per-row status pill carries that instead.
  */
-export function useWalletTransactionsPaged(purpose?: WalletTransactionPurpose) {
+export function useWalletTransactionsPaged(
+  purpose?: WalletTransactionPurpose,
+  enabled = true,
+) {
   return useInfiniteQuery({
     queryKey: queryKeys.walletTransactionsPaged(purpose),
     queryFn: ({ pageParam, signal }) =>
@@ -323,5 +338,87 @@ export function useWalletTransactionsPaged(purpose?: WalletTransactionPurpose) {
     initialPageParam: 1,
     getNextPageParam: (last) =>
       last.currentPage < last.totalPages ? last.currentPage + 1 : undefined,
+    enabled,
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Tasker side
+ *
+ * Every hook below hits a `protectTasker` route and 401s for a user token, so
+ * each takes an `enabled` flag rather than guessing — callers pass
+ * `accountType === 'tasker'`.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Open tasks matching the tasker's categories, paged by cursor.
+ *
+ * `hasNextPage` comes from the server rather than being inferred from page
+ * length: distance filtering happens after the DB query, so a short page does
+ * not mean the feed is exhausted.
+ */
+export function useTaskerFeed(enabled = true) {
+  return useInfiniteQuery({
+    queryKey: queryKeys.taskerFeed(),
+    queryFn: ({ pageParam, signal }) =>
+      getTaskerFeed({ limit: 10, cursor: pageParam as string | undefined }, signal),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) =>
+      last.pagination.hasNextPage ? (last.pagination.nextCursor ?? undefined) : undefined,
+    enabled,
+  });
+}
+
+/** Tasks assigned to the signed-in tasker, optionally filtered to one status. */
+export function useTaskerTasks(status?: TaskStatus, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.taskerTasks(status),
+    queryFn: ({ signal }) => getTaskerTasks({ status, limit: 50 }, signal),
+    enabled,
+  });
+}
+
+/** The tasker's own bids — covers both "bids sent" and incoming hire requests. */
+export function useTaskerBids(status?: BidStatus, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.taskerBids(status),
+    queryFn: ({ signal }) => getTaskerBids({ status, limit: 50 }, signal),
+    enabled,
+  });
+}
+
+/** Tasker wallet balance. Separate endpoint and shape from the user's. */
+export function useTaskerBalance(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.taskerBalance(),
+    queryFn: ({ signal }) => getTaskerBalance(signal),
+    enabled,
+  });
+}
+
+/** Tasker earnings history. No purpose filter exists on this side. */
+export function useTaskerTransactions(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.taskerTransactions(),
+    queryFn: ({ signal }) => getTaskerTransactions({ limit: 50 }, signal),
+    enabled,
+  });
+}
+
+/**
+ * Paged tasker earnings for the history screen. The tasker endpoint has no
+ * `?purpose=` filter, so there is deliberately no filter parameter here — the
+ * screen hides the filter control for taskers rather than offering one that
+ * the server would ignore.
+ */
+export function useTaskerTransactionsPaged(enabled = true) {
+  return useInfiniteQuery({
+    queryKey: [...queryKeys.taskerTransactions(), 'paged'],
+    queryFn: ({ pageParam, signal }) =>
+      getTaskerTransactions({ page: pageParam, limit: 20 }, signal),
+    initialPageParam: 1,
+    getNextPageParam: (last) =>
+      last.currentPage < last.totalPages ? last.currentPage + 1 : undefined,
+    enabled,
   });
 }

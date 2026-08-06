@@ -3,6 +3,8 @@ import { useRouter } from 'expo-router';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useNewPost } from '@/hooks/use-new-post';
+
 const COLORS = {
   surface: '#ffffff',
   brand: '#6c3bff',
@@ -22,6 +24,7 @@ interface Props {
 export function HireAgainModal({ visible, onClose, taskerName }: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const startNewPost = useNewPost();
 
   const handleSelectExisting = () => {
     onClose();
@@ -33,10 +36,7 @@ export function HireAgainModal({ visible, onClose, taskerName }: Props) {
 
   const handleCreateInvite = () => {
     onClose();
-    router.push({
-      pathname: '/post',
-      params: { inviteTasker: taskerName },
-    });
+    startNewPost();
   };
 
   // Extract first name (e.g. Chioma. A -> Chioma) for friendly headers

@@ -2,8 +2,20 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { useTaskerBids, useTaskerTasks, useTaskerTransactions } from '@/lib/api/queries';
+import { formatNaira } from '@/lib/api/tasks';
+import { useAuth } from '@/lib/auth/auth-context';
 
 
 
@@ -22,41 +34,140 @@ const COLORS = {
 type Period = '7 Days' | '30 days' | '3 Months' | '6 Months' | '1 year';
 const PERIOD_OPTIONS: Period[] = ['7 Days', '30 days', '3 Months', '6 Months', '1 year'];
 
-const BAR_DATA: { month: string; pct: number }[] = [
-  { month: 'JAN', pct: 0.6 },
-  { month: 'FEB', pct: 0.42 },
-  { month: 'MAR', pct: 0.85 },
-  { month: 'APR', pct: 0.9 },
-  { month: 'MAY', pct: 0.71 },
-  { month: 'JUN', pct: 0.37 },
-];
+const PERIOD_DAYS: Record<Period, number> = {
+  '7 Days': 7,
+  '30 days': 30,
+  '3 Months': 90,
+  '6 Months': 180,
+  '1 year': 365,
+};
 
 const MAX_BAR_H = 100;
 
-const STAT_ITEMS = [
-  { label: 'Jobs completed', value: '127', icon: 'briefcase-outline', iconColor: COLORS.brand, bg: COLORS.brandSubtle },
-  { label: 'Acceptance rate', value: '82%', icon: 'check-circle-outline', iconColor: COLORS.successText, bg: COLORS.successBg },
-  { label: 'Completion rate', value: '96%', icon: 'trending-up', iconColor: COLORS.brand, bg: COLORS.brandSubtle },
-  { label: 'Average rating', value: '4.8/5', icon: 'star-outline', iconColor: '#e07b00', bg: '#fff4e5' },
-  { label: 'Response Time', value: '~3 min', icon: 'clock-outline', iconColor: '#2563eb', bg: '#eff6ff' },
-  { label: 'Repeat user', value: '34', icon: 'account-multiple-outline', iconColor: COLORS.brand, bg: COLORS.brandSubtle },
-  { label: 'Profile Views', value: '312', icon: 'eye-outline', iconColor: '#c4001a', bg: '#fff1f1' },
-  { label: 'Invitation Rate', value: '68%', icon: 'email-outline', iconColor: '#e07b00', bg: '#fff4e5' },
-];
+const MONTH_LABELS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
-const INSIGHTS = [
-  { icon: 'trending-up', color: COLORS.successText, text: 'Your earnings are up 12% from last month' },
-  { icon: 'bell-outline', color: COLORS.brand, text: 'Your response time of ~3 min is faster than 80% of taskers' },
-  { icon: 'star-outline', color: '#e07b00', text: 'Your 4.8 rating puts you in the top 15% of taskers' },
-];
+/**
+ * Earnings buckets derived from the tasker's own transaction list.
+ *
+ * There is **no analytics endpoint** — no aggregate, no per-period totals — so
+ * everything on this screen is computed from `GET /api/wallet/tasker/transactions`
+ * and `GET /api/tasks/tasker/tasks`. That has one consequence worth keeping in
+ * mind: those lists are paged, so a very long history is truncated to what was
+ * fetched. Short windows are exact; the 1-year view can undercount.
+ */
+function bucketEarnings(
+  transactions: { amount: number; type: string; status: string; createdAt: string }[],
+  period: Period,
+  now: Date,
+): { label: string; value: number }[] {
+  const days = PERIOD_DAYS[period];
+  const byDay = days <= 30;
+  const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+
+  const credits = transactions.filter(
+    (t) => t.type === 'credit' && t.status === 'success' && new Date(t.createdAt) >= cutoff,
+  );
+
+  const buckets = new Map<string, { label: string; value: number; order: number }>();
+
+  if (byDay) {
+    for (let i = days - 1; i >= 0; i -= 1) {
+      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      buckets.set(key, { label: String(d.getDate()), value: 0, order: -i });
+    }
+  } else {
+    const months = Math.round(days / 30);
+    for (let i = months - 1; i >= 0; i -= 1) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${d.getMonth()}`;
+      buckets.set(key, { label: MONTH_LABELS[d.getMonth()], value: 0, order: -i });
+    }
+  }
+
+  for (const tx of credits) {
+    const d = new Date(tx.createdAt);
+    const key = byDay
+      ? `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+      : `${d.getFullYear()}-${d.getMonth()}`;
+    const bucket = buckets.get(key);
+    if (bucket) bucket.value += tx.amount;
+  }
+
+  return Array.from(buckets.values())
+    .sort((a, b) => a.order - b.order)
+    .map(({ label, value }) => ({ label, value }));
+}
+
+function compactNaira(value: number): string {
+  if (value >= 1_000_000) return `${Math.round(value / 100_000) / 10}M`;
+  if (value >= 1_000) return `${Math.round(value / 100) / 10}K`;
+  return String(Math.round(value));
+}
 
 export default function PerformanceScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [period, setPeriod] = useState<Period>('7 Days');
+  const [period, setPeriod] = useState<Period>('30 days');
   const [showPeriodDrop, setShowPeriodDrop] = useState(false);
   const [dropPos, setDropPos] = useState({ top: 0, right: 0 });
   const periodBtnRef = useRef<View>(null);
+
+  const { user } = useAuth();
+  const transactionsQ = useTaskerTransactions();
+  const tasksQ = useTaskerTasks();
+  const bidsQ = useTaskerBids();
+
+  const transactions = transactionsQ.data?.transactions ?? [];
+  const tasks = tasksQ.data?.tasks ?? [];
+  const bids = bidsQ.data?.bids ?? [];
+
+  const bars = bucketEarnings(transactions, period, new Date());
+  const periodTotal = bars.reduce((sum, b) => sum + b.value, 0);
+  const maxBar = Math.max(...bars.map((b) => b.value), 1);
+
+  const completed = tasks.filter((t) => t.status === 'completed').length;
+  const cancelled = tasks.filter((t) => t.status === 'cancelled').length;
+  const finished = completed + cancelled;
+
+  const acceptedBids = bids.filter((b) => b.status === 'accepted').length;
+
+  // Only the metrics the data can actually support. Response time, profile
+  // views, repeat customers and invitation rate were on this screen as fixed
+  // strings; nothing in the backend records them, so they are gone rather than
+  // shown as invented numbers.
+  const stats = [
+    {
+      label: 'Jobs completed',
+      value: String(completed),
+      icon: 'briefcase-outline',
+      iconColor: COLORS.brand,
+      bg: COLORS.brandSubtle,
+    },
+    {
+      label: 'Completion rate',
+      value: finished > 0 ? `${Math.round((completed / finished) * 100)}%` : '—',
+      icon: 'trending-up',
+      iconColor: COLORS.brand,
+      bg: COLORS.brandSubtle,
+    },
+    {
+      label: 'Bids won',
+      value: bids.length > 0 ? `${Math.round((acceptedBids / bids.length) * 100)}%` : '—',
+      icon: 'check-circle-outline',
+      iconColor: COLORS.successText,
+      bg: COLORS.successBg,
+    },
+    {
+      label: 'Average rating',
+      value: user?.averageRating ? `${user.averageRating.toFixed(1)}/5` : '—',
+      icon: 'star-outline',
+      iconColor: '#e07b00',
+      bg: '#fff4e5',
+    },
+  ];
+
+  const loading = transactionsQ.isLoading || tasksQ.isLoading || bidsQ.isLoading;
 
   return (
     <View style={styles.container}>
@@ -103,34 +214,40 @@ export default function PerformanceScreen() {
 
         {/* Earnings Chart Card */}
         <View style={styles.chartCard}>
-          <Text style={styles.chartLabel}>Monthly earnings</Text>
-          <Text style={styles.chartAmount}>₦230,000</Text>
+          <Text style={styles.chartLabel}>Earnings · {period}</Text>
+          <Text style={styles.chartAmount}>{formatNaira(periodTotal)}</Text>
 
-          <View style={styles.barChartArea}>
-            {/* Y labels */}
-            <View style={styles.yLabels}>
-              {['100K', '80K', '60K', '40K', '20K', '0'].map((l) => (
-                <Text key={l} style={styles.yLabel}>{l}</Text>
-              ))}
-            </View>
+          {loading ? (
+            <ActivityIndicator style={{ marginVertical: 40 }} color={COLORS.brand} />
+          ) : (
+            <View style={styles.barChartArea}>
+              {/* Y labels — scaled to the tallest bar in the window */}
+              <View style={styles.yLabels}>
+                {[1, 0.8, 0.6, 0.4, 0.2, 0].map((f) => (
+                  <Text key={f} style={styles.yLabel}>
+                    {compactNaira(maxBar * f)}
+                  </Text>
+                ))}
+              </View>
 
-            {/* Bars */}
-            <View style={styles.barsWrap}>
-              {BAR_DATA.map((bar) => (
-                <View key={bar.month} style={styles.barCol}>
-                  <View style={styles.barTrack}>
-                    <View style={[styles.bar, { height: MAX_BAR_H * bar.pct }]} />
+              {/* Bars */}
+              <View style={styles.barsWrap}>
+                {bars.map((bar, i) => (
+                  <View key={`${bar.label}-${i}`} style={styles.barCol}>
+                    <View style={styles.barTrack}>
+                      <View style={[styles.bar, { height: MAX_BAR_H * (bar.value / maxBar) }]} />
+                    </View>
+                    <Text style={styles.barLabel}>{bar.label}</Text>
                   </View>
-                  <Text style={styles.barLabel}>{bar.month}</Text>
-                </View>
-              ))}
+                ))}
+              </View>
             </View>
-          </View>
+          )}
         </View>
 
         {/* Stats grid */}
         <View style={styles.statsGrid}>
-          {STAT_ITEMS.map((item) => (
+          {stats.map((item) => (
             <View key={item.label} style={styles.statCard}>
               <View style={[styles.statIconWrap, { backgroundColor: item.bg }]}>
                 <MaterialCommunityIcons name={item.icon as any} size={18} color={item.iconColor} />
@@ -141,19 +258,8 @@ export default function PerformanceScreen() {
           ))}
         </View>
 
-        {/* Insights */}
-        <View style={styles.insightsCard}>
-          <Text style={styles.insightsTitle}>Insights</Text>
-          {INSIGHTS.map((insight, i) => (
-            <View key={i} style={styles.insightRow}>
-              <MaterialCommunityIcons name={insight.icon as any} size={18} color={insight.color} />
-              <Text style={styles.insightText}>{insight.text}</Text>
-            </View>
-          ))}
-        </View>
-
         {/* View reviews */}
-        <Pressable style={styles.reviewsRow}>
+        <Pressable style={styles.reviewsRow} onPress={() => router.push('/my-reviews')}>
           <MaterialCommunityIcons name="star-outline" size={18} color="#e07b00" />
           <Text style={styles.reviewsText}>View reviews</Text>
           <MaterialCommunityIcons name="chevron-right" size={20} color={COLORS.textSecondary} style={{ marginLeft: 'auto' }} />

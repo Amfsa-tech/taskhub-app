@@ -1,16 +1,22 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { deletePreviousWork, uploadPreviousWork } from '@/lib/auth/auth-api';
+import { useAuth } from '@/lib/auth/auth-context';
+import { pickImages } from '@/lib/image-picker';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -23,101 +29,65 @@ const COLORS = {
   placeholder: '#d0d0da',
 };
 
-type PortfolioItem = {
-  id: string;
-  images: string[]; // URIs
-  title: string;
-  link: string;
-};
+/**
+ * The backend models a portfolio as **images only** — `Tasker.previousWork` is
+ * an array of `{ url, publicId }` with no title, description or link field, and
+ * `POST /api/auth/previous-work` accepts nothing but the files. So this screen
+ * is a gallery, not a list of projects: the "Project Title" and "Portfolio
+ * (Link)" inputs it used to show had nowhere to be saved.
+ *
+ * Uploads append (max 10 total) and deletes are by subdocument id.
+ */
+const MAX_ITEMS = 10;
 
 export default function TaskerPortfolioScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
+  const { user, refreshProfile } = useAuth();
 
-  // UI state: 'empty' | 'form'
-  const [view, setView] = useState<'empty' | 'form'>('empty');
-  const [portfolioItems, setPortfolioItems] = useState<PortfolioItem[]>([]);
+  const items = user?.previousWork ?? [];
+  const remaining = MAX_ITEMS - items.length;
 
-  // Form state
-  const [title, setTitle] = useState('');
-  const [link, setLink] = useState('');
-
-  const canAdd = title.trim().length > 0;
-
-  const handleAdd = () => {
-    if (!canAdd) return;
-    const newItem: PortfolioItem = {
-      id: Date.now().toString(),
-      images: [],
-      title: title.trim(),
-      link: link.trim(),
-    };
-    setPortfolioItems((prev) => [...prev, newItem]);
-    setTitle('');
-    setLink('');
-    setView('empty');
+  const afterChange = async () => {
+    await refreshProfile();
+    // A tasker's public profile embeds previousWork.
+    queryClient.invalidateQueries({ queryKey: ['taskers'] });
   };
 
-  // ── Empty state ─────────────────────────────────────────────────────────────
-  if (view === 'empty') {
-    return (
-      <View style={styles.container}>
-        <StatusBar style="dark" />
-        <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-          <Pressable onPress={() => router.back()} hitSlop={8} style={styles.backBtn}>
-            <MaterialCommunityIcons name="chevron-left" size={26} color={COLORS.textPrimary} />
-          </Pressable>
-          <Text style={styles.headerTitle}>Portfolio</Text>
-          <View style={{ width: 34 }} />
-        </View>
+  const uploadMutation = useMutation({
+    mutationFn: async () => {
+      const picked = await pickImages(Math.min(remaining, 5));
+      if (picked.length === 0) return null;
+      return uploadPreviousWork(picked);
+    },
+    onSuccess: (result) => {
+      if (result) afterChange();
+    },
+    onError: (e) =>
+      Alert.alert('Upload failed', e instanceof Error ? e.message : 'Please try again.'),
+  });
 
-        <ScrollView
-          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 40 }]}
-          showsVerticalScrollIndicator={false}>
-          <Text style={styles.pageTitle}>Add your portfolio</Text>
-          <Text style={styles.pageSubtitle}>
-            Show customers your best work. A portfolio helps customers trust you and increases your chances of getting hired.
-          </Text>
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deletePreviousWork(id),
+    onSuccess: afterChange,
+    onError: (e) =>
+      Alert.alert('Could not remove', e instanceof Error ? e.message : 'Please try again.'),
+  });
 
-          {/* Existing items */}
-          {portfolioItems.map((item) => (
-            <View key={item.id} style={styles.existingItem}>
-              <View style={styles.existingIconWrap}>
-                <MaterialCommunityIcons name="image-multiple" size={20} color={COLORS.brand} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.existingTitle}>{item.title}</Text>
-                {item.link ? (
-                  <Text style={styles.existingLink} numberOfLines={1}>{item.link}</Text>
-                ) : null}
-              </View>
-              <Pressable
-                hitSlop={8}
-                onPress={() => setPortfolioItems((prev) => prev.filter((p) => p.id !== item.id))}>
-                <MaterialCommunityIcons name="close" size={18} color={COLORS.textSecondary} />
-              </Pressable>
-            </View>
-          ))}
+  const confirmDelete = (id?: string) => {
+    if (!id) return;
+    Alert.alert('Remove image?', 'This takes it off your public profile.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => deleteMutation.mutate(id) },
+    ]);
+  };
 
-          {/* Add card */}
-          <Pressable style={styles.addCard} onPress={() => setView('form')}>
-            <View style={styles.addIconWrap}>
-              <MaterialCommunityIcons name="plus" size={28} color={COLORS.brand} />
-            </View>
-            <Text style={styles.addCardTitle}>Add Portfolio</Text>
-            <Text style={styles.addCardSub}>Images, Links, documents</Text>
-          </Pressable>
-        </ScrollView>
-      </View>
-    );
-  }
-
-  // ── Form state ──────────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Pressable onPress={() => setView('empty')} hitSlop={8} style={styles.backBtn}>
+        <Pressable onPress={() => router.back()} hitSlop={8} style={styles.backBtn}>
           <MaterialCommunityIcons name="chevron-left" size={26} color={COLORS.textPrimary} />
         </Pressable>
         <Text style={styles.headerTitle}>Portfolio</Text>
@@ -126,64 +96,75 @@ export default function TaskerPortfolioScreen() {
 
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled">
+        showsVerticalScrollIndicator={false}>
         <Text style={styles.pageTitle}>Add your portfolio</Text>
         <Text style={styles.pageSubtitle}>
-          Show customers your best work. A portfolio helps customers trust you and increases your chances of getting hired.
+          Show customers your best work. A portfolio helps customers trust you and increases your
+          chances of getting hired.
         </Text>
 
-        {/* Image upload row */}
-        <View style={styles.imageRow}>
-          {/* Upload button */}
-          <Pressable style={styles.uploadBox}>
-            <MaterialCommunityIcons name="camera-outline" size={22} color={COLORS.textSecondary} />
-            <Text style={styles.uploadLabel}>Upload</Text>
+        {items.length === 0 ? (
+          <Pressable
+            style={styles.addCard}
+            disabled={uploadMutation.isPending}
+            onPress={() => uploadMutation.mutate()}>
+            <View style={styles.addIconWrap}>
+              {uploadMutation.isPending ? (
+                <ActivityIndicator color={COLORS.brand} />
+              ) : (
+                <MaterialCommunityIcons name="plus" size={28} color={COLORS.brand} />
+              )}
+            </View>
+            <Text style={styles.addCardTitle}>Add Portfolio</Text>
+            <Text style={styles.addCardSub}>Up to {MAX_ITEMS} images</Text>
           </Pressable>
+        ) : (
+          <>
+            <Text style={styles.countLabel}>
+              {items.length} of {MAX_ITEMS} images
+            </Text>
+            <View style={styles.grid}>
+              {items.map((item, index) => (
+                <View key={item.publicId || item._id || index} style={styles.gridItem}>
+                  <Image source={{ uri: item.url }} style={styles.gridImage} contentFit="cover" />
+                  <Pressable
+                    style={styles.removeBadge}
+                    hitSlop={8}
+                    onPress={() => confirmDelete(item._id)}>
+                    <MaterialCommunityIcons name="close" size={14} color="#fff" />
+                  </Pressable>
+                </View>
+              ))}
 
-          {/* Placeholder slots */}
-          {[0, 1, 2, 3].map((i) => (
-            <View key={i} style={styles.imagePlaceholder} />
-          ))}
-        </View>
+              {remaining > 0 && (
+                <Pressable
+                  style={[styles.gridItem, styles.uploadTile]}
+                  disabled={uploadMutation.isPending}
+                  onPress={() => uploadMutation.mutate()}>
+                  {uploadMutation.isPending ? (
+                    <ActivityIndicator color={COLORS.brand} />
+                  ) : (
+                    <>
+                      <MaterialCommunityIcons
+                        name="camera-outline"
+                        size={22}
+                        color={COLORS.textSecondary}
+                      />
+                      <Text style={styles.uploadLabel}>Upload</Text>
+                    </>
+                  )}
+                </Pressable>
+              )}
+            </View>
 
-        {/* Project Title */}
-        <View style={styles.field}>
-          <Text style={styles.fieldLabel}>Project Title</Text>
-          <TextInput
-            style={styles.fieldInput}
-            placeholder="E.g  Event Flyer Project"
-            placeholderTextColor={COLORS.textSecondary}
-            value={title}
-            onChangeText={setTitle}
-          />
-        </View>
-
-        {/* Portfolio Link */}
-        <View style={styles.field}>
-          <Text style={styles.fieldLabel}>Portfolio (Link)</Text>
-          <TextInput
-            style={styles.fieldInput}
-            placeholder="behance.net/username"
-            placeholderTextColor={COLORS.textSecondary}
-            value={link}
-            onChangeText={setLink}
-            keyboardType="url"
-            autoCapitalize="none"
-          />
-        </View>
+            {remaining === 0 && (
+              <Text style={styles.limitNote}>
+                You&apos;ve reached the {MAX_ITEMS}-image limit. Remove one to add another.
+              </Text>
+            )}
+          </>
+        )}
       </ScrollView>
-
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 16 }]}>
-        <Pressable
-          style={[styles.addBtn, !canAdd && styles.addBtnDisabled]}
-          disabled={!canAdd}
-          onPress={handleAdd}>
-          <Text style={[styles.addBtnText, !canAdd && styles.addBtnTextDisabled]}>
-            Add portfolio
-          </Text>
-        </Pressable>
-      </View>
     </View>
   );
 }
@@ -192,6 +173,52 @@ export default function TaskerPortfolioScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.canvas },
+  countLabel: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    marginBottom: 12,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  gridItem: {
+    width: '31%',
+    aspectRatio: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: COLORS.brandSubtle,
+  },
+  gridImage: { width: '100%', height: '100%' },
+  removeBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(17,17,34,0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uploadTile: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  limitNote: {
+    fontFamily: 'Geist_400Regular',
+    fontSize: 13,
+    lineHeight: 18,
+    color: COLORS.textSecondary,
+    marginTop: 14,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

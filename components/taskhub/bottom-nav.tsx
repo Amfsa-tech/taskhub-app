@@ -12,6 +12,7 @@ import NavHouseOutline from '@/assets/icons/nav-house-outline.svg';
 import NavPlus from '@/assets/icons/nav-plus.svg';
 import NavUser from '@/assets/icons/nav-user.svg';
 import NavUserActive from '@/assets/icons/nav-user-active.svg';
+import { useNewPost } from '@/hooks/use-new-post';
 import { useChatUnreadCount } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth/auth-context';
 import { MagnifyingGlass } from '@/components/icons/magnifying-glass';
@@ -62,6 +63,7 @@ function TabButton({
 export function BottomNav({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const startNewPost = useNewPost();
   const messagesBadge = useChatUnreadCount();
   const { accountType } = useAuth();
 
@@ -185,7 +187,7 @@ export function BottomNav({ state, navigation }: BottomTabBarProps) {
       {/* Elevated + button: lifted by half its height so its center sits on the
           bar's top edge — top half pokes out above the white, bottom half overlaps it. */}
       <View style={styles.fabWrap} pointerEvents="box-none">
-        <Pressable style={styles.fab} onPress={() => router.push('/post')} hitSlop={6}>
+        <Pressable style={styles.fab} onPress={() => startNewPost()} hitSlop={6}>
           <NavPlus width={24} height={24} />
         </Pressable>
       </View>

@@ -3,7 +3,9 @@ import { RateTaskerModal } from '@/components/taskhub/rate-tasker-modal';
 import { queryKeys, useCompletionCode, useTask } from '@/lib/api/queries';
 import {
   changeTaskStatus,
+  completeTaskerTask,
   formatNaira,
+  startTaskerTask,
   rateTask,
   type Task,
   type TaskStatus,
@@ -23,6 +25,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,7 +33,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const PopperImage = require('@/assets/images/party_popper_3d.png');
 const AVATAR = require('@/assets/images/taskers/tasker-1.png');
-const SHIELD_IMAGE = require('@/assets/images/3d-shield.png');
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -124,12 +126,21 @@ export default function TrackTaskScreen() {
 
   const isTasker = accountType === 'tasker';
 
-  // --- Tasker-side mock state. The tasker surface is its own milestone (§3.6);
-  // none of the state below is wired to `PATCH /api/tasks/:id/status/tasker`.
-  const [escrowStatus, setEscrowStatus] = useState<'pending' | 'secured'>('pending');
-  const [reminderModalVisible, setReminderModalVisible] = useState(false);
   const [statusSheetVisible, setStatusSheetVisible] = useState(false);
-  const [taskStatusStep, setTaskStatusStep] = useState<'start_task' | 'started' | 'completed'>('start_task');
+  const [taskerCode, setTaskerCode] = useState('');
+
+  /*
+   * Tasker-side state is *derived* from the task, never held locally. A task
+   * only reaches a tasker once it is `assigned`, and assignment is the same
+   * atomic call that funds escrow — so escrow is secured for every task they
+   * can see here. There is no "waiting for the customer to fund" state in the
+   * backend, and the old local `escrowStatus` invented one.
+   */
+  const escrowStatus: 'pending' | 'secured' =
+    task?.escrowStatus === 'held' || task?.status === 'completed' ? 'secured' : 'pending';
+
+  const taskStatusStep: 'start_task' | 'started' | 'completed' =
+    task?.status === 'completed' ? 'completed' : task?.status === 'in-progress' ? 'started' : 'start_task';
 
   /**
    * The completion code exists only while the task is in progress, and only the
@@ -137,6 +148,39 @@ export default function TrackTaskScreen() {
    * the tasker submits it, and that release is what moves escrow.
    */
   const codeQ = useCompletionCode(id, !isTasker && task?.status === 'in-progress');
+
+  const refreshTask = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+      queryClient.invalidateQueries({ queryKey: ['wallet'] }),
+    ]);
+
+  const startWork = useMutation({
+    mutationFn: () => startTaskerTask(id as string),
+    onSuccess: async () => {
+      await refreshTask();
+      setStatusSheetVisible(false);
+      Alert.alert(
+        'Task started',
+        'The customer now has a 6-digit completion code. Ask them for it when the work is done — entering it releases your payment.',
+      );
+    },
+    onError: (err) =>
+      Alert.alert('Could not start', err instanceof Error ? err.message : 'Please try again.'),
+  });
+
+  const completeWork = useMutation({
+    mutationFn: () => completeTaskerTask(id as string, taskerCode),
+    onSuccess: async () => {
+      await refreshTask();
+      setStatusSheetVisible(false);
+      setTaskerCode('');
+      Alert.alert('Task completed', 'Payment has been released from escrow to your wallet.');
+    },
+    // A wrong code is a 400 with a specific message — surface it as-is.
+    onError: (err) =>
+      Alert.alert('Could not complete', err instanceof Error ? err.message : 'Please try again.'),
+  });
 
   const cancel = useMutation({
     mutationFn: () => changeTaskStatus(id as string, 'cancelled'),
@@ -314,8 +358,10 @@ export default function TrackTaskScreen() {
                 <Ionicons name="wallet-outline" size={20} color="#b45309" />
               </View>
               <View style={styles.securedInfo}>
-                <Text style={[styles.securedTitle, { color: '#b45309' }]}>Waiting for customer to fund escrow</Text>
-                <Text style={[styles.securedSubtitle, { color: '#b45309' }]}>₦500,000 Pending payment</Text>
+                <Text style={[styles.securedTitle, { color: '#b45309' }]}>Escrow not held</Text>
+                <Text style={[styles.securedSubtitle, { color: '#b45309' }]}>
+                  {formatNaira(task.budget)} — payment is not secured yet
+                </Text>
               </View>
             </View>
           ) : (
@@ -325,7 +371,9 @@ export default function TrackTaskScreen() {
               </View>
               <View style={styles.securedInfo}>
                 <Text style={styles.securedTitle}>Payment Secured</Text>
-                <Text style={styles.securedSubtitle}>₦500,000 held in escrow</Text>
+                <Text style={styles.securedSubtitle}>
+                  {formatNaira(task.budget)} held in escrow
+                </Text>
               </View>
             </View>
           )
@@ -422,30 +470,20 @@ export default function TrackTaskScreen() {
       {/* Bottom Actions */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 16 }]}>
         {isTasker ? (
-          escrowStatus === 'pending' ? (
-            <PrimaryButton
-              label="Nudge Customer"
-              onPress={() => {
-                setReminderModalVisible(true);
-                // Auto-advance to funded (secured) status after reminder is closed
-                setTimeout(() => {
-                  setReminderModalVisible(false);
-                  setEscrowStatus('secured');
-                }, 2500);
-              }}
-            />
-          ) : (
-            <PrimaryButton
-              label={taskStatusStep === 'completed' ? "Task Completed" : "Update Status"}
-              onPress={() => {
-                if (taskStatusStep !== 'completed') {
-                  setStatusSheetVisible(true);
-                }
-              }}
-              disabled={taskStatusStep === 'completed'}
-              variant={taskStatusStep === 'completed' ? "secondary" : "primary"}
-            />
-          )
+          <PrimaryButton
+            label={
+              taskStatusStep === 'completed'
+                ? 'Task Completed'
+                : taskStatusStep === 'started'
+                  ? 'Enter completion code'
+                  : 'Start Task'
+            }
+            onPress={() => {
+              if (taskStatusStep !== 'completed') setStatusSheetVisible(true);
+            }}
+            disabled={taskStatusStep === 'completed'}
+            variant={taskStatusStep === 'completed' ? 'secondary' : 'primary'}
+          />
         ) : (
           /*
            * The poster cannot mark a task complete: `PATCH /api/tasks/:id/status`
@@ -475,24 +513,6 @@ export default function TrackTaskScreen() {
           <Text style={styles.reportLabel}>Report Issue</Text>
         </Pressable>
       </View>
-
-      {/* Reminder Sent Modal (Tasker Only) */}
-      <Modal visible={reminderModalVisible} transparent animationType="fade" onRequestClose={() => setReminderModalVisible(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setReminderModalVisible(false)}>
-          <View style={styles.reminderModalBox}>
-            <View style={{ position: 'relative', width: 80, height: 80 }}>
-              <Image source={SHIELD_IMAGE} style={styles.shield3d} contentFit="contain" />
-              <View style={styles.reminderBadge}>
-                <Ionicons name="checkmark-sharp" size={12} color="#ffffff" />
-              </View>
-            </View>
-            <Text style={styles.reminderTitle}>Reminder Sent</Text>
-            <Text style={styles.reminderSubtitle}>
-              We've notified Aisha M.. You'll receive a notification when they respond.
-            </Text>
-          </View>
-        </Pressable>
-      </Modal>
 
       {/* Update Job Status Bottom Sheet (Tasker Only) */}
       <Modal visible={statusSheetVisible} transparent animationType="slide" onRequestClose={() => setStatusSheetVisible(false)}>
@@ -568,19 +588,44 @@ export default function TrackTaskScreen() {
             {taskStatusStep === 'start_task' ? (
               <Pressable
                 style={[styles.sheetButton, { backgroundColor: COLORS.brand }]}
-                onPress={() => setTaskStatusStep('started')}>
-                <Text style={styles.sheetButtonText}>Start Task</Text>
+                disabled={startWork.isPending}
+                onPress={() => startWork.mutate()}>
+                {startWork.isPending ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={styles.sheetButtonText}>Start Task</Text>
+                )}
               </Pressable>
             ) : taskStatusStep === 'started' ? (
-              <Pressable
-                style={[styles.sheetButton, { backgroundColor: '#0d6639' }]}
-                onPress={() => {
-                  setTaskStatusStep('completed');
-                  setStatusSheetVisible(false);
-                  Alert.alert('Job Completed!', 'Excellent work! The customer has been notified to release payment.');
-                }}>
-                <Text style={styles.sheetButtonText}>Task Started</Text>
-              </Pressable>
+              <>
+                <Text style={styles.codeHint}>
+                  Ask the customer for the 6-digit completion code on their tracking screen.
+                  Entering it here releases your payment.
+                </Text>
+                <TextInput
+                  style={styles.codeEntry}
+                  value={taskerCode}
+                  onChangeText={(t) => setTaskerCode(t.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="000000"
+                  placeholderTextColor="#9a9ab0"
+                  keyboardType="number-pad"
+                  maxLength={6}
+                />
+                <Pressable
+                  style={[
+                    styles.sheetButton,
+                    { backgroundColor: '#0d6639' },
+                    (taskerCode.length !== 6 || completeWork.isPending) && { opacity: 0.5 },
+                  ]}
+                  disabled={taskerCode.length !== 6 || completeWork.isPending}
+                  onPress={() => completeWork.mutate()}>
+                  {completeWork.isPending ? (
+                    <ActivityIndicator color="#ffffff" />
+                  ) : (
+                    <Text style={styles.sheetButtonText}>Complete & get paid</Text>
+                  )}
+                </Pressable>
+              </>
             ) : (
               <Pressable
                 style={[styles.sheetButton, { backgroundColor: '#0d6639', opacity: 0.6 }]}
@@ -1080,6 +1125,26 @@ const styles = StyleSheet.create({
     fontFamily: 'Geist_600SemiBold',
     fontSize: 17,
     color: '#ffffff',
+  },
+  codeHint: {
+    fontFamily: 'Geist_400Regular',
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#5a5a70',
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  codeEntry: {
+    borderWidth: 1,
+    borderColor: '#e0e0ea',
+    borderRadius: 16,
+    paddingVertical: 14,
+    marginBottom: 12,
+    fontFamily: 'Geist_700Bold',
+    fontSize: 26,
+    letterSpacing: 10,
+    textAlign: 'center',
+    color: '#111122',
   },
   shield3d: {
     width: 80,

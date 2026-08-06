@@ -7,7 +7,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FundWalletModal } from '@/components/taskhub/fund-wallet-modal';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
-import { useWalletBalance, useWalletTransactions } from '@/lib/api/queries';
+import {
+  useTaskerBalance,
+  useTaskerTransactions,
+  useWalletBalance,
+  useWalletTransactions,
+} from '@/lib/api/queries';
+import { useAuth } from '@/lib/auth/auth-context';
 import { formatNaira, formatShortDate } from '@/lib/api/tasks';
 import { initializeFunding, verifyFunding, type WalletTransaction } from '@/lib/api/wallet';
 
@@ -53,14 +59,37 @@ function TransactionRow({ tx }: { tx: WalletTransaction }) {
 export default function WalletScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const balanceQ = useWalletBalance();
-  const txQ = useWalletTransactions();
+  const { accountType } = useAuth();
+  const isTasker = accountType === 'tasker';
+
+  /*
+   * User and tasker wallets are different endpoints with different shapes, and
+   * they are not interchangeable: `GET /api/wallet/user/balance` resolves a
+   * `User` by id, so a tasker token 404s rather than 401s. Each pair is enabled
+   * only for the account type it belongs to.
+   */
+  const userBalanceQ = useWalletBalance(!isTasker);
+  const userTxQ = useWalletTransactions(!isTasker);
+  const taskerBalanceQ = useTaskerBalance(isTasker);
+  const taskerTxQ = useTaskerTransactions(isTasker);
+
+  const balanceQ = isTasker ? taskerBalanceQ : userBalanceQ;
+  const txQ = isTasker ? taskerTxQ : userTxQ;
 
   const [fundOpen, setFundOpen] = useState(false);
   const [funding, setFunding] = useState(false);
 
-  const balance = balanceQ.data?.data;
   const transactions = txQ.data?.transactions ?? [];
+
+  // Taskers have no escrow of their own (escrow is held against the client's
+  // wallet) but do have pending withdrawals, so the secondary line differs.
+  const available = isTasker
+    ? (taskerBalanceQ.data?.data.availableToWithdraw ?? 0)
+    : (userBalanceQ.data?.data.availableBalance ?? 0);
+  const secondaryAmount = isTasker
+    ? (taskerBalanceQ.data?.data.pendingWithdrawals ?? 0)
+    : (userBalanceQ.data?.data.totalInEscrow ?? 0);
+  const secondaryLabel = isTasker ? 'pending withdrawal' : 'held in escrow';
 
   const startFunding = async (amount: number) => {
     setFunding(true);
@@ -122,22 +151,26 @@ export default function WalletScreen() {
             <Text style={styles.balanceError}>Couldn’t load balance</Text>
           ) : (
             <>
-              <Text style={styles.balanceValue}>{formatNaira(balance?.availableBalance ?? 0)}</Text>
-              {balance && balance.totalInEscrow > 0 ? (
-                <Text style={styles.escrow}>{formatNaira(balance.totalInEscrow)} held in escrow</Text>
+              <Text style={styles.balanceValue}>{formatNaira(available)}</Text>
+              {secondaryAmount > 0 ? (
+                <Text style={styles.escrow}>
+                  {formatNaira(secondaryAmount)} {secondaryLabel}
+                </Text>
               ) : null}
             </>
           )}
 
-          <Pressable
-            style={({ pressed }) => [styles.fundButton, pressed && styles.pressed]}
-            onPress={() => setFundOpen(true)}>
-            <Text style={styles.fundLabel}>Fund Wallet</Text>
-          </Pressable>
+          {!isTasker && (
+            <Pressable
+              style={({ pressed }) => [styles.fundButton, pressed && styles.pressed]}
+              onPress={() => setFundOpen(true)}>
+              <Text style={styles.fundLabel}>Fund Wallet</Text>
+            </Pressable>
+          )}
         </View>
 
         {/* Transactions */}
-        <Text style={styles.sectionTitle}>Transactions</Text>
+        <Text style={styles.sectionTitle}>{isTasker ? 'Earnings' : 'Transactions'}</Text>
 
         {txQ.isLoading ? (
           <View style={styles.state}>

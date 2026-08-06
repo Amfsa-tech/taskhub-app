@@ -23,6 +23,7 @@ import { useLocation } from '@/context/LocationContext';
 import { updateProfile, updateProfilePicture } from '@/lib/auth/auth-api';
 import { useAuth } from '@/lib/auth/auth-context';
 import type { UpdateProfilePayload } from '@/lib/auth/types';
+import { looksLikeCoordinates, resolveAddress } from '@/lib/location/geocoding';
 import { pickImages, type PickedImage } from '@/lib/image-picker';
 
 const COLORS = {
@@ -75,6 +76,23 @@ export default function EditProfileScreen() {
       setAddress(selectedLocation);
     }
   }, [selectedLocation]);
+
+  // A profile saved by an older build may hold a raw "lat, lon" pair — show
+  // (and, on the next save, persist) the place name instead.
+  useEffect(() => {
+    let mounted = true;
+    if (looksLikeCoordinates(address)) {
+      resolveAddress(address).then((resolved) => {
+        // Skip if the user has since picked a different location.
+        if (mounted && !openedPicker.current) setAddress(resolved);
+      });
+    }
+    return () => {
+      mounted = false;
+    };
+    // Run once for the seeded value only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const openLocationPicker = () => {
     openedPicker.current = true;

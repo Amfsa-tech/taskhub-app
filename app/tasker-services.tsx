@@ -1,8 +1,11 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +14,11 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { groupCategories, type Category } from '@/lib/api/categories';
+import { useCategories } from '@/lib/api/queries';
+import { updateTaskerCategories } from '@/lib/auth/auth-api';
+import { useAuth } from '@/lib/auth/auth-context';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -24,101 +32,96 @@ const COLORS = {
   selected: '#eff3ff',
 };
 
-// ─── Data ────────────────────────────────────────────────────────────────────
+// ─── Category presentation ───────────────────────────────────────────────────
+//
+// The backend category tree carries no icon or colour, so those are matched by
+// name here with a neutral fallback. Everything else — which categories exist,
+// what they're called, and which subcategories belong to them — comes from
+// `GET /api/categories`.
 
-type CategoryId = 'campus' | 'local' | 'errands' | 'digital';
-
-const CATEGORIES: {
-  id: CategoryId;
-  title: string;
-  subtitle: string;
-  icon: string;
-  iconBg: string;
-  iconColor: string;
-}[] = [
-  {
-    id: 'campus',
-    title: 'Campus Task',
-    subtitle: 'Printing, assignments, hostel help, tutorials.',
-    icon: 'school',
-    iconBg: '#3b5bff',
-    iconColor: '#fff',
-  },
-  {
-    id: 'local',
-    title: 'Local Services',
-    subtitle: 'Repairs, cleaning, electricians, home services.',
-    icon: 'home',
-    iconBg: '#f97316',
-    iconColor: '#fff',
-  },
-  {
-    id: 'errands',
-    title: 'Errands & Deliveries',
-    subtitle: 'Pickups, deliveries, shopping, quick runs.',
-    icon: 'package-variant-closed',
-    iconBg: '#6c3bff',
-    iconColor: '#fff',
-  },
-  {
-    id: 'digital',
-    title: 'Digital / Remote',
-    subtitle: 'Design, typing, editing, coding, remote help.',
-    icon: 'laptop',
-    iconBg: '#16a34a',
-    iconColor: '#fff',
-  },
+const CATEGORY_STYLE: { match: string; icon: string; iconBg: string }[] = [
+  { match: 'campus', icon: 'school', iconBg: '#3b5bff' },
+  { match: 'local', icon: 'home', iconBg: '#f97316' },
+  { match: 'errand', icon: 'package-variant-closed', iconBg: '#6c3bff' },
+  { match: 'delivery', icon: 'package-variant-closed', iconBg: '#6c3bff' },
+  { match: 'digital', icon: 'laptop', iconBg: '#16a34a' },
+  { match: 'remote', icon: 'laptop', iconBg: '#16a34a' },
 ];
 
-type Service = { id: string; name: string; category: CategoryId };
-
-const ALL_SERVICES: Service[] = [
-  { id: 'printing', name: 'Printing & Photocopy', category: 'campus' },
-  { id: 'assignment', name: 'Assignment', category: 'campus' },
-  { id: 'binding', name: 'Project Binding', category: 'campus' },
-  { id: 'pastq', name: 'Past Question', category: 'campus' },
-  { id: 'research', name: 'Research Assistance', category: 'campus' },
-  { id: 'dataentry', name: 'Data Entry', category: 'campus' },
-  { id: 'fileconv', name: 'File Conversion', category: 'local' },
-  { id: 'docedit', name: 'Document Editing', category: 'local' },
-  { id: 'errand', name: 'Errand & Delivery', category: 'errands' },
-  { id: 'socmed', name: 'Social media Design', category: 'local' },
-  { id: 'content', name: 'Content Writing', category: 'digital' },
-  { id: 'spreadsheet', name: 'Spreadsheet Work', category: 'local' },
-  { id: 'uiux', name: 'UIUX Design', category: 'digital' },
-  { id: 'graphic', name: 'Graphic Design', category: 'digital' },
-  { id: 'video', name: 'Video Editing', category: 'digital' },
-  { id: 'webdesign', name: 'Web Design', category: 'digital' },
-  { id: 'repairs', name: 'Home Repairs', category: 'local' },
-  { id: 'cleaning', name: 'Cleaning', category: 'local' },
-];
-
-const SECTION_LABELS: Record<CategoryId, string> = {
-  campus: 'Campus Services',
-  local: 'Local Services',
-  errands: 'Errands & Deliveries',
-  digital: 'Digital / Remote',
-};
-
-const POPULAR: Service['id'][] = ['printing', 'assignment', 'binding', 'pastq', 'research', 'dataentry'];
+function styleFor(category: Category): { icon: string; iconBg: string } {
+  const name = `${category.name} ${category.displayName}`.toLowerCase();
+  return (
+    CATEGORY_STYLE.find((c) => name.includes(c.match)) ?? {
+      icon: 'shape-outline',
+      iconBg: '#6c3bff',
+    }
+  );
+}
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function TaskerServicesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
+  const { user, refreshProfile } = useAuth();
+
+  const categoriesQuery = useCategories();
+  const groups = groupCategories(categoriesQuery.data?.categories ?? []);
 
   const [step, setStep] = useState<'category' | 'services'>('category');
-  const [selectedCategories, setSelectedCategories] = useState<Set<CategoryId>>(new Set());
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
   const [selectedServices, setSelectedServices] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
+  const [hydrated, setHydrated] = useState(false);
+
+  // Prefill from what the tasker already offers, once, after both the profile
+  // and the category list have arrived.
+  useEffect(() => {
+    if (hydrated || groups.length === 0) return;
+    const mains = (user?.mainCategories ?? []).map((c) => c._id);
+    const subs = (user?.subCategories ?? []).map((c) => c._id);
+    if (mains.length || subs.length) {
+      setSelectedCategories(new Set(mains));
+      setSelectedServices(new Set(subs));
+    }
+    setHydrated(true);
+  }, [user, groups.length, hydrated]);
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      updateTaskerCategories({
+        mainCategories: Array.from(selectedCategories),
+        subCategories: Array.from(selectedServices),
+      }),
+    onSuccess: async () => {
+      await refreshProfile();
+      // The feed is category-matched, so it is stale the moment this changes.
+      queryClient.invalidateQueries({ queryKey: ['tasks', 'tasker'] });
+      router.back();
+    },
+    onError: (e) =>
+      Alert.alert('Could not save', e instanceof Error ? e.message : 'Please try again.'),
+  });
 
   // ── Category step helpers ─────────────────────────────────────────────────
-  const toggleCategory = (id: CategoryId) => {
+  const toggleCategory = (id: string) => {
     setSelectedCategories((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
+    });
+    // Drop any selected service whose parent category just went away.
+    setSelectedServices((prev) => {
+      if (selectedCategories.has(id)) {
+        const group = groups.find((g) => g.main._id === id);
+        if (group) {
+          const next = new Set(prev);
+          group.subs.forEach((sub) => next.delete(sub._id));
+          return next;
+        }
+      }
+      return prev;
     });
   };
 
@@ -133,27 +136,36 @@ export default function TaskerServicesScreen() {
 
   const clearAll = () => setSelectedServices(new Set());
 
-  // Derive visible services: all services whose category is selected (or all if none selected)
-  const activeCategories = selectedCategories.size > 0 ? selectedCategories : new Set(CATEGORIES.map((c) => c.id));
+  // Show subcategories of the selected mains (or everything if none picked).
+  const activeGroups =
+    selectedCategories.size > 0
+      ? groups.filter((g) => selectedCategories.has(g.main._id))
+      : groups;
 
-  const filteredServices = ALL_SERVICES.filter(
-    (s) =>
-      activeCategories.has(s.category) &&
-      s.name.toLowerCase().includes(search.toLowerCase()),
-  );
+  const term = search.trim().toLowerCase();
+  const byCategory = activeGroups
+    .map((g) => ({
+      catId: g.main._id,
+      label: g.main.displayName,
+      services: g.subs.filter((sub) => sub.displayName.toLowerCase().includes(term)),
+    }))
+    .filter((g) => g.services.length > 0);
 
-  const popular = filteredServices.filter((s) => POPULAR.includes(s.id));
-  const byCategory = Array.from(activeCategories).map((catId) => ({
-    catId,
-    services: filteredServices.filter((s) => s.category === catId),
-  })).filter((g) => g.services.length > 0);
+  const allSubs = groups.flatMap((g) => g.subs);
+  const selectedChips = allSubs
+    .filter((s) => selectedServices.has(s._id))
+    .map((s) => ({
+      id: s._id,
+      label: s.displayName.length > 12 ? s.displayName.slice(0, 10) + '…' : s.displayName,
+    }));
 
-  // Selected chip labels
-  const selectedChips = ALL_SERVICES.filter((s) => selectedServices.has(s.id)).map((s) => ({
-    id: s.id,
-    // shorten label for chips
-    label: s.name.length > 12 ? s.name.slice(0, 10) + '…' : s.name,
-  }));
+  if (categoriesQuery.isLoading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center' }]}>
+        <ActivityIndicator color={COLORS.brand} />
+      </View>
+    );
+  }
 
   // ── Render: Category step ─────────────────────────────────────────────────
   if (step === 'category') {
@@ -175,19 +187,24 @@ export default function TaskerServicesScreen() {
           <Text style={styles.pageSubtitle}>Pick one or more. We'll personalize your experience.</Text>
 
           <View style={styles.categoryList}>
-            {CATEGORIES.map((cat) => {
-              const selected = selectedCategories.has(cat.id);
+            {groups.map((group) => {
+              const cat = group.main;
+              const selected = selectedCategories.has(cat._id);
+              const look = styleFor(cat);
               return (
                 <Pressable
-                  key={cat.id}
+                  key={cat._id}
                   style={[styles.categoryCard, selected && styles.categoryCardSelected]}
-                  onPress={() => toggleCategory(cat.id)}>
-                  <View style={[styles.catIconWrap, { backgroundColor: cat.iconBg }]}>
-                    <MaterialCommunityIcons name={cat.icon as any} size={22} color={cat.iconColor} />
+                  onPress={() => toggleCategory(cat._id)}>
+                  <View style={[styles.catIconWrap, { backgroundColor: look.iconBg }]}>
+                    <MaterialCommunityIcons name={look.icon as any} size={22} color="#fff" />
                   </View>
                   <View style={styles.catText}>
-                    <Text style={styles.catTitle}>{cat.title}</Text>
-                    <Text style={styles.catSubtitle}>{cat.subtitle}</Text>
+                    <Text style={styles.catTitle}>{cat.displayName}</Text>
+                    <Text style={styles.catSubtitle} numberOfLines={2}>
+                      {cat.description ||
+                        group.subs.slice(0, 4).map((sub) => sub.displayName).join(', ')}
+                    </Text>
                   </View>
                   <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
                     {selected && (
@@ -273,43 +290,19 @@ export default function TaskerServicesScreen() {
           />
         </View>
 
-        {/* Popular section — only when search is empty */}
-        {search === '' && popular.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Popular</Text>
-            <View style={styles.serviceCard}>
-              {popular.map((s, idx) => (
-                <View key={s.id}>
-                  {idx > 0 && <View style={styles.divider} />}
-                  <Pressable style={styles.serviceRow} onPress={() => toggleService(s.id)}>
-                    <Text style={styles.serviceName}>{s.name}</Text>
-                    {selectedServices.has(s.id) && (
-                      <View style={styles.checkFill}>
-                        <MaterialCommunityIcons name="check" size={13} color="#fff" />
-                      </View>
-                    )}
-                  </Pressable>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
         {/* Per-category sections */}
-        {byCategory.map(({ catId, services }) => {
-          // Don't re-list popular items in category if showing popular section
-          const items = search === '' ? services.filter((s) => !POPULAR.includes(s.id)) : services;
-          if (items.length === 0) return null;
+        {byCategory.map(({ catId, label, services }) => {
+          if (services.length === 0) return null;
           return (
             <View key={catId} style={styles.section}>
-              <Text style={styles.sectionLabel}>{SECTION_LABELS[catId as CategoryId]}</Text>
+              <Text style={styles.sectionLabel}>{label}</Text>
               <View style={styles.serviceCard}>
-                {items.map((s, idx) => (
-                  <View key={s.id}>
+                {services.map((s, idx) => (
+                  <View key={s._id}>
                     {idx > 0 && <View style={styles.divider} />}
-                    <Pressable style={styles.serviceRow} onPress={() => toggleService(s.id)}>
-                      <Text style={styles.serviceName}>{s.name}</Text>
-                      {selectedServices.has(s.id) && (
+                    <Pressable style={styles.serviceRow} onPress={() => toggleService(s._id)}>
+                      <Text style={styles.serviceName}>{s.displayName}</Text>
+                      {selectedServices.has(s._id) && (
                         <View style={styles.checkFill}>
                           <MaterialCommunityIcons name="check" size={13} color="#fff" />
                         </View>
@@ -325,12 +318,20 @@ export default function TaskerServicesScreen() {
 
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 16 }]}>
         <Pressable
-          style={[styles.saveBtn, selectedServices.size === 0 && styles.saveBtnDisabled]}
-          disabled={selectedServices.size === 0}
-          onPress={() => router.back()}>
-          <Text style={[styles.saveBtnText, selectedServices.size === 0 && styles.saveBtnTextDisabled]}>
-            Save
-          </Text>
+          style={[
+            styles.saveBtn,
+            (selectedServices.size === 0 || saveMutation.isPending) && styles.saveBtnDisabled,
+          ]}
+          disabled={selectedServices.size === 0 || saveMutation.isPending}
+          onPress={() => saveMutation.mutate()}>
+          {saveMutation.isPending ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text
+              style={[styles.saveBtnText, selectedServices.size === 0 && styles.saveBtnTextDisabled]}>
+              Save
+            </Text>
+          )}
         </Pressable>
       </View>
     </View>

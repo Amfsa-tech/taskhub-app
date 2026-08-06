@@ -1,13 +1,13 @@
 # TaskHub — Screen → Backend Endpoint Reference
 
-> **Last verified: 2026-07-31**, against `taskhub-app@fix/otp-5-digit` and `task-hub-backend@main`.
+> **Last verified: 2026-08-03**, against `taskhub-app@main` and `task-hub-backend@main`.
 > Every path below was read out of the backend's `routes/*.js` (as mounted in `index.js`) and the app's `lib/api/*` + `lib/auth/*`. **These are real paths, not guesses** — earlier revisions of this doc listed inferred RESTful paths, and most of them were wrong.
 >
 > Purpose: know exactly what is wired, what is one call away, and what genuinely needs backend work.
 
 ## Current state in one paragraph
 
-The app has **67 screens, all built as UI**. **27 of them call the real backend**: the whole auth domain (register → OTP → login → forgot/reset → Google), task browse/detail/create, the post flow incl. AI parsing, chat, notifications, saved taskers, tasker profiles + reviews, task rating, and wallet balance/funding. **The rest run on hardcoded in-file arrays, `useLocalSearchParams`, or `TaskContext`/`LocationContext` (AsyncStorage).** The remaining work is overwhelmingly **frontend wiring against endpoints that already ship** — see Part 3. Only a short list (Part 4) needs new backend. Location search runs on the **external Geoapify API**, no TaskHub backend involved.
+The app has **67 screens, all built as UI**. **34 of them call the real backend**: the whole auth domain (register → OTP → login → forgot/reset → Google), task browse/detail/create, the post flow incl. AI parsing, chat, notifications, saved taskers, tasker profiles + reviews, task rating, and wallet balance/funding. **The rest run on hardcoded in-file arrays, `useLocalSearchParams`, or `TaskContext`/`LocationContext` (AsyncStorage).** The remaining work is overwhelmingly **frontend wiring against endpoints that already ship** — see Part 3. Only a short list (Part 4) needs new backend. Location search runs on the **external Geoapify API**, no TaskHub backend involved.
 
 ### Conventions
 
@@ -115,8 +115,10 @@ The app has **67 screens, all built as UI**. **27 of them call the real backend*
 | ~~`getWalletTransactions`~~ | `GET /api/wallet/user/transactions` | ✅ **wired** — `transaction-history`, paged + `?purpose=` filters |
 | ~~`useTasks`~~ | `GET /api/tasks?status=open` | ✅ **wired** — `(main)/discover` |
 | `deleteNotification` | `DELETE /api/notifications/:id` | `notifications` (swipe-to-delete) |
-| `rateClient` | `POST /api/tasks/:id/rate-client` | no tasker UI exists yet |
-| `loginTasker` / `registerTasker` | `/api/auth/tasker-{login,register}` | no tasker auth screens; only reached via `lib/auth/dev-auth.ts` |
+| `rateClient` | `POST /api/tasks/:id/rate-client` | no tasker rating UI yet — the tasker never rates the client back |
+| `loginTasker` / `registerTasker` | `/api/auth/tasker-{login,register}` | **still no tasker auth screens**; only reached via `lib/auth/dev-auth.ts`. This is the single biggest remaining gap — every wired tasker surface is unreachable to a real tasker. |
+| `createBid` | `POST /api/bids` | bound in `lib/api/bids.ts`; needs an apply/bid sheet on `discover` / `task-details` |
+| `updateTaskerLocation` | `PUT /api/auth/location` | bound; no service-area screen (the feed's 200-mile radius keys off it) |
 | `initiateNinKyc` | `POST /api/v1/nin/verify-nin` | **intentionally uncalled** — needs the QoreID SDK, and calling it creates an orphaned `pending` record (§3.2) |
 | `reportKycFailure` | `POST /api/v1/nin/kyc-failure` | pairs with the above; only meaningful once the SDK can abandon a session |
 | `registerDiditSession` | `POST /api/v1/kyc/register-session` | needs a Didit `sessionId` the app has no way to obtain yet (§3.2) |
@@ -249,18 +251,33 @@ Ordered roughly by value. Each row needs a `lib/api/*` function plus screen wiri
 - **Name and email come from the session**, since the endpoint reads them from the body rather than the token. If the profile has neither, the screen says so rather than sending a request the backend will 400.
 - **`report-submitted` promises more than the backend delivers** — it's a static confirmation. There's no ticket reference to display, and nothing to poll.
 
-### 3.6 Tasker-mode surfaces (backend ready, no wired UI)
+### 3.6 Tasker-mode surfaces — ✅ wired
 
-`performance`, `tasker-portfolio`, `tasker-services` are built but static. The backing endpoints all exist:
+| Screen | Endpoint(s) | Status |
+|---|---|---|
+| `(main)/home` (tasker) | `GET /api/wallet/tasker/{balance,transactions}`, `/api/tasks/tasker/feed`, `/api/tasks/tasker/tasks`, `/api/bids/tasker/bids`, `/api/auth/verification-status` | ✅ wired |
+| `(main)/tasks` (tasker) | `GET /api/tasks/tasker/tasks` + `GET /api/bids/tasker/bids`; `POST /api/bids/:id/hire-response`, `PUT`/`DELETE /api/bids/:id`, `PATCH /api/tasks/:id/status/tasker` | ✅ wired |
+| `track-task` (tasker half) | `PATCH /api/tasks/:id/status/tasker` (start + complete) | ✅ wired |
+| `tasker-services` | `GET /api/categories` → `PUT /api/auth/categories` | ✅ wired |
+| `tasker-portfolio` | `POST`/`DELETE /api/auth/previous-work` | ✅ wired |
+| `wallet`, `transaction-history` (tasker) | `GET /api/wallet/tasker/{balance,transactions}` | ✅ wired |
+| `performance` | derived from tasker tasks/bids/transactions | ⚠️ no analytics endpoint — see below |
 
-- `GET /api/tasks/tasker/feed`, `GET /api/tasks/tasker/tasks`
-- `GET /api/bids/tasker/bids`, `POST /api/bids`, `PUT /api/bids/:id`, `DELETE /api/bids/:id`
-- `POST /api/bids/:id/hire-response` (accept/decline a hire request)
-- `POST /api/auth/previous-work`, `DELETE /api/auth/previous-work/:id` (portfolio, multipart)
-- `PUT /api/auth/categories`, `PUT /api/auth/location` (tasker services + service area)
-- `GET /api/wallet/tasker/balance`, `GET /api/wallet/tasker/transactions`
+**Decisions made while wiring these:**
 
-This is effectively **a second app** to wire. Scope it as its own milestone, not as part of the client backlog.
+- **User and tasker wallet endpoints are not interchangeable.** `GET /api/wallet/user/balance` resolves a `User` by id, so a tasker token gets a **404, not a 401**. `wallet` and `transaction-history` now pick the endpoint pair by `accountType` and disable the other; previously a tasker opening the wallet screen just saw an error. The tasker list has no `?purpose=` filter, so the filter control is hidden rather than shown and ignored.
+- **Accepting a hire request is not being hired.** `POST /api/bids/:id/hire-response` sets `taskerConfirmed` and posts a system message asking the client to pay — the task is only assigned when the client calls `POST /api/bids/:id/accept`. The success copy says the job becomes active once payment completes, instead of the old "is now in your Active Jobs".
+- **The completion sheet now collects the code.** The old flow was "Request completion → the customer confirms", which no endpoint implements. The tasker submits the client's 6-digit code to `PATCH /api/tasks/:id/status/tasker`, and *that* releases escrow. Both the jobs list and `track-task` do this.
+- **There is no "waiting for the customer to fund escrow" state.** Assignment and escrow funding are the same atomic call, so any task a tasker can see is already funded. `track-task`'s local `escrowStatus`/`taskStatusStep` state is gone — both are derived from `task.status` — and the "Nudge Customer" button and its "Reminder Sent" modal were removed along with it (no nudge endpoint exists; chat is the real channel).
+- **The portfolio is a gallery, not a project list.** `Tasker.previousWork` is an array of `{ url, publicId }` and `POST /api/auth/previous-work` accepts only files — there is no title, description or link field. The screen's "Project Title" and "Portfolio (Link)" inputs had nowhere to save, so it is now an upload/delete grid with the backend's real 10-image cap.
+- **`tasker-services` is a prerequisite, not a preference.** `GET /api/tasks/tasker/feed` filters on the tasker's `subCategories`; with none set it returns 200 and an empty list. The home feed's empty state routes there rather than claiming there's no work. The screen's two-step main → sub flow maps directly onto `groupCategories`, and it prefills from the tasker's current selection.
+- 🔴 **`performance` has no analytics endpoint.** Jobs completed, completion rate, bids won, average rating and the earnings chart are all derived client-side from the tasker's tasks, bids and transactions — correct, but truncated by those lists' paging on long histories. **Response time, profile views, repeat customers and invitation rate were removed**: nothing in the backend records them, and they were fixed strings. The "Insights" card was removed for the same reason.
+
+**Still not wired (net-new UI, not wiring):**
+
+- `POST /api/bids` — a tasker cannot yet *place* a bid from the feed. `discover`/`task-details` need an apply/bid sheet; `applicationInfo` on each feed task already carries the button label, mode and whether the price is editable.
+- No withdrawal screen (§3.4).
+- **No tasker auth screens.** `registerTasker`/`loginTasker` are still reachable only through `lib/auth/dev-auth.ts`. Everything above is exercised via "Switch to Tasker mode" on the profile screen — a real tasker still cannot sign up.
 
 ### 3.7 Push / presence
 
@@ -376,7 +393,9 @@ These need backend work first. Everything else in this doc does not.
 | `/report-submitted` | static | none |
 | `/blocked-users` | mock | 🔴 no backend |
 | `/device-sessions` | mock | 🔴 no backend |
-| `/performance`, `/tasker-portfolio`, `/tasker-services` | mock/static | 🟡 tasker milestone (§3.6) |
+| `/tasker-services` | api ✅ | real categories → `PUT /api/auth/categories`; gates the tasker feed |
+| `/tasker-portfolio` | api ✅ | upload/delete grid over `previousWork` (max 10) |
+| `/performance` | api ⚠️ | derived from tasks/bids/transactions; no analytics endpoint (§3.6) |
 
 ### Location (🌐 Geoapify)
 | Route | Data now | Gap |

@@ -400,7 +400,7 @@ export default function ProfileScreen() {
                     <BadgeVerified width={16} height={16} />
                     <Text style={[styles.tagText, { color: COLORS.successText }]}>Verified</Text>
                   </View>
-                ) : (
+                ) : accountType === 'tasker' ? (
                   <Pressable
                     style={[styles.tag, { backgroundColor: COLORS.warningBg }]}
                     onPress={() => handleMenuPress('verification')}
@@ -409,7 +409,7 @@ export default function ProfileScreen() {
                       Verify identity
                     </Text>
                   </Pressable>
-                )}
+                ) : null}
                 <View style={[styles.tag, { backgroundColor: COLORS.brandSubtle }]}>
                   <User width={16} height={16} />
                   <Text style={[styles.tagText, { color: COLORS.textBrandStrong }]}>
@@ -532,7 +532,14 @@ export default function ProfileScreen() {
         {accountType === 'tasker' && (
           <MenuCard items={TASKER_MENU_GROUP_EARNINGS} onItemPress={handleMenuPress} />
         )}
-        <MenuCard items={MENU_GROUP_GENERAL} onItemPress={handleMenuPress} />
+        <MenuCard
+          items={
+            accountType === 'tasker'
+              ? MENU_GROUP_GENERAL
+              : MENU_GROUP_GENERAL.filter((item) => item.key !== 'verification')
+          }
+          onItemPress={handleMenuPress}
+        />
         <MenuCard items={MENU_GROUP_LOGOUT} onItemPress={handleMenuPress} />
       </ScrollView>
     </View>

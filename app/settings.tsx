@@ -68,7 +68,13 @@ function SettingRow({
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { signOut } = useAuth();
+  const { signOut, accountType, user } = useAuth();
+  const isTasker = accountType === 'tasker';
+
+  // Mask all but the leading country code and last two digits, e.g. "+234*** ****12".
+  const phone = user?.phoneNumber?.trim();
+  const phoneLabel =
+    phone && phone.length >= 7 ? `${phone.slice(0, 4)}*** ****${phone.slice(-2)}` : 'Not set';
 
   /**
    * The backend exposes a single KYC boolean per account (`isKYCVerified` for
@@ -157,7 +163,7 @@ export default function SettingsScreen() {
               iconBg="#edfaf3"
               iconColor="#0d6639"
               label="Phone Number"
-              value="+234*** ****12"
+              value={phoneLabel}
               onPress={() => router.push('/phone-number')}
             />
           </View>
@@ -292,26 +298,30 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionHeader}>SECURITY</Text>
           <View style={styles.groupCard}>
-            <SettingRow
-              icon="shield-checkmark-outline"
-              iconBg="#eff6ff"
-              iconColor="#1d4ed8"
-              label="Face verification"
-              value={verificationLabel}
-              valueColor={verificationColor}
-              onPress={() => router.push('/select-verification')}
-            />
-            <View style={styles.divider} />
-            <SettingRow
-              icon="id-card-outline"
-              iconBg="#fff1f1"
-              iconColor="#b01515"
-              label="NIN Verification"
-              value={verificationLabel}
-              valueColor={verificationColor}
-              onPress={() => router.push('/select-verification')}
-            />
-            <View style={styles.divider} />
+            {isTasker && (
+              <>
+                <SettingRow
+                  icon="shield-checkmark-outline"
+                  iconBg="#eff6ff"
+                  iconColor="#1d4ed8"
+                  label="Face verification"
+                  value={verificationLabel}
+                  valueColor={verificationColor}
+                  onPress={() => router.push('/select-verification')}
+                />
+                <View style={styles.divider} />
+                <SettingRow
+                  icon="id-card-outline"
+                  iconBg="#fff1f1"
+                  iconColor="#b01515"
+                  label="NIN Verification"
+                  value={verificationLabel}
+                  valueColor={verificationColor}
+                  onPress={() => router.push('/select-verification')}
+                />
+                <View style={styles.divider} />
+              </>
+            )}
             <SettingRow
               icon="phone-portrait-outline"
               iconBg="#eff6ff"

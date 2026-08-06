@@ -15,6 +15,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -27,14 +28,33 @@ import MapPin from '@/assets/icons/map-pin.svg';
 import NavPlus from '@/assets/icons/nav-plus.svg';
 import StarAmber from '@/assets/icons/star-amber.svg';
 import { HireAgainModal } from '@/components/taskhub/hire-again-modal';
+import { useNewPost } from '@/hooks/use-new-post';
 import { RateTaskerModal } from '@/components/taskhub/rate-tasker-modal';
 import {
   CompletedTaskCard,
   InProgressTaskCard,
   TaskCard,
 } from '@/components/taskhub/task-card';
-import { useUserTasks, useUserTasksByStatuses } from '@/lib/api/queries';
-import { rateTask, taskToCard, taskToCompletedCard, taskToInProgressCard } from '@/lib/api/tasks';
+import {
+  queryKeys,
+  useTaskerBids,
+  useTaskerTasks,
+  useUserTasks,
+  useUserTasksByStatuses,
+} from '@/lib/api/queries';
+import { deleteBid, respondToHireRequest, updateBid, type TaskerBid } from '@/lib/api/bids';
+import {
+  completeTaskerTask,
+  formatNaira,
+  formatRelativeTime,
+  formatShortDate,
+  rateTask,
+  startTaskerTask,
+  taskToCard,
+  taskToCompletedCard,
+  taskToInProgressCard,
+  type Task,
+} from '@/lib/api/tasks';
 import { useAuth } from '@/lib/auth/auth-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -88,6 +108,7 @@ function StateView({ mode, emptyText, onRetry, isRetrying }: StateViewProps) {
 export default function TasksScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const startNewPost = useNewPost();
   const pagerRef = useRef<ScrollView>(null);
   const { accountType } = useAuth();
   const [tab, setTab] = useState<TaskTab>('posted');
@@ -164,7 +185,7 @@ export default function TasksScreen() {
       <View style={[styles.topBar, { paddingTop: insets.top + 12 }]}>
         <View style={styles.headerRow}>
           <Text style={styles.heading}>My Task</Text>
-          <Pressable style={styles.plus} hitSlop={8} onPress={() => router.push('/post')}>
+          <Pressable style={styles.plus} hitSlop={8} onPress={() => startNewPost()}>
             <NavPlus width={20} height={20} />
           </Pressable>
         </View>
@@ -776,6 +797,58 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#111122',
   },
+  codeInput: {
+    borderWidth: 1,
+    borderColor: '#e0e0ea',
+    borderRadius: 16,
+    paddingVertical: 16,
+    marginTop: 16,
+    marginBottom: 8,
+    fontFamily: 'Geist_700Bold',
+    fontSize: 28,
+    letterSpacing: 10,
+    textAlign: 'center',
+    color: '#111122',
+  },
+  fieldLabel: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 13,
+    color: '#5a5a70',
+    marginTop: 14,
+    marginBottom: 6,
+  },
+  sheetInput: {
+    borderWidth: 1,
+    borderColor: '#e0e0ea',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontFamily: 'Geist_400Regular',
+    fontSize: 15,
+    color: '#111122',
+  },
+  sheetInputMultiline: {
+    minHeight: 88,
+    textAlignVertical: 'top',
+  },
+  jobsEmpty: {
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    paddingTop: 64,
+    gap: 6,
+  },
+  jobsEmptyTitle: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 17,
+    color: '#111122',
+  },
+  jobsEmptySubtitle: {
+    fontFamily: 'Geist_400Regular',
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#5a5a70',
+    textAlign: 'center',
+  },
   checklist: {
     gap: 16,
     marginVertical: 8,
@@ -969,6 +1042,10 @@ const styles = StyleSheet.create({
 
 type TaskerJob = {
   id: string;
+  /** The underlying task — present on assigned/completed jobs and on bids whose task survived. */
+  taskId?: string;
+  /** Set on `bid_sent` / `invitation_received` rows; the target of bid mutations. */
+  bidId?: string;
   title: string;
   price: string;
   clientName: string;
@@ -982,7 +1059,88 @@ type TaskerJob = {
   reviewText?: string;
   date?: string;
   cancelReason?: string;
+  /** Raw amount, for pre-filling the edit-bid field. */
+  amount?: number;
 };
+
+function clientNameOf(task?: Task | null): string {
+  if (!task || !task.user || typeof task.user === 'string') return 'Client';
+  return task.user.fullName || 'Client';
+}
+
+/**
+ * Progress across the four-step checklist the sheet renders:
+ * 1 accepted · 2 escrow funded · 3 task started · 4 completed.
+ *
+ * A task only reaches the tasker's list once it's `assigned`, and assignment is
+ * the same atomic call that funds escrow — so a fresh job is already at step 2.
+ */
+function segmentsFor(status: Task['status']): { total: number; active: number } {
+  if (status === 'completed') return { total: 4, active: 4 };
+  if (status === 'in-progress') return { total: 4, active: 3 };
+  return { total: 4, active: 2 };
+}
+
+/** Assigned/completed/cancelled work → job cards. */
+function taskToJob(task: Task): TaskerJob {
+  const base = {
+    id: `task-${task._id}`,
+    taskId: task._id,
+    title: task.title,
+    clientName: clientNameOf(task),
+    amount: task.budget,
+  };
+
+  if (task.status === 'completed') {
+    return {
+      ...base,
+      // Credit framing: completion is when escrow is released to the tasker.
+      price: `+${formatNaira(task.budget)}`,
+      status: task.rating ? 'completed_reviewed' : 'completed',
+      date: formatShortDate(task.completedAt ?? task.updatedAt),
+      customerRating: task.rating ?? undefined,
+      reviewText: task.reviewText ?? undefined,
+      progressSegments: segmentsFor(task.status),
+    };
+  }
+
+  if (task.status === 'cancelled') {
+    return {
+      ...base,
+      price: formatNaira(task.budget),
+      status: 'cancelled',
+      date: formatShortDate(task.updatedAt),
+      // The backend stores no cancellation reason, so the card omits it rather
+      // than inventing one.
+    };
+  }
+
+  return {
+    ...base,
+    price: formatNaira(task.budget),
+    status: 'active',
+    progressSegments: segmentsFor(task.status),
+  };
+}
+
+/** Pending bids → "bids sent" and "invitations" cards. */
+function bidToJob(bid: TaskerBid): TaskerJob | null {
+  if (!bid.task) return null;
+  const invitation = Boolean(bid.invitedByUser);
+  return {
+    id: `bid-${bid._id}`,
+    bidId: bid._id,
+    taskId: bid.task._id,
+    title: bid.task.title,
+    price: formatNaira(bid.amount),
+    clientName: 'Client',
+    status: invitation ? 'invitation_received' : 'bid_sent',
+    timeAgo: formatRelativeTime(bid.createdAt),
+    bidText: invitation ? undefined : bid.message || undefined,
+    invitationText: invitation ? bid.message || 'You have been invited to this task.' : undefined,
+    amount: bid.amount,
+  };
+}
 
 const JOBS_FILTER_PILLS = ['All', 'Active', 'Invitations', 'Bids sent', 'Completed', 'Cancelled'];
 
@@ -997,70 +1155,95 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
   const [declineSheetVisible, setDeclineSheetVisible] = useState(false);
   const [acceptedSuccessVisible, setAcceptedSuccessVisible] = useState(false);
   const [withdrawModalVisible, setWithdrawModalVisible] = useState(false);
-  const [jobs, setJobs] = useState<TaskerJob[]>([
-    {
-      id: '1',
-      title: 'Design Flyer for an event',
-      price: '₦1,500',
-      clientName: 'Sarah K.',
-      status: 'active',
-      progressSegments: { total: 4, active: 2 },
+  const [editBidVisible, setEditBidVisible] = useState(false);
+  const [editAmount, setEditAmount] = useState('');
+  const [editMessage, setEditMessage] = useState('');
+  const [completionCode, setCompletionCode] = useState('');
+
+  const queryClient = useQueryClient();
+  const assigned = useTaskerTasks();
+  const bids = useTaskerBids('pending');
+
+  const jobs: TaskerJob[] = [
+    ...(assigned.data?.tasks ?? []).map(taskToJob),
+    ...(bids.data?.bids ?? []).map(bidToJob).filter((j): j is TaskerJob => j !== null),
+  ];
+
+  const loading = assigned.isLoading || bids.isLoading;
+  const failed = assigned.isError || bids.isError;
+
+  /** Both lists back this screen, so every mutation refreshes both. */
+  const refreshJobs = () => {
+    queryClient.invalidateQueries({ queryKey: ['tasks', 'tasker'] });
+    queryClient.invalidateQueries({ queryKey: ['bids', 'tasker'] });
+  };
+
+  const onRefresh = () => {
+    assigned.refetch();
+    bids.refetch();
+  };
+
+  const showError = (e: unknown, fallback: string) =>
+    Alert.alert('Something went wrong', e instanceof Error ? e.message : fallback);
+
+  const startMutation = useMutation({
+    mutationFn: (taskId: string) => startTaskerTask(taskId),
+    onSuccess: () => {
+      refreshJobs();
+      Alert.alert(
+        'Task started',
+        'The customer has been sent a 6-digit completion code. Ask them for it when you finish — entering it releases your payment.',
+      );
     },
-    {
-      id: '2',
-      title: 'Design a flyer for event',
-      price: '₦1,500',
-      clientName: 'Sarah K.',
-      status: 'bid_sent',
-      category: 'Remote',
-      timeAgo: '2mins ago',
-      bidText: 'Will deliver 3 design concepts within 24 hours.',
+    onError: (e) => showError(e, 'Could not start the task.'),
+  });
+
+  const completeMutation = useMutation({
+    mutationFn: ({ taskId, code }: { taskId: string; code: string }) =>
+      completeTaskerTask(taskId, code),
+    onSuccess: () => {
+      refreshJobs();
+      queryClient.invalidateQueries({ queryKey: queryKeys.taskerBalance() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.taskerTransactions() });
+      setCompletionSheetVisible(false);
+      setCompletionCode('');
+      setRequestSentVisible(true);
     },
-    {
-      id: '3',
-      title: 'Build a Landing page',
-      price: '₦500,000',
-      clientName: 'Sarah K.',
-      status: 'invitation_received',
-      invitationText: 'I loved your portfolio! Can you build this for me?',
+    // A wrong code comes back as a 400 with a specific message — show it verbatim.
+    onError: (e) => showError(e, 'Could not complete the task.'),
+  });
+
+  const hireResponseMutation = useMutation({
+    mutationFn: ({ bidId, action }: { bidId: string; action: 'accept' | 'decline' }) =>
+      respondToHireRequest(bidId, action),
+    onSuccess: (_data, variables) => {
+      refreshJobs();
+      setAcceptSheetVisible(false);
+      setDeclineSheetVisible(false);
+      if (variables.action === 'accept') setAcceptedSuccessVisible(true);
     },
-    {
-      id: '4',
-      title: 'Build a Landing page',
-      price: '₦500,000',
-      clientName: 'Sarah K.',
-      status: 'escrow_pending',
-      progressSegments: { total: 4, active: 3 },
+    onError: (e) => showError(e, 'Could not respond to the hire request.'),
+  });
+
+  const withdrawMutation = useMutation({
+    mutationFn: (bidId: string) => deleteBid(bidId),
+    onSuccess: () => {
+      refreshJobs();
+      setWithdrawModalVisible(false);
     },
-    {
-      id: '5',
-      title: 'Print My Assignment',
-      price: '+₦1,000',
-      clientName: 'Sarah K.',
-      status: 'completed_reviewed',
-      date: 'May 10, 2026',
-      customerRating: 5,
-      reviewText: 'Decent job, but slightly late.',
+    onError: (e) => showError(e, 'Could not withdraw the bid.'),
+  });
+
+  const editBidMutation = useMutation({
+    mutationFn: ({ bidId, amount, message }: { bidId: string; amount?: number; message?: string }) =>
+      updateBid(bidId, { amount, message }),
+    onSuccess: () => {
+      refreshJobs();
+      setEditBidVisible(false);
     },
-    {
-      id: '6',
-      title: 'Print My Assignment',
-      price: '+₦1,000',
-      clientName: 'Sarah K.',
-      status: 'completed',
-      date: 'May 10, 2026',
-    },
-    {
-      id: '7',
-      title: 'Print My Assignment',
-      price: '₦1,000',
-      clientName: 'Sarah K.',
-      status: 'cancelled',
-      category: 'Remote',
-      date: 'May 12, 2026',
-      cancelReason: 'Found someone closer',
-    },
-  ]);
+    onError: (e) => showError(e, 'Could not update the bid.'),
+  });
+
 
   const filteredJobs = jobs.filter((job) => {
     if (activeFilter === 'All') return true;
@@ -1096,6 +1279,18 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
     }
   };
 
+  const handleEditBid = (jobId: string) => {
+    const job = jobs.find(j => j.id === jobId);
+    if (job) {
+      setSelectedJob(job);
+      setEditAmount(job.amount != null ? String(job.amount) : '');
+      setEditMessage(job.bidText ?? '');
+      setEditBidVisible(true);
+    }
+  };
+
+  // Local-only: there is no "nudge" endpoint. The toast is a UI acknowledgement,
+  // not a message to the customer — use chat for that.
   const handleNudge = () => {
     setReminderModalVisible(true);
     setTimeout(() => {
@@ -1177,7 +1372,7 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
               </View>
             )}
             <View style={styles.buttonRow}>
-              <Pressable style={[styles.btn, styles.btnMutedPurple]} onPress={() => Alert.alert('Edit Bid', 'Bid edit modal coming soon.')}>
+              <Pressable style={[styles.btn, styles.btnMutedPurple]} onPress={() => handleEditBid(job.id)}>
                 <MaterialCommunityIcons name="pencil-outline" size={16} color={COLORS.brand} />
                 <Text style={styles.btnMutedPurpleText}>Edit bid</Text>
               </Pressable>
@@ -1389,8 +1584,36 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
         keyExtractor={(item) => item.id}
         contentContainerStyle={[styles.taskerListScroll, { paddingBottom: insets.bottom + 120 }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={assigned.isRefetching || bids.isRefetching}
+            onRefresh={onRefresh}
+            tintColor={COLORS.brand}
+            colors={[COLORS.brand]}
+          />
+        }
+        ListEmptyComponent={
+          loading ? (
+            <ActivityIndicator style={{ marginTop: 48 }} color={COLORS.brand} />
+          ) : (
+            <View style={styles.jobsEmpty}>
+              <Text style={styles.jobsEmptyTitle}>
+                {failed ? 'Could not load your jobs' : 'Nothing here yet'}
+              </Text>
+              <Text style={styles.jobsEmptySubtitle}>
+                {failed
+                  ? 'Pull down to try again.'
+                  : 'Browse Discover to find work and place your first bid.'}
+              </Text>
+            </View>
+          )
+        }
         renderItem={({ item }) => (
-          <Pressable style={styles.jobCard} onPress={() => router.push({ pathname: '/task-details', params: { id: item.id } })}>
+          <Pressable
+            style={styles.jobCard}
+            onPress={() =>
+              item.taskId && router.push({ pathname: '/task-details', params: { id: item.taskId } })
+            }>
             {renderJobCardContent(item)}
           </Pressable>
         )}
@@ -1487,13 +1710,19 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
             {(selectedJob?.progressSegments?.active ?? 2) === 2 ? (
               <Pressable
                 style={[styles.sheetButton, { backgroundColor: COLORS.brand }]}
+                disabled={startMutation.isPending}
                 onPress={() => {
-                  if (selectedJob) {
-                    setJobs(prev => prev.map(j => j.id === selectedJob.id ? { ...j, progressSegments: { ...j.progressSegments!, active: 3 } } : j));
-                    setSelectedJob(prev => prev ? { ...prev, progressSegments: { ...prev.progressSegments!, active: 3 } } : null);
+                  if (selectedJob?.taskId) {
+                    startMutation.mutate(selectedJob.taskId, {
+                      onSuccess: () => setStatusSheetVisible(false),
+                    });
                   }
                 }}>
-                <Text style={styles.sheetButtonText}>Start Task</Text>
+                {startMutation.isPending ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={styles.sheetButtonText}>Start Task</Text>
+                )}
               </Pressable>
             ) : (selectedJob?.progressSegments?.active ?? 2) === 3 ? (
               <Pressable
@@ -1520,9 +1749,10 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
         <Pressable style={styles.sheetBackdrop} onPress={() => setCompletionSheetVisible(false)}>
           <Pressable style={[styles.bottomSheet, { paddingBottom: insets.bottom + 16 }]} onPress={() => { }}>
             <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>Update Completion</Text>
+            <Text style={styles.sheetTitle}>Complete Task</Text>
             <Text style={styles.sheetSubtitle}>
-              Once you request completion, the customer will be notified to review and confirm the work. Payment will be released from escrow after confirmation.
+              Ask the customer for the 6-digit completion code on their tracking screen. Entering
+              it here finishes the task and releases your payment from escrow immediately.
             </Text>
 
             {/* Job Details Card inside Sheet */}
@@ -1531,19 +1761,43 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
               <Text style={styles.sheetJobPrice}>{selectedJob?.price}</Text>
             </View>
 
+            <TextInput
+              style={styles.codeInput}
+              value={completionCode}
+              onChangeText={(t) => setCompletionCode(t.replace(/\D/g, '').slice(0, 6))}
+              placeholder="000000"
+              placeholderTextColor="#9a9ab0"
+              keyboardType="number-pad"
+              maxLength={6}
+              autoFocus
+            />
+
             {/* Buttons */}
             <Pressable
-              style={[styles.sheetButton, { backgroundColor: COLORS.brand }]}
+              style={[
+                styles.sheetButton,
+                { backgroundColor: COLORS.brand },
+                (completionCode.length !== 6 || completeMutation.isPending) && { opacity: 0.5 },
+              ]}
+              disabled={completionCode.length !== 6 || completeMutation.isPending}
               onPress={() => {
-                setCompletionSheetVisible(false);
-                setRequestSentVisible(true);
+                if (selectedJob?.taskId) {
+                  completeMutation.mutate({ taskId: selectedJob.taskId, code: completionCode });
+                }
               }}>
-              <Text style={styles.sheetButtonText}>Request completion</Text>
+              {completeMutation.isPending ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <Text style={styles.sheetButtonText}>Complete & get paid</Text>
+              )}
             </Pressable>
 
             <Pressable
               style={styles.btnNotYet}
-              onPress={() => setCompletionSheetVisible(false)}>
+              onPress={() => {
+                setCompletionSheetVisible(false);
+                setCompletionCode('');
+              }}>
               <Text style={styles.btnNotYetText}>Not Yet</Text>
             </Pressable>
           </Pressable>
@@ -1554,18 +1808,13 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
       <Modal visible={requestSentVisible} transparent animationType="fade" onRequestClose={() => setRequestSentVisible(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setRequestSentVisible(false)}>
           <View style={styles.successDialog}>
-            <Text style={styles.dialogTitle}>Request Sent</Text>
+            <Text style={styles.dialogTitle}>Task Completed</Text>
             <Text style={styles.dialogSubtitle}>
-              The customer will be notified to review and confirm the work.
+              Payment has been released from escrow to your wallet.
             </Text>
             <Pressable
               style={styles.dialogButton}
-              onPress={() => {
-                if (selectedJob) {
-                  setJobs(prev => prev.map(j => j.id === selectedJob.id ? { ...j, status: 'completed', progressSegments: { ...j.progressSegments!, active: 4 } } : j));
-                }
-                setRequestSentVisible(false);
-              }}>
+              onPress={() => setRequestSentVisible(false)}>
               <Text style={styles.dialogButtonText}>Okay</Text>
             </Pressable>
           </View>
@@ -1578,18 +1827,22 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
           <View style={styles.successDialog}>
             <Text style={styles.dialogTitle}>Decline Invitation?</Text>
             <Text style={styles.dialogSubtitle}>
-              Are you sure you want to decline "{selectedJob?.title}" from Musa K.? This can't be undone.
+              Are you sure you want to decline "{selectedJob?.title}" from {selectedJob?.clientName}? This can't be undone.
             </Text>
 
             <Pressable
               style={[styles.dialogButton, { backgroundColor: '#ef4444' }]}
+              disabled={hireResponseMutation.isPending}
               onPress={() => {
-                if (selectedJob) {
-                  setJobs((prev) => prev.filter((job) => job.id !== selectedJob.id));
+                if (selectedJob?.bidId) {
+                  hireResponseMutation.mutate({ bidId: selectedJob.bidId, action: 'decline' });
                 }
-                setDeclineSheetVisible(false);
               }}>
-              <Text style={styles.sheetButtonText}>Yes, Decline</Text>
+              {hireResponseMutation.isPending ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <Text style={styles.sheetButtonText}>Yes, Decline</Text>
+              )}
             </Pressable>
 
             <Pressable
@@ -1607,23 +1860,23 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
           <View style={styles.successDialog}>
             <Text style={styles.dialogTitle}>Accept Invitation?</Text>
             <Text style={styles.dialogSubtitle}>
-              You'll be hired for "Build a landing page" by Sarah K.. You can start chatting immediately after.
+              You&apos;ll agree to do &quot;{selectedJob?.title}&quot; for {selectedJob?.clientName}.
+              They still have to pay before the job becomes active.
             </Text>
 
             <Pressable
               style={[styles.dialogButton, { backgroundColor: '#18A962' }]}
+              disabled={hireResponseMutation.isPending}
               onPress={() => {
-                if (selectedJob) {
-                  setJobs((prev) =>
-                    prev.map((job) =>
-                      job.id === selectedJob.id ? { ...job, status: 'escrow_pending', progressSegments: { total: 4, active: 3 } } : job
-                    )
-                  );
+                if (selectedJob?.bidId) {
+                  hireResponseMutation.mutate({ bidId: selectedJob.bidId, action: 'accept' });
                 }
-                setAcceptSheetVisible(false);
-                setAcceptedSuccessVisible(true);
               }}>
-              <Text style={styles.sheetButtonText}>Yes, Accept</Text>
+              {hireResponseMutation.isPending ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <Text style={styles.sheetButtonText}>Yes, Accept</Text>
+              )}
             </Pressable>
 
             <Pressable
@@ -1655,7 +1908,9 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
 
             <Text style={[styles.sheetTitle, { textAlign: 'center', marginTop: 12 }]}>Invitation Accepted!</Text>
             <Text style={[styles.sheetSubtitle, { textAlign: 'center', color: '#5a5a70', marginBottom: 12 }]}>
-              "Build a landing page" is now in your Active Jobs.
+              {selectedJob?.title
+                ? `"${selectedJob.title}" moves to your Active Jobs once ${selectedJob.clientName} completes payment.`
+                : 'The job moves to your Active Jobs once the customer completes payment.'}
             </Text>
 
             {/* Steps Container */}
@@ -1719,18 +1974,20 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
           <View style={styles.successDialog}>
             <Text style={styles.dialogTitle}>Withdraw Bid?</Text>
             <Text style={styles.dialogSubtitle}>
-              Are you sure you want to withdraw your bid for "{selectedJob?.title || 'Print my assignment'}"? You can't undo this.
+              Are you sure you want to withdraw your bid for &quot;{selectedJob?.title}&quot;? You can&apos;t undo this.
             </Text>
 
             <Pressable
               style={[styles.dialogButton, { backgroundColor: '#ef4444' }]}
+              disabled={withdrawMutation.isPending}
               onPress={() => {
-                if (selectedJob) {
-                  setJobs((prev) => prev.filter((job) => job.id !== selectedJob.id));
-                }
-                setWithdrawModalVisible(false);
+                if (selectedJob?.bidId) withdrawMutation.mutate(selectedJob.bidId);
               }}>
-              <Text style={styles.sheetButtonText}>Yes, Withdraw Bid</Text>
+              {withdrawMutation.isPending ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <Text style={styles.sheetButtonText}>Yes, Withdraw Bid</Text>
+              )}
             </Pressable>
 
             <Pressable
@@ -1739,6 +1996,67 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
               <Text style={[styles.btnNotYetText, { color: COLORS.brand }]}>Cancel</Text>
             </Pressable>
           </View>
+        </Pressable>
+      </Modal>
+
+      {/* Edit Bid Sheet */}
+      <Modal visible={editBidVisible && selectedJob !== null} transparent animationType="slide" onRequestClose={() => setEditBidVisible(false)}>
+        <Pressable style={styles.sheetBackdrop} onPress={() => setEditBidVisible(false)}>
+          <Pressable style={[styles.bottomSheet, { paddingBottom: insets.bottom + 16 }]} onPress={() => { }}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Edit Bid</Text>
+
+            <View style={styles.sheetJobCard}>
+              <Text style={styles.sheetJobTitle}>{selectedJob?.title}</Text>
+            </View>
+
+            <Text style={styles.fieldLabel}>Your price (₦)</Text>
+            <TextInput
+              style={styles.sheetInput}
+              value={editAmount}
+              onChangeText={(t) => setEditAmount(t.replace(/\D/g, ''))}
+              keyboardType="number-pad"
+              placeholder="0"
+              placeholderTextColor="#9a9ab0"
+            />
+
+            <Text style={styles.fieldLabel}>Message</Text>
+            <TextInput
+              style={[styles.sheetInput, styles.sheetInputMultiline]}
+              value={editMessage}
+              onChangeText={setEditMessage}
+              placeholder="What will you deliver, and when?"
+              placeholderTextColor="#9a9ab0"
+              multiline
+            />
+
+            <Pressable
+              style={[
+                styles.sheetButton,
+                { backgroundColor: COLORS.brand },
+                editBidMutation.isPending && { opacity: 0.5 },
+              ]}
+              disabled={editBidMutation.isPending}
+              onPress={() => {
+                if (!selectedJob?.bidId) return;
+                const amount = editAmount ? Number(editAmount) : undefined;
+                editBidMutation.mutate({
+                  bidId: selectedJob.bidId,
+                  amount,
+                  message: editMessage || undefined,
+                });
+              }}>
+              {editBidMutation.isPending ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <Text style={styles.sheetButtonText}>Save changes</Text>
+              )}
+            </Pressable>
+
+            <Pressable style={styles.btnNotYet} onPress={() => setEditBidVisible(false)}>
+              <Text style={styles.btnNotYetText}>Cancel</Text>
+            </Pressable>
+          </Pressable>
         </Pressable>
       </Modal>
     </View>

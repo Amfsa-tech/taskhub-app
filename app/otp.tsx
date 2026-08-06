@@ -30,6 +30,16 @@ const COLORS = {
 
 const CODE_LENGTH = 5;
 
+// "jacelee1407@gmail.com" → "jac********@gmail.com". Keeps the first 3
+// characters of the local part (fewer for very short addresses) and the domain.
+function maskEmail(email: string): string {
+  const at = email.indexOf('@');
+  if (at <= 0) return email;
+  const local = email.slice(0, at);
+  const keep = Math.min(3, Math.max(1, local.length - 1));
+  return `${local.slice(0, keep)}${'*'.repeat(local.length - keep)}${email.slice(at)}`;
+}
+
 export default function OtpScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -119,7 +129,7 @@ export default function OtpScreen() {
         <View style={styles.heading}>
           <Text style={styles.title}>Verify your email</Text>
           <Text style={styles.subtitle}>
-            We sent a {CODE_LENGTH} digit Code to {email ?? 'ellioteniolsamuel@gmail.com'}
+            We sent a {CODE_LENGTH} digit Code to {email ? maskEmail(email) : 'your email'}
           </Text>
         </View>
 

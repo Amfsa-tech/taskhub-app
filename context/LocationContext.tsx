@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { looksLikeCoordinates, resolveAddress } from '@/lib/location/geocoding';
+
 type LocationContextType = {
   selectedLocation: string | null;
   recentLocations: string[];
@@ -24,6 +26,19 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
         const storedLocation = await AsyncStorage.getItem(LOCATION_STORAGE_KEY);
         if (storedLocation) {
           setLocationState(storedLocation);
+
+          // Older builds stored raw "lat, lon" strings when reverse geocoding
+          // was unavailable — resolve those to a place name once, in place.
+          if (looksLikeCoordinates(storedLocation)) {
+            resolveAddress(storedLocation).then((resolved) => {
+              if (resolved !== storedLocation) {
+                setLocationState(resolved);
+                AsyncStorage.setItem(LOCATION_STORAGE_KEY, resolved).catch((e) =>
+                  console.error(e),
+                );
+              }
+            });
+          }
         }
 
         const storedRecents = await AsyncStorage.getItem(RECENT_LOCATIONS_KEY);

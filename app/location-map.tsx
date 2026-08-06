@@ -10,6 +10,7 @@ import { ArrowLeft } from '@/components/icons/arrow-left';
 import { MagnifyingGlass } from '@/components/icons/magnifying-glass';
 import { Package } from '@/components/icons/package';
 import { useLocation } from '@/context/LocationContext';
+import { reverseGeocode as resolveCoordinates } from '@/lib/location/geocoding';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -83,27 +84,10 @@ export default function LocationMapScreen() {
   }, []);
 
   const reverseGeocode = async (lat: number, lon: number) => {
-    if (!GEOAPIFY_API_KEY) {
-      setAddress(`${lat.toFixed(4)}, ${lon.toFixed(4)}`);
-      return;
-    }
-
     setIsReverseGeocoding(true);
     try {
-      const url = `https://api.geoapify.com/v1/geocode/reverse?lat=${lat}&lon=${lon}&apiKey=${GEOAPIFY_API_KEY}`;
-      const response = await fetch(url);
-      const data = await response.json();
-
-      if (data.features && data.features.length > 0) {
-        const props = data.features[0].properties;
-        const formatted = props.formatted || `${props.street}, ${props.city}`;
-        setAddress(formatted);
-      } else {
-        setAddress(`${lat.toFixed(4)}, ${lon.toFixed(4)}`);
-      }
-    } catch (e) {
-      console.error(e);
-      setAddress('Unknown Location');
+      const formatted = await resolveCoordinates(lat, lon);
+      setAddress(formatted ?? `${lat.toFixed(4)}, ${lon.toFixed(4)}`);
     } finally {
       setIsReverseGeocoding(false);
     }

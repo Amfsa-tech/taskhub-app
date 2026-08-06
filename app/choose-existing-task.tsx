@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Clock from '@/assets/icons/clock.svg';
 import MapPin from '@/assets/icons/map-pin.svg';
 import { PrimaryButton } from '@/components/taskhub/primary-button';
+import { useNewPost } from '@/hooks/use-new-post';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
 import { inviteTasker } from '@/lib/api/bids';
 import { useUserTasks } from '@/lib/api/queries';
@@ -27,6 +28,7 @@ const COLORS = {
 export default function ChooseExistingTaskScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const startNewPost = useNewPost();
   const { taskerId, taskerName } = useLocalSearchParams<{
     taskerId?: string;
     taskerName?: string;
@@ -93,7 +95,7 @@ export default function ChooseExistingTaskScreen() {
             <Text style={styles.listStateText}>
               You have no open tasks to invite anyone to. Post one first.
             </Text>
-            <Pressable hitSlop={8} onPress={() => router.replace('/post')}>
+            <Pressable hitSlop={8} onPress={() => startNewPost({ replace: true })}>
               <Text style={styles.listStateRetry}>Post a task</Text>
             </Pressable>
           </View>

@@ -334,6 +334,100 @@ export function changeTaskStatus(id: string, status: TaskStatus) {
   );
 }
 
+/* ------------------------------------------------------------------ *
+ * Tasker side — `protectTasker`
+ * ------------------------------------------------------------------ */
+
+/** Whether the tasker can still apply, and on what terms. Feed-only. */
+export interface TaskApplicationInfo {
+  canApply: boolean;
+  applicationMode: 'bidding' | 'fixed';
+  /** Ready-made button label: "Place Bid" or "Apply for Task". */
+  applicationLabel: string;
+  /** False for fixed-price tasks — don't show an amount field. */
+  priceEditable: boolean;
+  /** The amount that will be used when `priceEditable` is false. */
+  fixedPrice: number | null;
+}
+
+export interface TaskerBidInfo {
+  hasBid: boolean;
+  amount?: number;
+  bidType?: 'custom' | 'fixed';
+  status?: 'pending' | 'accepted' | 'rejected';
+}
+
+/** A feed task carries the tasker's own bid state alongside the task. */
+export interface TaskerFeedTask extends Task {
+  taskerBidInfo: TaskerBidInfo;
+  applicationInfo: TaskApplicationInfo;
+}
+
+export interface TaskerFeedResponse {
+  status: string;
+  message: string;
+  tasks: TaskerFeedTask[];
+  pagination: {
+    currentPage: number;
+    totalPages: number;
+    totalTasks: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
+    tasksPerPage: number;
+    nextCursor: string | null;
+  };
+}
+
+/**
+ * Open tasks matching the tasker's categories.
+ *
+ * Two things worth knowing before rendering an empty state:
+ *  - **No categories set → an empty list, not an error.** The backend returns
+ *    200 with `message: "No categories set…"`. Send the tasker to
+ *    `/tasker-services` rather than showing "no tasks nearby".
+ *  - **Location narrows it hard.** With a tasker location on file the feed is
+ *    filtered to `maxDistance` miles (default 200).
+ */
+export function getTaskerFeed(
+  params: { limit?: number; cursor?: string; maxDistance?: number; biddingOnly?: boolean } = {},
+  signal?: AbortSignal,
+) {
+  return api.get<TaskerFeedResponse>(`/api/tasks/tasker/feed${toQuery(params)}`, { signal });
+}
+
+/** Tasks assigned to the signed-in tasker. `status` filters to one bucket. */
+export function getTaskerTasks(params: TaskListParams = {}, signal?: AbortSignal) {
+  return api.get<TasksListResponse>(`/api/tasks/tasker/tasks${toQuery(params)}`, { signal });
+}
+
+/**
+ * Start an assigned task (`assigned → in-progress`).
+ *
+ * The backend generates the 6-digit completion code here and notifies the
+ * poster; it is deliberately stripped from this response, so the tasker never
+ * sees it. They have to get it from the client to finish the job.
+ */
+export function startTaskerTask(id: string) {
+  return api.patch<{ status: string; message: string; task: Task }>(
+    `/api/tasks/${id}/status/tasker`,
+    { status: 'in-progress' },
+  );
+}
+
+/**
+ * Complete a task (`in-progress → completed`) by submitting the code the client
+ * read off their `track-task` screen. This is what releases escrow — the tasker
+ * is paid the bid amount and the platform keeps its fee.
+ *
+ * 400s on a wrong code, so surface the message rather than a generic failure.
+ */
+export function completeTaskerTask(id: string, completionCode: string) {
+  return api.patch<{ status: string; message: string; task: Task }>(
+    `/api/tasks/${id}/status/tasker`,
+    { status: 'completed', completionCode },
+  );
+}
+
 /**
  * Delete a task. Owner-only, and refused (400) once the task is `in-progress`
  * or `completed` — cancel those instead.

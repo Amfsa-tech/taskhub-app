@@ -83,6 +83,47 @@ export function getWalletTransactions(
   );
 }
 
+/* ------------------------------------------------------------------ *
+ * Tasker balance & transactions
+ * ------------------------------------------------------------------ */
+
+/**
+ * Note the shape differs from the user's `WalletBalance` — there is no escrow
+ * on the tasker side (escrow is held against the *client's* wallet), and
+ * `availableToWithdraw` currently equals `walletBalance`: the backend does not
+ * subtract `pendingWithdrawals` from it. Show the two figures separately rather
+ * than implying the pending amount is already deducted.
+ */
+export interface TaskerBalance {
+  walletBalance: number;
+  pendingWithdrawals: number;
+  availableToWithdraw: number;
+}
+
+export interface TaskerBalanceResponse {
+  status: string;
+  data: TaskerBalance;
+}
+
+export function getTaskerBalance(signal?: AbortSignal) {
+  return api.get<TaskerBalanceResponse>('/api/wallet/tasker/balance', { signal });
+}
+
+/** Tasker transaction history. No `?purpose=` filter on this side. */
+export function getTaskerTransactions(
+  params: { page?: number; limit?: number } = {},
+  signal?: AbortSignal,
+) {
+  const usp = new URLSearchParams();
+  if (params.page) usp.append('page', String(params.page));
+  if (params.limit) usp.append('limit', String(params.limit));
+  const qs = usp.toString();
+  return api.get<TransactionsResponse>(
+    `/api/wallet/tasker/transactions${qs ? `?${qs}` : ''}`,
+    { signal },
+  );
+}
+
 /** Start funding. Amount in naira (min ₦100). Returns the checkout URL + reference. */
 export function initializeFunding(amount: number) {
   return api.post<InitFundingResponse>('/api/wallet/fund/initialize', { amount });

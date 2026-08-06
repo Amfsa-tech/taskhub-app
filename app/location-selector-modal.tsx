@@ -17,6 +17,7 @@ import { Feather } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 
 import { useLocation } from '@/context/LocationContext';
+import { reverseGeocode } from '@/lib/location/geocoding';
 import MapPin from '@/assets/icons/map-pin.svg';
 
 const COLORS = {
@@ -104,21 +105,11 @@ export default function LocationSelectorModal() {
       }
 
       const { coords } = await Location.getCurrentPositionAsync({});
-      
-      if (GEOAPIFY_API_KEY) {
-        const url = `https://api.geoapify.com/v1/geocode/reverse?lat=${coords.latitude}&lon=${coords.longitude}&apiKey=${GEOAPIFY_API_KEY}`;
-        const response = await fetch(url);
-        const data = await response.json();
-        
-        if (data.features && data.features.length > 0) {
-          const props = data.features[0].properties;
-          const formatted = props.formatted || `${props.street}, ${props.city}`;
-          await handleSelectLocation(formatted);
-          return;
-        }
-      }
-      
-      await handleSelectLocation(`${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`);
+
+      const formatted = await reverseGeocode(coords.latitude, coords.longitude);
+      await handleSelectLocation(
+        formatted ?? `${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`,
+      );
     } catch (e) {
       console.error(e);
     } finally {

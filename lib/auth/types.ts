@@ -23,6 +23,14 @@ export interface AuthUser {
   /** Reviews this user has left on their completed tasks. */
   reviewsGivenCount?: number;
   savedTaskersCount?: number;
+  // ── Tasker-only, returned by `GET /api/auth/tasker` ──
+  bio?: string;
+  averageRating?: number;
+  location?: { latitude: number; longitude: number; address?: string } | null;
+  /** Populated category refs — these drive `GET /api/tasks/tasker/feed`. */
+  mainCategories?: { _id: string; name?: string; displayName?: string }[];
+  subCategories?: { _id: string; name?: string; displayName?: string }[];
+  previousWork?: { url: string; publicId: string; _id?: string }[];
   [key: string]: unknown;
 }
 

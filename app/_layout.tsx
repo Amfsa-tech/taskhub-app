@@ -21,7 +21,6 @@ import { queryClient } from '@/lib/query-client';
 
 import { LocationProvider } from '@/context/LocationContext';
 import { PostTaskProvider } from '@/context/PostTaskContext';
-import { TaskProvider } from '@/context/TaskContext';
 
 // The app shell is the anchor, so popping back from a pushed screen lands in
 // the tabs — not on a stray intro route.
@@ -49,9 +48,7 @@ export default function RootLayout() {
         <SafeAreaProvider>
           <LocationProvider>
             <PostTaskProvider>
-              <TaskProvider>
-                <RootNavigator />
-              </TaskProvider>
+              <RootNavigator />
             </PostTaskProvider>
           </LocationProvider>
         </SafeAreaProvider>

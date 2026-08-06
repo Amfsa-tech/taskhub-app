@@ -13,7 +13,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/taskhub/screen-header';
-import { useWalletTransactionsPaged } from '@/lib/api/queries';
+import { useTaskerTransactionsPaged, useWalletTransactionsPaged } from '@/lib/api/queries';
+import { useAuth } from '@/lib/auth/auth-context';
 import { formatLongDate, formatNaira } from '@/lib/api/tasks';
 import {
   transactionIcon,
@@ -53,8 +54,15 @@ export default function TransactionHistoryScreen() {
   const [dropPos, setDropPos] = useState({ top: 0, right: 0 });
   const filterBtnRef = useRef<View>(null);
 
-  const activeFilter = FILTERS[filterIndex];
-  const txQ = useWalletTransactionsPaged(activeFilter.purpose);
+  const { accountType } = useAuth();
+  const isTasker = accountType === 'tasker';
+
+  // Taskers read a different endpoint with no `?purpose=` support, so the
+  // filter control is hidden for them rather than shown and ignored.
+  const activeFilter = isTasker ? FILTERS[0] : FILTERS[filterIndex];
+  const userTxQ = useWalletTransactionsPaged(activeFilter.purpose, !isTasker);
+  const taskerTxQ = useTaskerTransactionsPaged(isTasker);
+  const txQ = isTasker ? taskerTxQ : userTxQ;
 
   const transactions = txQ.data?.pages.flatMap((p) => p.transactions) ?? [];
   const totalRecords = txQ.data?.pages[0]?.totalRecords ?? 0;
@@ -66,9 +74,10 @@ export default function TransactionHistoryScreen() {
 
       <View style={styles.subheaderRow}>
         <Text style={styles.subheaderText}>
-          {activeFilter.label}
+          {isTasker ? 'Earnings' : activeFilter.label}
           {totalRecords > 0 ? ` · ${totalRecords}` : ''}
         </Text>
+        {!isTasker && (
         <View
           ref={filterBtnRef}
           onLayout={() => {
@@ -87,6 +96,7 @@ export default function TransactionHistoryScreen() {
             <Ionicons name="options-outline" size={20} color={COLORS.textPrimary} />
           </Pressable>
         </View>
+        )}
       </View>
 
       <FlatList

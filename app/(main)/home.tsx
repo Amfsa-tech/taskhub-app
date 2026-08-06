@@ -23,19 +23,33 @@ import GraduationCap from '@/assets/icons/graduation-cap.svg';
 import HouseLine from '@/assets/icons/house-line.svg';
 import Laptop from '@/assets/icons/laptop.svg';
 import MapPin from '@/assets/icons/map-pin.svg';
-import Microphone from '@/assets/icons/microphone.svg';
 import Package from '@/assets/icons/package.svg';
-import PaperPlaneTilt from '@/assets/icons/paper-plane-tilt.svg';
 import RatingDot from '@/assets/icons/rating-dot.svg';
-import Sparkle from '@/assets/icons/sparkle.svg';
 import Star from '@/assets/icons/star.svg';
 import VerificationRing from '@/assets/icons/verification-ring.svg';
 import Wallet from '@/assets/icons/wallet.svg';
 
 import { ActiveTasks } from '@/components/taskhub/active-tasks';
 import { useLocation } from '@/context/LocationContext';
-import { queryKeys, useNearbyTaskers, useNotifications } from '@/lib/api/queries';
-import type { TaskerMatch } from '@/lib/api/tasks';
+import { useNewPost } from '@/hooks/use-new-post';
+import {
+  queryKeys,
+  useNearbyTaskers,
+  useNotifications,
+  useTaskerBalance,
+  useTaskerBids,
+  useTaskerFeed,
+  useTaskerTasks,
+  useTaskerTransactions,
+  useVerificationStatus,
+} from '@/lib/api/queries';
+import {
+  formatNaira,
+  formatRelativeTime,
+  locationLabel,
+  type Task,
+  type TaskerMatch,
+} from '@/lib/api/tasks';
 import { useAuth } from '@/lib/auth/auth-context';
 
 function initialsOf(name: string, email: string): string {
@@ -140,6 +154,7 @@ function TaskerCard({ tasker, onPress }: { tasker: TaskerVM; onPress: () => void
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const startNewPost = useNewPost();
   const { selectedLocation, isLoadingLocation } = useLocation();
   const { user, accountType } = useAuth();
   const { data: notifData } = useNotifications();
@@ -251,35 +266,12 @@ export default function HomeScreen() {
             <CaretRight width={9} height={24} />
           </Pressable>
 
-          {/* AI Quick Post */}
-          <View style={styles.quickPost}>
-            <View style={styles.quickPostHeader}>
-              <View style={styles.quickPostLabelRow}>
-                <Sparkle width={18} height={18} />
-                <Text style={styles.quickPostLabel}>AI Quick Post</Text>
-              </View>
-              <Text style={styles.quickPostPrompt}>What do you need help with?</Text>
-            </View>
-
-            <Pressable style={styles.exampleCard} onPress={() => router.push('/post')}>
-              <Text style={styles.examplePlaceholder}>e.g Print my assignment, fix my laptop</Text>
-              <View style={styles.exampleActions}>
-                <View style={[styles.roundIcon, { backgroundColor: COLORS.brandSubtle }]}>
-                  <Microphone width={24} height={24} />
-                </View>
-                <View style={[styles.roundIcon, { backgroundColor: COLORS.brandMuted }]}>
-                  <PaperPlaneTilt width={24} height={24} />
-                </View>
-              </View>
-            </Pressable>
-          </View>
-
           {/* Quick Category */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Quick Category</Text>
             <View style={styles.categoryCard}>
               {CATEGORIES.map((cat) => (
-                <Pressable key={cat.key} style={styles.categoryItem} onPress={() => router.push('/post')}>
+                <Pressable key={cat.key} style={styles.categoryItem} onPress={() => startNewPost()}>
                   <View style={[styles.categoryIcon, { backgroundColor: cat.bg }]}>{cat.icon}</View>
                   <Text style={styles.categoryLabel}>{cat.label}</Text>
                 </Pressable>
@@ -451,62 +443,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.08,
     color: COLORS.onBrand,
   },
-  // AI Quick Post
-  quickPost: {
-    gap: 16,
-  },
-  quickPostHeader: {
-    alignItems: 'center',
-    gap: 8,
-  },
-  quickPostLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  quickPostLabel: {
-    fontFamily: 'Geist_600SemiBold',
-    fontSize: 16,
-    letterSpacing: -0.32,
-    color: COLORS.brand,
-  },
-  quickPostPrompt: {
-    fontFamily: 'Geist_600SemiBold',
-    fontSize: 20,
-    lineHeight: 25,
-    letterSpacing: -0.45,
-    color: COLORS.textPrimary,
-    textAlign: 'center',
-  },
-  exampleCard: {
-    backgroundColor: COLORS.elevated,
-    height: 149,
-    borderRadius: 16,
-    overflow: 'hidden',
-    padding: 16,
-  },
-  examplePlaceholder: {
-    fontFamily: 'Geist_500Medium',
-    fontSize: 17,
-    lineHeight: 22,
-    letterSpacing: -0.41,
-    color: COLORS.textPlaceholder,
-  },
-  exampleActions: {
-    position: 'absolute',
-    right: 16,
-    bottom: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  roundIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   // Sections
   section: {
     gap: 12,
@@ -561,6 +497,25 @@ const styles = StyleSheet.create({
     height: 120,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  taskerEmptyCard: {
+    borderWidth: 1,
+    borderColor: '#e0e0ea',
+    borderRadius: 16,
+    backgroundColor: COLORS.surface,
+    padding: 16,
+    gap: 6,
+  },
+  taskerEmptyTitle: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 15,
+    color: COLORS.textPrimary,
+  },
+  taskerEmptySubtitle: {
+    fontFamily: 'Geist_400Regular',
+    fontSize: 13,
+    lineHeight: 18,
+    color: COLORS.textSecondary,
   },
   taskerEmpty: {
     fontFamily: 'Geist_500Medium',
@@ -869,6 +824,58 @@ type TaskerHomeViewProps = {
 };
 
 function TaskerHomeView({ refreshing, onRefresh, insets, user, router }: TaskerHomeViewProps) {
+  const balance = useTaskerBalance();
+  const transactions = useTaskerTransactions();
+  const verification = useVerificationStatus();
+  const invitations = useTaskerBids('pending');
+  const feed = useTaskerFeed();
+  const activeJobs = useTaskerTasks();
+
+  const walletBalance = balance.data?.data.walletBalance ?? 0;
+
+  // There is no "today's earnings" endpoint, so derive it from the transaction
+  // list: credits stamped today. A tasker is only ever credited on completion,
+  // so this is the day's takings rather than an approximation of them.
+  const todayEarnings = (transactions.data?.transactions ?? [])
+    .filter((t) => {
+      if (t.type !== 'credit' || t.status !== 'success') return false;
+      const at = new Date(t.createdAt);
+      const now = new Date();
+      return (
+        at.getFullYear() === now.getFullYear() &&
+        at.getMonth() === now.getMonth() &&
+        at.getDate() === now.getDate()
+      );
+    })
+    .reduce((sum, t) => sum + t.amount, 0);
+
+  // Profile completeness, computed from facts we can actually check rather than
+  // a stored score (the backend keeps none).
+  const checks = [
+    Boolean(user?.profilePicture),
+    Boolean(verification.data?.data.isVerified),
+    Boolean(user?.bio),
+    Boolean(user?.location),
+  ];
+  const completeness = Math.round((checks.filter(Boolean).length / checks.length) * 100);
+  const nextStep = !user?.profilePicture
+    ? 'Add profile photo'
+    : !verification.data?.data.isVerified
+      ? 'Verify your identity'
+      : !user?.bio
+        ? 'Add a short bio'
+        : !user?.location
+          ? 'Set your service area'
+          : 'Profile complete';
+
+  const pendingInvites = (invitations.data?.bids ?? []).filter((b) => b.invitedByUser && b.task);
+  const recommended = (feed.data?.pages ?? []).flatMap((p) => p.tasks).slice(0, 5);
+  const inProgress = (activeJobs.data?.tasks ?? []).filter(
+    (t) => t.status === 'assigned' || t.status === 'in-progress',
+  );
+
+  const openTask = (id: string) => router.push({ pathname: '/task-details', params: { id } });
+
   return (
     <ScrollView
       style={styles.flex}
@@ -888,60 +895,77 @@ function TaskerHomeView({ refreshing, onRefresh, insets, user, router }: TaskerH
           <View style={styles.taskerStatHeader}>
             <MaterialCommunityIcons name="arrow-top-right" size={24} color={COLORS.onBrand} />
           </View>
-          <Text style={styles.taskerStatLabel}>Today's Earnings</Text>
-          <Text style={styles.taskerStatValue}>₦7,500</Text>
+          <Text style={styles.taskerStatLabel}>Today&apos;s Earnings</Text>
+          <Text style={styles.taskerStatValue}>{formatNaira(todayEarnings)}</Text>
         </View>
 
-        <View style={[styles.taskerStatCard, styles.taskerStatCardWhite]}>
+        <Pressable
+          style={[styles.taskerStatCard, styles.taskerStatCardWhite]}
+          onPress={() => router.push('/wallet')}>
           <View style={styles.taskerStatHeader}>
             <Wallet width={24} height={24} color={COLORS.brand} />
           </View>
           <Text style={[styles.taskerStatLabel, { color: COLORS.textSecondary }]}>Wallet Balance</Text>
-          <Text style={[styles.taskerStatValue, { color: COLORS.textPrimary }]}>₦24,300</Text>
-        </View>
-      </View>
-
-      {/* Complete Verification & Profile Card */}
-      <Pressable style={styles.taskerVerifyCard} onPress={() => router.push('/select-verification')}>
-        <View style={styles.ring}>
-          <VerificationRing width={51} height={51} style={styles.ringImage} color={COLORS.brand} />
-          <Text style={styles.ringText}>60</Text>
-        </View>
-        <View style={styles.taskerVerifyText}>
-          <Text style={styles.taskerVerifyTitle}>Complete Verification & Profile</Text>
-          <Text style={styles.taskerVerifySubtitle}>Add profile Photo</Text>
-        </View>
-        <CaretRight width={9} height={24} color={COLORS.brand} />
-      </Pressable>
-
-      {/* Pending Invitation Section */}
-      <View style={styles.taskerSection}>
-        <View style={styles.taskerSectionHeader}>
-          <Text style={styles.taskerSectionTitle}>Pending Invitation</Text>
-          <Pressable onPress={() => router.push('/tasks')}>
-            <Text style={styles.taskerSectionLink}>View all</Text>
-          </Pressable>
-        </View>
-
-        <Pressable style={styles.taskerJobCard} onPress={() => router.push({ pathname: '/task-details', params: { id: '3' } })}>
-          <View style={styles.taskerJobCardTop}>
-            <View style={[styles.tag, styles.tagRemote]}>
-              <Text style={styles.tagRemoteText}>Remote</Text>
-            </View>
-            <Text style={styles.taskerJobCardPrice}>₦1,000</Text>
-          </View>
-          <View style={styles.taskerJobCardMain}>
-            <Text style={styles.taskerJobCardTitle}>Build a App</Text>
-            <CaretRight width={9} height={24} />
-          </View>
-          <View style={styles.taskerJobCardFooter}>
-            <MaterialCommunityIcons name="account-outline" size={16} color={COLORS.textSecondary} />
-            <Text style={styles.taskerJobCardClient}>Sarah K.</Text>
-          </View>
+          <Text style={[styles.taskerStatValue, { color: COLORS.textPrimary }]}>
+            {formatNaira(walletBalance)}
+          </Text>
         </Pressable>
       </View>
 
-      {/* Recommended Jobs Section */}
+      {/* Complete Verification & Profile Card */}
+      {completeness < 100 && (
+        <Pressable style={styles.taskerVerifyCard} onPress={() => router.push('/select-verification')}>
+          <View style={styles.ring}>
+            <VerificationRing width={51} height={51} style={styles.ringImage} color={COLORS.brand} />
+            <Text style={styles.ringText}>{completeness}</Text>
+          </View>
+          <View style={styles.taskerVerifyText}>
+            <Text style={styles.taskerVerifyTitle}>Complete Verification & Profile</Text>
+            <Text style={styles.taskerVerifySubtitle}>{nextStep}</Text>
+          </View>
+          <CaretRight width={9} height={24} color={COLORS.brand} />
+        </Pressable>
+      )}
+
+      {/* Pending Invitations */}
+      {pendingInvites.length > 0 && (
+        <View style={styles.taskerSection}>
+          <View style={styles.taskerSectionHeader}>
+            <Text style={styles.taskerSectionTitle}>
+              {pendingInvites.length === 1 ? 'Pending Invitation' : 'Pending Invitations'}
+            </Text>
+            <Pressable onPress={() => router.push('/tasks')}>
+              <Text style={styles.taskerSectionLink}>View all</Text>
+            </Pressable>
+          </View>
+
+          {pendingInvites.slice(0, 3).map((bid) => (
+            <Pressable
+              key={bid._id}
+              style={styles.taskerJobCard}
+              onPress={() => bid.task && openTask(bid.task._id)}>
+              <View style={styles.taskerJobCardTop}>
+                <View style={[styles.tag, styles.tagRemote]}>
+                  <Text style={styles.tagRemoteText}>Invitation</Text>
+                </View>
+                <Text style={styles.taskerJobCardPrice}>{formatNaira(bid.amount)}</Text>
+              </View>
+              <View style={styles.taskerJobCardMain}>
+                <Text style={styles.taskerJobCardTitle} numberOfLines={1}>
+                  {bid.task?.title}
+                </Text>
+                <CaretRight width={9} height={24} />
+              </View>
+              <View style={styles.taskerJobCardFooter}>
+                <Clock width={14} height={14} color={COLORS.textSecondary} />
+                <Text style={styles.taskerJobCardClient}>{formatRelativeTime(bid.createdAt)}</Text>
+              </View>
+            </Pressable>
+          ))}
+        </View>
+      )}
+
+      {/* Recommended Jobs — the category-matched feed */}
       <View style={styles.taskerSection}>
         <View style={styles.taskerSectionHeader}>
           <Text style={styles.taskerSectionTitle}>Recommended Jobs</Text>
@@ -950,102 +974,91 @@ function TaskerHomeView({ refreshing, onRefresh, insets, user, router }: TaskerH
           </Pressable>
         </View>
 
-        <Pressable style={styles.taskerJobCard} onPress={() => router.push({ pathname: '/task-details', params: { id: '5' } })}>
-          <View style={styles.taskerJobCardTop}>
-            <View style={[styles.tag, styles.tagLocal]}>
-              <Text style={styles.tagLocalText}>Local</Text>
-            </View>
-            <Text style={styles.taskerJobCardPrice}>₦20,000</Text>
-          </View>
-          <View style={styles.taskerJobCardMain}>
-            <Text style={styles.taskerJobCardTitle}>Fix my Laptop Screen</Text>
-            <Text style={styles.taskerJobCardBids}>2 Bids</Text>
-          </View>
-          <View style={styles.taskerJobCardMeta}>
-            <View style={styles.taskerJobMetaItem}>
-              <MapPin width={14} height={14} color={COLORS.textSecondary} />
-              <Text style={styles.taskerJobMetaText}>UI Main gate</Text>
-            </View>
-            <View style={styles.taskerJobMetaItem}>
-              <Clock width={14} height={14} color={COLORS.textSecondary} />
-              <Text style={styles.taskerJobMetaText}>18 May</Text>
-            </View>
-          </View>
-        </Pressable>
-
-        <Pressable style={styles.taskerJobCard} onPress={() => router.push({ pathname: '/task-details', params: { id: '6' } })}>
-          <View style={styles.taskerJobCardTop}>
-            <View style={[styles.tag, styles.tagErrand]}>
-              <Text style={styles.tagErrandText}>Errand</Text>
-            </View>
-            <Text style={styles.taskerJobCardPrice}>₦2,000</Text>
-          </View>
-          <View style={styles.taskerJobCardMain}>
-            <Text style={styles.taskerJobCardTitle}>Deliver Package to Lekki</Text>
-            <Text style={styles.taskerJobCardBids}>5 Bids</Text>
-          </View>
-          <View style={styles.taskerJobCardMeta}>
-            <View style={styles.taskerJobMetaItem}>
-              <MapPin width={14} height={14} color={COLORS.textSecondary} />
-              <Text style={styles.taskerJobMetaText}>Yaba → Lekki</Text>
-            </View>
-            <View style={styles.taskerJobMetaItem}>
-              <Clock width={14} height={14} color={COLORS.textSecondary} />
-              <Text style={styles.taskerJobMetaText}>10mins ago</Text>
-            </View>
-          </View>
-        </Pressable>
-      </View>
-
-      {/* Jobs in progress Section */}
-      <View style={styles.taskerSection}>
-        <View style={styles.taskerSectionHeader}>
-          <Text style={styles.taskerSectionTitle}>Jobs in progress</Text>
-          <Pressable onPress={() => router.push('/tasks')}>
-            <Text style={styles.taskerSectionLink}>Discover</Text>
+        {feed.isLoading ? (
+          <ActivityIndicator style={{ marginVertical: 24 }} color={COLORS.brand} />
+        ) : recommended.length === 0 ? (
+          <Pressable style={styles.taskerEmptyCard} onPress={() => router.push('/tasker-services')}>
+            <Text style={styles.taskerEmptyTitle}>No matching jobs yet</Text>
+            <Text style={styles.taskerEmptySubtitle}>
+              The feed only shows tasks in the categories you offer. Set your services to start
+              seeing work.
+            </Text>
           </Pressable>
-        </View>
-
-        <Pressable style={styles.taskerJobCard} onPress={() => router.push({ pathname: '/task-details', params: { id: '1' } })}>
-          <View style={styles.taskerJobCardTop}>
-            <Text style={styles.taskerJobCardTitleBold}>Deliver a flyer for an Event</Text>
-            <Text style={styles.taskerJobCardPrice}>₦1,000</Text>
-          </View>
-          <View style={styles.taskerJobCardMeta}>
-            <View style={styles.taskerJobMetaItem}>
-              <Clock width={14} height={14} color={COLORS.textSecondary} />
-              <Text style={styles.taskerJobMetaText}>Sarah K.</Text>
-            </View>
-            <View style={styles.taskerJobMetaItem}>
-              <MapPin width={14} height={14} color={COLORS.textSecondary} />
-              <Text style={styles.taskerJobMetaText}>21km</Text>
-            </View>
-          </View>
-          <View style={styles.progressBarWrapper}>
-            <SegmentedProgressBar total={4} active={2} />
-          </View>
-        </Pressable>
-
-        <Pressable style={styles.taskerJobCard} onPress={() => router.push({ pathname: '/task-details', params: { id: '4' } })}>
-          <View style={styles.taskerJobCardTop}>
-            <Text style={styles.taskerJobCardTitleBold}>Deliver Package to Junction</Text>
-            <Text style={styles.taskerJobCardPrice}>₦1,000</Text>
-          </View>
-          <View style={styles.taskerJobCardMeta}>
-            <View style={styles.taskerJobMetaItem}>
-              <Clock width={14} height={14} color={COLORS.textSecondary} />
-              <Text style={styles.taskerJobMetaText}>Sarah K.</Text>
-            </View>
-            <View style={styles.taskerJobMetaItem}>
-              <MapPin width={14} height={14} color={COLORS.textSecondary} />
-              <Text style={styles.taskerJobMetaText}>21km</Text>
-            </View>
-          </View>
-          <View style={styles.progressBarWrapper}>
-            <SegmentedProgressBar total={5} active={3} />
-          </View>
-        </Pressable>
+        ) : (
+          recommended.map((task) => (
+            <Pressable
+              key={task._id}
+              style={styles.taskerJobCard}
+              onPress={() => openTask(task._id)}>
+              <View style={styles.taskerJobCardTop}>
+                <View style={[styles.tag, styles.tagLocal]}>
+                  <Text style={styles.tagLocalText}>
+                    {task.applicationInfo?.applicationMode === 'bidding' ? 'Bidding' : 'Fixed'}
+                  </Text>
+                </View>
+                <Text style={styles.taskerJobCardPrice}>{formatNaira(task.budget)}</Text>
+              </View>
+              <View style={styles.taskerJobCardMain}>
+                <Text style={styles.taskerJobCardTitle} numberOfLines={1}>
+                  {task.title}
+                </Text>
+                {task.taskerBidInfo?.hasBid && (
+                  <Text style={styles.taskerJobCardBids}>Applied</Text>
+                )}
+              </View>
+              <View style={styles.taskerJobCardMeta}>
+                <View style={styles.taskerJobMetaItem}>
+                  <MapPin width={14} height={14} color={COLORS.textSecondary} />
+                  <Text style={styles.taskerJobMetaText} numberOfLines={1}>
+                    {locationLabel(task)}
+                  </Text>
+                </View>
+                <View style={styles.taskerJobMetaItem}>
+                  <Clock width={14} height={14} color={COLORS.textSecondary} />
+                  <Text style={styles.taskerJobMetaText}>{formatRelativeTime(task.createdAt)}</Text>
+                </View>
+              </View>
+            </Pressable>
+          ))
+        )}
       </View>
+
+      {/* Jobs in progress */}
+      {inProgress.length > 0 && (
+        <View style={styles.taskerSection}>
+          <View style={styles.taskerSectionHeader}>
+            <Text style={styles.taskerSectionTitle}>Jobs in progress</Text>
+            <Pressable onPress={() => router.push('/tasks')}>
+              <Text style={styles.taskerSectionLink}>View all</Text>
+            </Pressable>
+          </View>
+
+          {inProgress.map((task: Task) => (
+            <Pressable
+              key={task._id}
+              style={styles.taskerJobCard}
+              onPress={() => openTask(task._id)}>
+              <View style={styles.taskerJobCardTop}>
+                <Text style={styles.taskerJobCardTitleBold} numberOfLines={1}>
+                  {task.title}
+                </Text>
+                <Text style={styles.taskerJobCardPrice}>{formatNaira(task.budget)}</Text>
+              </View>
+              <View style={styles.taskerJobCardMeta}>
+                <View style={styles.taskerJobMetaItem}>
+                  <MapPin width={14} height={14} color={COLORS.textSecondary} />
+                  <Text style={styles.taskerJobMetaText} numberOfLines={1}>
+                    {locationLabel(task)}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.progressBarWrapper}>
+                <SegmentedProgressBar total={4} active={task.status === 'in-progress' ? 3 : 2} />
+              </View>
+            </Pressable>
+          ))}
+        </View>
+      )}
     </ScrollView>
   );
 }
