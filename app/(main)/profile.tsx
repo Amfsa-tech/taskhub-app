@@ -1,16 +1,13 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import Constants from 'expo-constants';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Spinner } from '@/components/taskhub/spinner';
 import { useSavedTaskers } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth/auth-context';
-import { loginOrCreateDevAccount } from '@/lib/auth/dev-auth';
 
 import BadgeVerified from '@/assets/icons/badge-verified.svg';
 import CaretRightMuted from '@/assets/icons/caret-right-muted.svg';
@@ -235,38 +232,35 @@ function initialsOf(name: string, email: string): string {
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user, accountType, token, setSession, isBootstrapping, signOut, signIn } = useAuth();
-  const [isDevLoading, setIsDevLoading] = useState(false);
-
-  const isExpoGo = Constants?.appOwnership === 'expo';
+  const { user, accountType, isBootstrapping, signOut } = useAuth();
 
   // The Saved tile reads from the live query rather than the (cached) user
   // object, so it updates as soon as a tasker is saved or unsaved.
   const { data: saved } = useSavedTaskers();
 
-  const handleStartTaskerTest = async () => {
-    setIsDevLoading(true);
-    try {
-      await loginOrCreateDevAccount('tasker', signIn);
-      router.replace('/home');
-    } catch (err: any) {
-      Alert.alert('Developer Login Failed', err.message || 'Something went wrong.');
-    } finally {
-      setIsDevLoading(false);
-    }
-  };
-
-  const handleSwitchMode = async () => {
-    if (token && user) {
-      const nextType = accountType === 'user' ? 'tasker' : 'user';
-      try {
-        await setSession(nextType, token, user);
-        Alert.alert('Success', `Switched to ${nextType === 'tasker' ? 'Tasker' : 'Customer'} mode.`);
-        router.replace('/home');
-      } catch (err: any) {
-        Alert.alert('Error', err.message || 'Could not switch mode.');
-      }
-    }
+  // User and tasker are separate accounts with separate tokens, so switching
+  // modes is a real sign-out followed by a sign-in of the other role.
+  const handleSwitchMode = () => {
+    const toTasker = accountType === 'user';
+    Alert.alert(
+      toTasker ? 'Switch to Tasker mode' : 'Switch to user mode',
+      `You'll be signed out, then log in${toTasker ? ' or sign up' : ''} with your ${
+        toTasker ? 'tasker' : 'customer'
+      } account.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          onPress: async () => {
+            await signOut();
+            router.replace({
+              pathname: '/login-form',
+              params: { type: toTasker ? 'tasker' : 'user' },
+            });
+          },
+        },
+      ],
+    );
   };
 
   const handleLogout = () => {
@@ -501,28 +495,6 @@ export default function ProfileScreen() {
           </View>
           <CaretRight width={9} height={12} />
         </Pressable>
-
-        {isExpoGo && (
-          <Pressable
-            style={[styles.taskerCard, styles.devCard, isDevLoading && styles.disabledCard]}
-            onPress={handleStartTaskerTest}
-            disabled={isDevLoading}>
-            <View style={styles.taskerIcon}>
-              <MaterialCommunityIcons name="developer-board" size={24} color={COLORS.brand} />
-            </View>
-            <View style={styles.taskerText}>
-              {isDevLoading ? (
-                <ActivityIndicator color={COLORS.onBrand} size="small" />
-              ) : (
-                <>
-                  <Text style={styles.taskerTitle}>Start Tasker Test</Text>
-                  <Text style={styles.taskerSubtitle}>Switch to developer/test tasker account</Text>
-                </>
-              )}
-            </View>
-            {!isDevLoading && <CaretRight width={9} height={12} />}
-          </Pressable>
-        )}
 
         {/* Menu groups */}
         <MenuCard
