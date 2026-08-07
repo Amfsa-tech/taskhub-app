@@ -1,13 +1,22 @@
 import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Clipboard, Pressable, ScrollView, StyleSheet, Text, View, Alert } from 'react-native';
+import {
+  ActivityIndicator,
+  Clipboard,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import ShieldCheck from '@/assets/icons/shield-check.svg';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
-import { SAMPLE_COMPLETED_TASKS } from '@/components/taskhub/task-card';
+import { useTask } from '@/lib/api/queries';
+import { formatLongDate, formatNaira } from '@/lib/api/tasks';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -23,67 +32,41 @@ const COLORS = {
   buttonGreyText: '#78788c',
 };
 
+/**
+ * Receipt for a completed task, built from the real task record.
+ *
+ * Client-borne fee model: the customer paid `escrowAmount` (budget + fee), the
+ * tasker received the full budget. The stored breakdown is preferred; older
+ * tasks without one fall back to deriving it from the budget at the 10% rate.
+ */
 export default function ReceiptScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const [copied, setCopied] = useState(false);
 
-  // Look up completed task details.
-  // NOTE: still backed by sample data — a real task id won't match, and the
-  // screen falls back to the mockup values below.
-  const task = SAMPLE_COMPLETED_TASKS.find((t) => t.id === id);
+  const taskQ = useTask(id);
+  const task = taskQ.data?.task;
 
-  // Default values from mockup design
-  let displayTitle = 'Print and Deliver 200-Level GST Notes';
-  let displayPrice = '₦1,000';
-  let displayTasker = 'Chioma A.';
-  let displayCompleted = 'May 10, 2026';
-  let displayPosted = 'May 8, 2026';
-  let displayPlatformFee = '₦75';
-  let displayTaskerReceived = '₦1,475';
-  let displayReference = 'NTH-20260510-001';
+  const budget = task?.budget ?? 0;
+  const platformFee = task?.platformFee || Math.round(budget * 0.1);
+  const taskerReceived = task?.taskerPayout || budget;
+  const totalPaid = task?.escrowAmount || budget + platformFee;
 
-  // If a valid completed task is selected, compute mathematically sound details
-  if (task) {
-    const parsePrice = (priceStr: string): number => {
-      const clean = priceStr.replace(/[^0-9]/g, '');
-      return parseInt(clean, 10) || 0;
-    };
+  const taskerName = task?.assignedTasker
+    ? [task.assignedTasker.firstName, task.assignedTasker.lastName].filter(Boolean).join(' ')
+    : '—';
 
-    const formatPrice = (amount: number): string => {
-      return `₦${amount.toLocaleString()}`;
-    };
-
-    const priceNum = parsePrice(task.price);
-    const feeNum = Math.round(priceNum * 0.075); // 7.5% Platform Fee
-    const receivedNum = priceNum - feeNum;
-
-    // Use mockup values for task 1 to match the screenshot exactly
-    if (task.id === '1') {
-      displayTitle = 'Print and Deliver 200-Level GST Notes';
-      displayPrice = '₦1,000';
-      displayTasker = 'Chioma A.';
-      displayCompleted = 'May 10, 2026';
-      displayPosted = 'May 8, 2026';
-      displayPlatformFee = '₦75';
-      displayTaskerReceived = '₦1,475';
-      displayReference = 'NTH-20260510-001';
-    } else {
-      displayTitle = task.title;
-      displayPrice = task.price;
-      displayTasker = task.tasker.name;
-      displayCompleted = task.completedAt;
-      displayPosted = 'May 8, 2026';
-      displayPlatformFee = formatPrice(feeNum);
-      displayTaskerReceived = formatPrice(receivedNum);
-      displayReference = `NTH-20260510-00${task.id}`;
-    }
-  }
+  const completedIso = task?.completedAt ?? task?.updatedAt;
+  const reference = task
+    ? `NTH-${(completedIso ?? task.createdAt).slice(0, 10).replace(/-/g, '')}-${task._id
+        .slice(-6)
+        .toUpperCase()}`
+    : '';
 
   const handleCopy = () => {
     try {
-      Clipboard.setString(displayReference);
+      Clipboard.setString(reference);
     } catch (e) {
       console.warn('Clipboard setString failed, falling back', e);
     }
@@ -91,13 +74,40 @@ export default function ReceiptScreen() {
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const handleDownload = () => {
-    Alert.alert('Download Receipt', 'Downloading PDF receipt to your device...');
-  };
-
   const handleBackToTask = () => {
     router.push('/(main)/tasks');
   };
+
+  if (taskQ.isLoading) {
+    return (
+      <View style={styles.container}>
+        <StatusBar style="dark" />
+        <ScreenHeader title="Receipt" />
+        <View style={styles.centerState}>
+          <ActivityIndicator color={COLORS.brand} />
+        </View>
+      </View>
+    );
+  }
+
+  if (!task || task.status !== 'completed') {
+    return (
+      <View style={styles.container}>
+        <StatusBar style="dark" />
+        <ScreenHeader title="Receipt" />
+        <View style={styles.centerState}>
+          <Text style={styles.emptyText}>
+            {!task
+              ? 'This receipt could not be loaded.'
+              : 'A receipt is available once the task is completed.'}
+          </Text>
+          <Pressable style={styles.btnSecondary} onPress={handleBackToTask}>
+            <Text style={styles.btnSecondaryText}>Back To My Task</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -109,27 +119,30 @@ export default function ReceiptScreen() {
         style={styles.flex}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 120 }]}
         showsVerticalScrollIndicator={false}>
-        
         {/* Top Header Section */}
         <View style={styles.topSection}>
           <Text style={styles.statusText}>Task Completed</Text>
-          <Text style={styles.amountText}>{displayPrice}</Text>
-          <Text style={styles.dateText}>{displayPosted}</Text>
+          <Text style={styles.amountText}>{formatNaira(totalPaid)}</Text>
+          <Text style={styles.dateText}>{formatLongDate(completedIso)}</Text>
         </View>
 
         {/* Details Card */}
         <View style={styles.card}>
           <View style={styles.row}>
             <Text style={styles.label}>Task</Text>
-            <Text style={styles.value}>{displayTitle}</Text>
+            <Text style={styles.value}>{task.title}</Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.label}>Tasker</Text>
-            <Text style={styles.value}>{displayTasker}</Text>
+            <Text style={styles.value}>{taskerName}</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.label}>Posted</Text>
+            <Text style={styles.value}>{formatLongDate(task.createdAt)}</Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.label}>Completed</Text>
-            <Text style={styles.value}>{displayCompleted}</Text>
+            <Text style={styles.value}>{formatLongDate(completedIso)}</Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.label}>Payment Method</Text>
@@ -137,11 +150,11 @@ export default function ReceiptScreen() {
           </View>
           <View style={styles.row}>
             <Text style={styles.label}>Platform Fee</Text>
-            <Text style={styles.valueBold}>{displayPlatformFee}</Text>
+            <Text style={styles.valueBold}>{formatNaira(platformFee)}</Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.label}>Tasker Received</Text>
-            <Text style={styles.valueBold}>{displayTaskerReceived}</Text>
+            <Text style={styles.valueBold}>{formatNaira(taskerReceived)}</Text>
           </View>
         </View>
 
@@ -160,10 +173,16 @@ export default function ReceiptScreen() {
         <View style={styles.refBlock}>
           <Text style={styles.refLabel}>REFERENCE ID</Text>
           <View style={styles.refRow}>
-            <Text style={styles.refText}>{displayReference}</Text>
+            <Text style={styles.refText}>{reference}</Text>
             <Pressable style={styles.copyBtn} onPress={handleCopy}>
-              <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={14} color={copied ? COLORS.success : COLORS.textPrimary} />
-              <Text style={[styles.copyBtnText, copied && { color: COLORS.success }]}>{copied ? 'Copied' : 'Copy'}</Text>
+              <Ionicons
+                name={copied ? 'checkmark' : 'copy-outline'}
+                size={14}
+                color={copied ? COLORS.success : COLORS.textPrimary}
+              />
+              <Text style={[styles.copyBtnText, copied && { color: COLORS.success }]}>
+                {copied ? 'Copied' : 'Copy'}
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -171,10 +190,6 @@ export default function ReceiptScreen() {
 
       {/* Pin Buttons to Bottom */}
       <View style={[styles.bottomActions, { paddingBottom: insets.bottom + 16 }]}>
-        <Pressable style={styles.btnPrimary} onPress={handleDownload}>
-          <Ionicons name="download-outline" size={20} color="#ffffff" />
-          <Text style={styles.btnPrimaryText}>Download PDF Receipt</Text>
-        </Pressable>
         <Pressable style={styles.btnSecondary} onPress={handleBackToTask}>
           <Text style={styles.btnSecondaryText}>Back To My Task</Text>
         </Pressable>
@@ -190,6 +205,20 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
+  },
+  centerState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 20,
+    paddingHorizontal: 32,
+  },
+  emptyText: {
+    fontFamily: 'Geist_400Regular',
+    fontSize: 15,
+    lineHeight: 22,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
   },
   scrollContent: {
     paddingTop: 16,
@@ -231,64 +260,63 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   label: {
-    fontFamily: 'Geist_500Medium',
-    fontSize: 15,
+    fontFamily: 'Geist_400Regular',
+    fontSize: 14,
     color: COLORS.textSecondary,
-    width: 120,
   },
   value: {
-    flex: 1,
     fontFamily: 'Geist_500Medium',
-    fontSize: 15,
+    fontSize: 14,
     color: COLORS.textPrimary,
+    flexShrink: 1,
     textAlign: 'right',
   },
   valueBold: {
-    flex: 1,
     fontFamily: 'Geist_600SemiBold',
-    fontSize: 15,
+    fontSize: 14,
     color: COLORS.textPrimary,
-    textAlign: 'right',
   },
   escrowBanner: {
-    backgroundColor: COLORS.successLight,
-    borderRadius: 12,
-    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    backgroundColor: COLORS.successLight,
+    borderRadius: 16,
+    padding: 14,
   },
   escrowIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: COLORS.successBgSubtle,
     alignItems: 'center',
     justifyContent: 'center',
   },
   escrowTextCol: {
     flex: 1,
+    gap: 2,
   },
   escrowTitle: {
     fontFamily: 'Geist_600SemiBold',
-    fontSize: 15,
-    color: '#065f46',
+    fontSize: 14,
+    color: COLORS.success,
   },
   escrowSubtitle: {
     fontFamily: 'Geist_400Regular',
     fontSize: 13,
-    color: '#047857',
-    marginTop: 2,
+    color: COLORS.textSecondary,
   },
   refBlock: {
-    gap: 8,
-    marginTop: 8,
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: 16,
+    gap: 10,
   },
   refLabel: {
-    fontFamily: 'Geist_600SemiBold',
+    fontFamily: 'Geist_700Bold',
     fontSize: 11,
     letterSpacing: 0.8,
-    color: '#78788c',
+    color: COLORS.textSecondary,
   },
   refRow: {
     flexDirection: 'row',
@@ -296,20 +324,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   refText: {
-    fontFamily: 'Geist_600SemiBold',
+    fontFamily: 'Geist_500Medium',
     fontSize: 15,
     color: COLORS.textPrimary,
   },
   copyBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 6,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 20,
+    borderRadius: 8,
+    paddingHorizontal: 10,
     paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: COLORS.surface,
   },
   copyBtnText: {
     fontFamily: 'Geist_500Medium',
@@ -318,38 +345,26 @@ const styles = StyleSheet.create({
   },
   bottomActions: {
     position: 'absolute',
-    bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: COLORS.canvas,
+    bottom: 0,
     paddingHorizontal: 16,
-    paddingTop: 16,
-    gap: 12,
-  },
-  btnPrimary: {
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: COLORS.brand,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-  },
-  btnPrimaryText: {
-    fontFamily: 'Geist_600SemiBold',
-    fontSize: 16,
-    color: '#ffffff',
+    paddingTop: 12,
+    backgroundColor: COLORS.canvas,
+    gap: 10,
   },
   btnSecondary: {
-    height: 48,
+    height: 52,
     borderRadius: 12,
-    backgroundColor: COLORS.buttonGrey,
-    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.brand,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surface,
   },
   btnSecondaryText: {
-    fontFamily: 'Geist_600SemiBold',
+    fontFamily: 'Geist_700Bold',
     fontSize: 16,
-    color: COLORS.buttonGreyText,
+    color: COLORS.brand,
   },
 });

@@ -53,16 +53,19 @@ export function TaskActionsModal({
               <Text style={styles.actionText}>Edit Task</Text>
             </Pressable>
 
-            {/* Boost Task */}
-            <Pressable
-              style={({ pressed }) => [styles.actionRow, pressed && styles.pressed]}
-              onPress={() => {
-                onClose();
-                onBoost?.();
-              }}>
-              <Ionicons name="rocket-outline" size={22} color={COLORS.textSecondary} />
-              <Text style={styles.actionText}>Boost Task</Text>
-            </Pressable>
+            {/* Boost Task — only when the caller provides a real handler.
+                There's no boost feature on the backend yet, so no caller does. */}
+            {onBoost ? (
+              <Pressable
+                style={({ pressed }) => [styles.actionRow, pressed && styles.pressed]}
+                onPress={() => {
+                  onClose();
+                  onBoost();
+                }}>
+                <Ionicons name="rocket-outline" size={22} color={COLORS.textSecondary} />
+                <Text style={styles.actionText}>Boost Task</Text>
+              </Pressable>
+            ) : null}
 
             {/* Cancel Task */}
             <Pressable

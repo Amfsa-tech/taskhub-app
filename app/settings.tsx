@@ -1,8 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useVerificationStatus } from '@/lib/api/queries';
@@ -91,20 +90,6 @@ export default function SettingsScreen() {
       : 'Not verified';
   const verificationColor = isVerified ? COLORS.successText : '#d97706';
 
-  // Notification toggles state
-  const [notifications, setNotifications] = useState({
-    push: true,
-    updates: true,
-    messages: true,
-    bids: true,
-    payment: true,
-    promotions: true,
-  });
-
-  const toggleNotification = (key: keyof typeof notifications) => {
-    setNotifications((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
-
   const handleLogout = () => {
     Alert.alert('Log Out', 'Are you sure you want to log out?', [
       { text: 'Cancel', style: 'cancel' },
@@ -169,121 +154,10 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Notifications group */}
-        <View style={styles.section}>
-          <Text style={styles.sectionHeader}>NOTIFICATIONS</Text>
-          <View style={styles.groupCard}>
-            <SettingRow
-              icon="notifications-outline"
-              iconBg="#eff6ff"
-              iconColor="#1d4ed8"
-              label="Push Notification"
-              showChevron={false}
-              rightElement={
-                <Switch
-                  value={notifications.push}
-                  onValueChange={() => toggleNotification('push')}
-                  trackColor={{ false: '#d1d1d6', true: COLORS.brand }}
-                  thumbColor="#ffffff"
-                />
-              }
-            />
-            <View style={styles.divider} />
-            <SettingRow
-              icon="notifications-outline"
-              iconBg="#fff1f1"
-              iconColor="#b01515"
-              label="Task Updates"
-              showChevron={false}
-              rightElement={
-                <Switch
-                  value={notifications.updates}
-                  onValueChange={() => toggleNotification('updates')}
-                  trackColor={{ false: '#d1d1d6', true: COLORS.brand }}
-                  thumbColor="#ffffff"
-                />
-              }
-            />
-            <View style={styles.divider} />
-            <SettingRow
-              icon="notifications-outline"
-              iconBg="#fff1f1"
-              iconColor="#b01515"
-              label="Messages"
-              showChevron={false}
-              rightElement={
-                <Switch
-                  value={notifications.messages}
-                  onValueChange={() => toggleNotification('messages')}
-                  trackColor={{ false: '#d1d1d6', true: COLORS.brand }}
-                  thumbColor="#ffffff"
-                />
-              }
-            />
-            <View style={styles.divider} />
-            <SettingRow
-              icon="notifications-outline"
-              iconBg="#fff1f1"
-              iconColor="#b01515"
-              label="Bids"
-              showChevron={false}
-              rightElement={
-                <Switch
-                  value={notifications.bids}
-                  onValueChange={() => toggleNotification('bids')}
-                  trackColor={{ false: '#d1d1d6', true: COLORS.brand }}
-                  thumbColor="#ffffff"
-                />
-              }
-            />
-            <View style={styles.divider} />
-            <SettingRow
-              icon="notifications-outline"
-              iconBg="#fff1f1"
-              iconColor="#b01515"
-              label="Payment Alert"
-              showChevron={false}
-              rightElement={
-                <Switch
-                  value={notifications.payment}
-                  onValueChange={() => toggleNotification('payment')}
-                  trackColor={{ false: '#d1d1d6', true: COLORS.brand }}
-                  thumbColor="#ffffff"
-                />
-              }
-            />
-            <View style={styles.divider} />
-            <SettingRow
-              icon="notifications-outline"
-              iconBg="#fff1f1"
-              iconColor="#b01515"
-              label="Promotions"
-              showChevron={false}
-              rightElement={
-                <Switch
-                  value={notifications.promotions}
-                  onValueChange={() => toggleNotification('promotions')}
-                  trackColor={{ false: '#d1d1d6', true: COLORS.brand }}
-                  thumbColor="#ffffff"
-                />
-              }
-            />
-          </View>
-        </View>
-
         {/* Privacy group */}
         <View style={styles.section}>
           <Text style={styles.sectionHeader}>PRIVACY</Text>
           <View style={styles.groupCard}>
-            <SettingRow
-              icon="eye-outline"
-              iconBg="#eff6ff"
-              iconColor="#1d4ed8"
-              label="Profile Visibility"
-              value="Everyone"
-              onPress={() => Alert.alert('Privacy', 'Adjust profile visibility settings.')}
-            />
-            <View style={styles.divider} />
             <SettingRow
               icon="person-remove-outline"
               iconBg="#fff1f1"
@@ -294,43 +168,34 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Security group */}
-        <View style={styles.section}>
-          <Text style={styles.sectionHeader}>SECURITY</Text>
-          <View style={styles.groupCard}>
-            {isTasker && (
-              <>
-                <SettingRow
-                  icon="shield-checkmark-outline"
-                  iconBg="#eff6ff"
-                  iconColor="#1d4ed8"
-                  label="Face verification"
-                  value={verificationLabel}
-                  valueColor={verificationColor}
-                  onPress={() => router.push('/select-verification')}
-                />
-                <View style={styles.divider} />
-                <SettingRow
-                  icon="id-card-outline"
-                  iconBg="#fff1f1"
-                  iconColor="#b01515"
-                  label="NIN Verification"
-                  value={verificationLabel}
-                  valueColor={verificationColor}
-                  onPress={() => router.push('/select-verification')}
-                />
-                <View style={styles.divider} />
-              </>
-            )}
-            <SettingRow
-              icon="phone-portrait-outline"
-              iconBg="#eff6ff"
-              iconColor="#1d4ed8"
-              label="Device Sessions"
-              onPress={() => router.push('/device-sessions')}
-            />
+        {/* Security group — verification only, so taskers only. Device
+            sessions were removed: the backend has no session model. */}
+        {isTasker && (
+          <View style={styles.section}>
+            <Text style={styles.sectionHeader}>SECURITY</Text>
+            <View style={styles.groupCard}>
+              <SettingRow
+                icon="shield-checkmark-outline"
+                iconBg="#eff6ff"
+                iconColor="#1d4ed8"
+                label="Face verification"
+                value={verificationLabel}
+                valueColor={verificationColor}
+                onPress={() => router.push('/select-verification')}
+              />
+              <View style={styles.divider} />
+              <SettingRow
+                icon="id-card-outline"
+                iconBg="#fff1f1"
+                iconColor="#b01515"
+                label="NIN Verification"
+                value={verificationLabel}
+                valueColor={verificationColor}
+                onPress={() => router.push('/select-verification')}
+              />
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Payment group */}
         <View style={styles.section}>
@@ -342,37 +207,6 @@ export default function SettingsScreen() {
               iconColor="#1d4ed8"
               label="Wallet"
               onPress={() => router.push('/wallet')}
-            />
-            <View style={styles.divider} />
-            {/* <SettingRow
-              icon="receipt-outline"
-              iconBg="#fff1f1"
-              iconColor="#b01515"
-              label="Payment History"
-              onPress={() => Alert.alert('Payment', 'View payment receipts.')}
-            /> */}
-          </View>
-        </View>
-
-        {/* Appearance group */}
-        <View style={styles.section}>
-          <Text style={styles.sectionHeader}>APPEARANCE</Text>
-          <View style={styles.groupCard}>
-            <SettingRow
-              icon="moon-outline"
-              iconBg="#eff6ff"
-              iconColor="#1d4ed8"
-              label="Dark Mode"
-              onPress={() => Alert.alert('Appearance', 'Toggle theme settings.')}
-            />
-            <View style={styles.divider} />
-            <SettingRow
-              icon="globe-outline"
-              iconBg="#fff1f1"
-              iconColor="#b01515"
-              label="Language"
-              value="English"
-              onPress={() => Alert.alert('Appearance', 'Select app language.')}
             />
           </View>
         </View>

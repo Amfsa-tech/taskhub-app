@@ -5,6 +5,7 @@ import { useInfiniteQuery, useQueries, useQuery } from '@tanstack/react-query';
 import { getCategories } from './categories';
 import { getChatNotifications, getConversations, getMessages } from './chat';
 import { getNotifications } from './notifications';
+import { getBlockedUsers } from './blocks';
 import { getSavedTaskers } from './saved-taskers';
 import { getKycStatus } from './kyc';
 import { getUniversities } from './universities';
@@ -47,6 +48,7 @@ export const queryKeys = {
   reviewsAboutMe: () => ['reviews', 'about-me'] as const,
   categories: () => ['categories'] as const,
   savedTaskers: () => ['saved-taskers'] as const,
+  blockedUsers: () => ['blocked-users'] as const,
   notifications: () => ['notifications'] as const,
   conversations: () => ['chat', 'conversations'] as const,
   messages: (id: string) => ['chat', 'messages', id] as const,
@@ -261,6 +263,14 @@ export function useSavedTaskers() {
   return useQuery({
     queryKey: queryKeys.savedTaskers(),
     queryFn: ({ signal }) => getSavedTaskers(signal),
+  });
+}
+
+/** Accounts the signed-in user has blocked. */
+export function useBlockedUsers() {
+  return useQuery({
+    queryKey: queryKeys.blockedUsers(),
+    queryFn: ({ signal }) => getBlockedUsers(signal),
   });
 }
 

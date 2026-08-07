@@ -1257,9 +1257,6 @@ export default function TaskDetailsScreen() {
                 'Editing a posted task isn’t available in the app yet. Cancel it and post again, or contact support.',
               )
             }
-            onBoost={() =>
-              Alert.alert('Boost task', 'Boosting isn’t available yet — it’s coming soon.')
-            }
             onCancel={confirmCancel}
             onDelete={canDelete ? confirmDelete : undefined}
             onReport={() =>

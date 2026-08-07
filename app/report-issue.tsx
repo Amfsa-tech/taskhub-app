@@ -97,7 +97,7 @@ export default function ReportIssueScreen() {
       <ScreenHeader
         title="Report Issue"
         right={
-          <Pressable hitSlop={8} onPress={() => {}}>
+          <Pressable hitSlop={8} onPress={() => router.push('/help-support')}>
             <Headset width={24} height={24} />
           </Pressable>
         }

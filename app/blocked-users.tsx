@@ -1,10 +1,22 @@
 import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, Alert } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  Alert,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import { ScreenHeader } from '@/components/taskhub/screen-header';
+import { unblockUser, type BlockedUser } from '@/lib/api/blocks';
+import { queryKeys, useBlockedUsers } from '@/lib/api/queries';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -16,53 +28,51 @@ const COLORS = {
   border: '#e2e2ec',
 };
 
-type BlockedUser = {
-  id: string;
-  name: string;
-  reason: string;
-  initials: string;
-};
-
-const INITIAL_BLOCKED: BlockedUser[] = [
-  {
-    id: '1',
-    name: 'Femi Ade',
-    reason: 'Inappropriate behavior',
-    initials: 'FA',
-  },
-  {
-    id: '2',
-    name: 'Kola Bello',
-    reason: 'Spam',
-    initials: 'KB',
-  },
-];
+function initialsOf(name: string): string {
+  return (
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]!.toUpperCase())
+      .join('') || '?'
+  );
+}
 
 export default function BlockedUsersScreen() {
   const insets = useSafeAreaInsets();
   const [search, setSearch] = useState('');
-  const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>(INITIAL_BLOCKED);
+  const queryClient = useQueryClient();
+
+  const blockedQ = useBlockedUsers();
+  const blockedUsers = blockedQ.data?.data ?? [];
+
+  const unblockMutation = useMutation({
+    mutationFn: (user: BlockedUser) => unblockUser(user._id),
+    onSuccess: (_res, user) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.blockedUsers() });
+      Alert.alert('Unblocked', `${user.fullName} has been unblocked.`);
+    },
+    onError: (e) =>
+      Alert.alert(
+        'Could not unblock',
+        e instanceof Error ? e.message : 'Please try again.',
+      ),
+  });
 
   const handleUnblock = (user: BlockedUser) => {
-    Alert.alert(
-      'Unblock User',
-      `Are you sure you want to unblock ${user.name}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Unblock',
-          style: 'default',
-          onPress: () => {
-            setBlockedUsers((prev) => prev.filter((u) => u.id !== user.id));
-            Alert.alert('Success', `${user.name} has been unblocked.`);
-          },
-        },
-      ]
-    );
+    Alert.alert('Unblock User', `Are you sure you want to unblock ${user.fullName}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Unblock',
+        style: 'default',
+        onPress: () => unblockMutation.mutate(user),
+      },
+    ]);
   };
 
   const filtered = blockedUsers.filter((u) =>
-    u.name.toLowerCase().includes(search.toLowerCase())
+    u.fullName.toLowerCase().includes(search.toLowerCase()),
   );
 
   return (
@@ -94,26 +104,31 @@ export default function BlockedUsersScreen() {
         </View>
 
         {/* User Card List */}
-        {filtered.length > 0 ? (
+        {blockedQ.isLoading ? (
+          <View style={styles.empty}>
+            <ActivityIndicator color={COLORS.brand} />
+          </View>
+        ) : filtered.length > 0 ? (
           <View style={styles.card}>
             {filtered.map((user, index) => (
-              <View key={user.id}>
+              <View key={user._id}>
                 {index > 0 && <View style={styles.divider} />}
                 <View style={styles.userRow}>
                   {/* Initials Avatar */}
                   <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>{user.initials}</Text>
+                    <Text style={styles.avatarText}>{initialsOf(user.fullName)}</Text>
                   </View>
 
                   {/* User details */}
                   <View style={styles.details}>
-                    <Text style={styles.name}>{user.name}</Text>
+                    <Text style={styles.name}>{user.fullName}</Text>
                     <Text style={styles.reason}>{user.reason}</Text>
                   </View>
 
                   {/* Unblock button */}
                   <Pressable
                     style={({ pressed }) => [styles.unblockBtn, pressed && styles.pressed]}
+                    disabled={unblockMutation.isPending}
                     onPress={() => handleUnblock(user)}>
                     <Text style={styles.unblockBtnText}>Unblock</Text>
                   </Pressable>
@@ -123,7 +138,13 @@ export default function BlockedUsersScreen() {
           </View>
         ) : (
           <View style={styles.empty}>
-            <Text style={styles.emptyText}>No blocked users found.</Text>
+            <Text style={styles.emptyText}>
+              {blockedQ.isError
+                ? 'Could not load blocked users.'
+                : search
+                  ? 'No blocked users found.'
+                  : 'You haven’t blocked anyone.'}
+            </Text>
           </View>
         )}
 

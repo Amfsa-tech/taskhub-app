@@ -98,6 +98,10 @@ export interface Task {
   clientReviewText?: string | null;
   clientRatedAt?: string | null;
   escrowStatus?: TaskEscrowStatus;
+  /** Client-borne fee breakdown, stored at bid-accept time. */
+  escrowAmount?: number;
+  platformFee?: number;
+  taskerPayout?: number;
   completedAt?: string | null;
   // Present on `getUserTasks` (per-task bid summary).
   bidCount?: number;

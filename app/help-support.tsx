@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View, Alert, LayoutAnimation, Platform, UIManager } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View, Alert, LayoutAnimation, Linking, Platform, UIManager } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -75,8 +75,12 @@ export default function HelpSupportScreen() {
     }));
   };
 
-  const handleContact = (type: string) => {
-    Alert.alert(`Contact via ${type}`, `Connecting you to TaskHub support...`);
+  // The only real support channels: the in-app report form (POST /api/support)
+  // and the support inbox. Live chat / phone lines don't exist yet.
+  const handleEmail = () => {
+    Linking.openURL('mailto:support@ngtaskhub.com').catch(() =>
+      Alert.alert('Email Us', 'Reach us at support@ngtaskhub.com'),
+    );
   };
 
   return (
@@ -90,23 +94,16 @@ export default function HelpSupportScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 40 }]}
         showsVerticalScrollIndicator={false}>
         
-        {/* Support Grid (Live chat, Call us, Email Us) */}
+        {/* Support Grid — only channels that actually exist */}
         <View style={styles.supportRow}>
-          <Pressable style={styles.supportCard} onPress={() => handleContact('Live Chat')}>
+          <Pressable style={styles.supportCard} onPress={() => router.push('/report-issue')}>
             <View style={[styles.iconBox, { backgroundColor: COLORS.brandLight }]}>
-              <Ionicons name="chatbubble-ellipses-outline" size={22} color={COLORS.brand} />
+              <Ionicons name="alert-circle-outline" size={22} color={COLORS.brand} />
             </View>
-            <Text style={styles.supportLabel}>Live chat</Text>
+            <Text style={styles.supportLabel}>Report an issue</Text>
           </Pressable>
 
-          <Pressable style={styles.supportCard} onPress={() => handleContact('Call Us')}>
-            <View style={[styles.iconBox, { backgroundColor: COLORS.successLight }]}>
-              <Ionicons name="call-outline" size={22} color={COLORS.success} />
-            </View>
-            <Text style={styles.supportLabel}>Call us</Text>
-          </Pressable>
-
-          <Pressable style={styles.supportCard} onPress={() => handleContact('Email Us')}>
+          <Pressable style={styles.supportCard} onPress={handleEmail}>
             <View style={[styles.iconBox, { backgroundColor: COLORS.infoLight }]}>
               <Ionicons name="mail-outline" size={22} color={COLORS.info} />
             </View>

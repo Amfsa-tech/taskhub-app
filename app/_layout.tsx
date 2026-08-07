@@ -99,7 +99,6 @@ function RootNavigator() {
                     <Stack.Screen name="success" options={{ headerShown: false }} />
                     <Stack.Screen name="login-form" options={{ headerShown: false }} />
                     <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
-                    <Stack.Screen name="forgot-password-sent" options={{ headerShown: false }} />
                     <Stack.Screen name="create-new-password" options={{ headerShown: false }} />
                     <Stack.Screen name="reset-success" options={{ headerShown: false }} />
                     <Stack.Screen name="task-agreement" options={{ headerShown: false }} />
@@ -109,11 +108,9 @@ function RootNavigator() {
                     <Stack.Screen name="change-password" options={{ headerShown: false }} />
                     <Stack.Screen name="change-password-success" options={{ headerShown: false }} />
                     <Stack.Screen name="saved-taskers" options={{ headerShown: false }} />
-                    <Stack.Screen name="notification-details" options={{ headerShown: false }} />
                     <Stack.Screen name="receipt" options={{ headerShown: false }} />
                     <Stack.Screen name="help-support" options={{ headerShown: false }} />
                     <Stack.Screen name="blocked-users" options={{ headerShown: false }} />
-                    <Stack.Screen name="device-sessions" options={{ headerShown: false }} />
                     <Stack.Screen name="select-verification" options={{ headerShown: false }} />
                     <Stack.Screen name="nin-verification" options={{ headerShown: false }} />
                     <Stack.Screen name="phone-number" options={{ headerShown: false }} />
@@ -125,7 +122,6 @@ function RootNavigator() {
                     <Stack.Screen name="tasker-portfolio" options={{ headerShown: false }} />
                     <Stack.Screen name="bank-account" options={{ headerShown: false }} />
                     <Stack.Screen name="(main)" options={{ headerShown: false }} />
-                    <Stack.Screen name="screens" options={{ headerShown: false }} />
                     <Stack.Screen name="location-selector-modal" options={{ presentation: 'modal', headerShown: false }} />
       </Stack>
       <StatusBar style="auto" />

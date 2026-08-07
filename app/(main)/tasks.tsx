@@ -1533,7 +1533,7 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
                   <Text style={styles.btnSecondaryText}>Rate client</Text>
                 </Pressable>
               )}
-              <Pressable style={[styles.btn, styles.btnReceipt]} onPress={() => router.push('/receipt')}>
+              <Pressable style={[styles.btn, styles.btnReceipt]} onPress={() => router.push({ pathname: '/receipt', params: { id: job.taskId } })}>
                 <Text style={styles.btnReceiptText}>View Receipt</Text>
               </Pressable>
             </View>
@@ -1560,7 +1560,7 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
                   <Text style={styles.btnSecondaryText}>Rate client</Text>
                 </Pressable>
               )}
-              <Pressable style={[styles.btn, styles.btnReceipt]} onPress={() => router.push('/receipt')}>
+              <Pressable style={[styles.btn, styles.btnReceipt]} onPress={() => router.push({ pathname: '/receipt', params: { id: job.taskId } })}>
                 <Text style={styles.btnReceiptText}>View Receipt</Text>
               </Pressable>
             </View>
