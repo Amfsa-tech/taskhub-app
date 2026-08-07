@@ -1,8 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useMutation } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as WebBrowser from 'expo-web-browser';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,7 +15,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/taskhub/screen-header';
+import { createDiditKycSession } from '@/lib/api/kyc';
 import { useKycStatus, useVerificationStatus } from '@/lib/api/queries';
+import { useAuth } from '@/lib/auth/auth-context';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -28,18 +33,19 @@ const COLORS = {
 };
 
 /**
- * Identity verification status.
+ * Identity verification via Didit's hosted flow.
  *
- * This screen used to collect an 11-digit NIN and fake a result on a timer.
- * There is no endpoint that accepts a NIN: `POST /api/v1/nin/verify-nin` opens
- * a **QoreID SDK session** and returns capture credentials, and the SDK — which
- * is not installed in this app — does the ID/selfie capture and reports back
- * out-of-band. So the screen reports real status and explains the gap instead
- * of collecting a number it cannot submit. See `lib/api/kyc.ts`.
+ * "Start verification" asks the backend for a Didit session and opens the
+ * returned URL in an in-app browser, where Didit does the ID + selfie capture.
+ * The decision reaches the backend via webhook, so the screen refreshes status
+ * when the browser closes (approval can lag the webhook by a moment — the
+ * Refresh button covers that). No NIN is ever collected in our own UI, and no
+ * vendor SDK is needed. See `lib/api/kyc.ts`.
  */
 export default function NinVerificationScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { accountType } = useAuth();
 
   // Account flag — provider-agnostic, the real answer to "am I verified?".
   const accountQ = useVerificationStatus();
@@ -56,6 +62,25 @@ export default function NinVerificationScreen() {
     accountQ.refetch();
     recordQ.refetch();
   };
+
+  // The backend only issues sessions to taskers (identity verification is a
+  // tasker requirement), so the start button is tasker-only too.
+  const canStart = accountType === 'tasker' && !isVerified && !isPending;
+
+  const startMutation = useMutation({
+    mutationFn: () => createDiditKycSession(),
+    onSuccess: async (res) => {
+      // Didit's hosted flow does the ID + selfie capture in the browser; the
+      // decision reaches the backend via webhook, so refresh when they return.
+      await WebBrowser.openBrowserAsync(res.data.url);
+      refresh();
+    },
+    onError: (err) =>
+      Alert.alert(
+        'Could not start verification',
+        err instanceof Error ? err.message : 'Please try again later.',
+      ),
+  });
 
   return (
     <View style={styles.container}>
@@ -113,27 +138,42 @@ export default function NinVerificationScreen() {
             <Text style={styles.instructions}>
               {isPending
                 ? 'Your documents are being reviewed. This usually takes a few minutes — check back shortly.'
-                : 'Identity verification uses a secure ID and selfie capture from our verification partner. That step isn’t available in this version of the app yet.'}
+                : 'Identity verification is a secure ID and selfie capture handled by our verification partner. It opens in your browser and takes about two minutes.'}
             </Text>
 
-            {!isPending ? (
-              <Text style={styles.instructions}>
-                If you’ve already verified elsewhere, refresh to pull your latest status.
-              </Text>
+            {canStart ? (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.btn,
+                  startMutation.isPending && styles.btnDisabled,
+                  pressed && styles.btnPressed,
+                ]}
+                disabled={startMutation.isPending}
+                onPress={() => startMutation.mutate()}>
+                {startMutation.isPending ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.btnText}>
+                    {isRejected ? 'Try again' : 'Start verification'}
+                  </Text>
+                )}
+              </Pressable>
             ) : null}
 
             <Pressable
               style={({ pressed }) => [
-                styles.btn,
+                canStart ? styles.btnSecondary : styles.btn,
                 (accountQ.isRefetching || recordQ.isRefetching) && styles.btnDisabled,
                 pressed && styles.btnPressed,
               ]}
               disabled={accountQ.isRefetching || recordQ.isRefetching}
               onPress={refresh}>
               {accountQ.isRefetching || recordQ.isRefetching ? (
-                <ActivityIndicator color="#ffffff" size="small" />
+                <ActivityIndicator color={canStart ? COLORS.brand : '#ffffff'} size="small" />
               ) : (
-                <Text style={styles.btnText}>Refresh status</Text>
+                <Text style={canStart ? styles.btnSecondaryText : styles.btnText}>
+                  Refresh status
+                </Text>
               )}
             </Pressable>
           </View>
@@ -223,6 +263,20 @@ const styles = StyleSheet.create({
   },
   btnPressed: {
     opacity: 0.9,
+  },
+  btnSecondary: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.brand,
+    borderRadius: 12,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnSecondaryText: {
+    fontFamily: 'Geist_700Bold',
+    fontSize: 16,
+    color: COLORS.brand,
   },
   btnDisabled: {
     backgroundColor: '#cbcbda',

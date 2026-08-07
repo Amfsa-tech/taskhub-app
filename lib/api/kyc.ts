@@ -1,30 +1,21 @@
 // Identity verification (KYC).
 //
-// ⚠️ Read this before wiring a "verify me" button to anything here.
+// The live path is **Didit's hosted flow**: `createDiditKycSession` asks the
+// backend to create a session (API key stays server-side) and returns a `url`
+// the app opens in a browser. Didit does the ID/selfie capture on that page
+// and reports the decision to the backend webhook, which flips the account's
+// KYC flag. No vendor SDK in the app is needed.
 //
-// Neither KYC provider accepts identity data from our own UI. Both expect a
-// **vendor SDK running inside the app** to capture the ID document and selfie:
-//
-//   QoreID — `POST /api/v1/nin/verify-nin` does NOT take a NIN. It opens a
-//   session and returns SDK credentials (`accessToken`, `clientId`,
-//   `clientReference`, `flowId`). The QoreID SDK performs the capture and
-//   reports back out-of-band; the backend flips the account's KYC flag from a
-//   webhook. A screen that collects an 11-digit NIN has nowhere to send it.
-//
-//   Didit — the app is expected to create the session with Didit *first* (their
-//   SDK or hosted flow), then hand us the `sessionId` via
-//   `POST /api/v1/kyc/register-session` so the webhook can resolve the user.
-//   There is no "create session" endpoint on our backend.
-//
-// Neither SDK is installed in this app (check `package.json`), so verification
-// cannot currently be *completed* from here — only observed. Calling
-// `initiateNinKyc` has a real side effect: it upserts a `pending`
-// KYCVerification row that shows up on the admin dashboard. Don't call it
-// speculatively — only when an SDK is actually there to continue the flow.
+// The QoreID bindings below are a dormant alternative: `POST
+// /api/v1/nin/verify-nin` does NOT take a NIN — it returns credentials for the
+// QoreID capture SDK, which is not installed in this app. Calling
+// `initiateNinKyc` has a real side effect (it upserts a `pending`
+// KYCVerification row that shows up on the admin dashboard), so don't call it
+// speculatively — only if that SDK is ever added to continue the flow.
 //
 // For "is this account verified?", prefer `getVerificationStatus` in
 // `lib/auth/auth-api.ts`: it reads the account flag and is provider-agnostic.
-// The endpoint below only ever sees Didit records.
+// `getKycStatus` below only ever sees Didit records.
 
 import { api } from './client';
 
@@ -71,6 +62,18 @@ export function registerDiditSession(sessionId: string) {
   return api.post<{ success: boolean; message: string }>('/api/v1/kyc/register-session', {
     sessionId,
   });
+}
+
+/**
+ * Create a Didit verification session (tasker-only). The backend calls Didit
+ * with its server-side API key and registers the session → user mapping, so
+ * the app only has to open the returned hosted-flow `url` in a browser.
+ * 503 means Didit isn't configured on the server; 409 means already verified.
+ */
+export function createDiditKycSession() {
+  return api.post<{ success: boolean; data: { sessionId: string; url: string } }>(
+    '/api/v1/kyc/create-session',
+  );
 }
 
 export type KycRecordStatus = 'pending' | 'approved' | 'rejected' | 'Not Started';
