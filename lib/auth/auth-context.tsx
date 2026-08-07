@@ -17,12 +17,15 @@ import {
 } from 'react';
 
 import { ApiError, setApiToken } from '@/lib/api/client';
+import { watchPushSubscriptionId } from '@/lib/push';
 import {
   getProfile,
   googleAuth,
   googleCompleteSignup,
   login,
   logout as logoutRequest,
+  removeNotificationId,
+  updateNotificationId,
 } from './auth-api';
 import { getGoogleIdToken } from './google';
 import {
@@ -78,6 +81,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Guards a background profile refresh from racing a sign-out.
   const tokenRef = useRef<string | null>(null);
   tokenRef.current = token;
+  const accountTypeRef = useRef<AccountType | null>(null);
+  accountTypeRef.current = accountType;
+
+  // Whenever a session is active, hand the device's OneSignal subscription id
+  // to the backend (it may arrive late — first grant of the permission prompt —
+  // hence the watcher rather than a one-shot read). Covers every sign-in path
+  // plus the bootstrap restore.
+  useEffect(() => {
+    if (!token || !accountType) return;
+    const stop = watchPushSubscriptionId((id) => {
+      updateNotificationId(accountType, id).catch(() => {
+        // Non-blocking: a failed registration never interrupts the session;
+        // the next launch retries.
+      });
+    });
+    return stop;
+  }, [token, accountType]);
 
   const applySession = useCallback(
     (nextType: AccountType, nextToken: string, nextUser: AuthUser | null) => {
@@ -214,6 +234,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     // Best-effort server logout; the token never expires server-side, so the
     // important part is clearing it locally.
+    try {
+      // Detach this device from push first, while the token still works —
+      // otherwise notifications keep arriving for the signed-out account.
+      if (tokenRef.current && accountTypeRef.current) {
+        await removeNotificationId(accountTypeRef.current);
+      }
+    } catch {
+      // ignore — push detach is best-effort
+    }
     try {
       if (tokenRef.current) await logoutRequest();
     } catch {

@@ -17,6 +17,7 @@ import 'react-native-reanimated';
 import { useAppStateFocus } from '@/hooks/use-app-state-focus';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider, useAuth } from '@/lib/auth/auth-context';
+import { initPush } from '@/lib/push';
 import { queryClient } from '@/lib/query-client';
 
 import { LocationProvider } from '@/context/LocationContext';
@@ -29,6 +30,10 @@ export const unstable_settings = {
 };
 
 SplashScreen.preventAutoHideAsync();
+
+// Product decision: ask for notification permission right at launch. The id
+// only reaches the backend after login (auth-context owns that half).
+initPush();
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({

@@ -201,3 +201,19 @@ export function updateTaskerLocation(payload: UpdateUserLocationPayload) {
 export function logout() {
   return api.post<MessageResponse>(`${BASE}/logout`);
 }
+
+/**
+ * Register this device's OneSignal subscription id so the backend's push
+ * pipeline (new tasks, bids, chat, withdrawals) can reach it. Role-scoped
+ * paths — a user token 401s on the tasker route and vice versa.
+ */
+export function updateNotificationId(type: AccountType, notificationId: string) {
+  const who = type === 'tasker' ? 'tasker' : 'user';
+  return api.put<MessageResponse>(`${BASE}/${who}/notification-id`, { notificationId });
+}
+
+/** Detach the device on sign-out so pushes stop following a logged-out account. */
+export function removeNotificationId(type: AccountType) {
+  const who = type === 'tasker' ? 'tasker' : 'user';
+  return api.delete<MessageResponse>(`${BASE}/${who}/notification-id`);
+}
