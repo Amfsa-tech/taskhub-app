@@ -93,6 +93,10 @@ export interface Task {
   rating?: number | null;
   reviewText?: string | null;
   ratedAt?: string | null;
+  // Reverse review: the assigned tasker rating the client (see `rateClient`).
+  clientRating?: number | null;
+  clientReviewText?: string | null;
+  clientRatedAt?: string | null;
   escrowStatus?: TaskEscrowStatus;
   completedAt?: string | null;
   // Present on `getUserTasks` (per-task bid summary).
@@ -544,6 +548,16 @@ function categoryName(cat?: CategoryRef | string | null): string {
   return (cat.name || cat.displayName || '').toLowerCase();
 }
 
+/** Urgent when the task is tagged so, or when it's due within the next ~48h. */
+export function isUrgent(task: Task): boolean {
+  const hasUrgentTag = (task.tags ?? []).some((t) => t.toLowerCase().includes('urgent'));
+  if (hasUrgentTag) return true;
+  if (!task.deadline) return false;
+  const due = new Date(task.deadline).getTime();
+  const now = Date.now();
+  return !Number.isNaN(due) && due >= now && due - now <= 48 * 60 * 60 * 1000;
+}
+
 function toBadges(task: Task): BadgeKind[] {
   const name = categoryName(task.mainCategory);
   const badges: BadgeKind[] = [];
@@ -551,15 +565,7 @@ function toBadges(task: Task): BadgeKind[] {
   else if (name.includes('errand')) badges.push('errand');
   else badges.push('local');
 
-  // Urgent when the task is tagged so, or when it's due within the next ~48h.
-  const hasUrgentTag = (task.tags ?? []).some((t) => t.toLowerCase().includes('urgent'));
-  let dueSoon = false;
-  if (task.deadline) {
-    const due = new Date(task.deadline).getTime();
-    const now = Date.now();
-    dueSoon = !Number.isNaN(due) && due >= now && due - now <= 48 * 60 * 60 * 1000;
-  }
-  if (hasUrgentTag || dueSoon) badges.push('urgent');
+  if (isUrgent(task)) badges.push('urgent');
 
   return badges;
 }

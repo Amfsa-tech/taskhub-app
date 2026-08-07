@@ -24,6 +24,7 @@ import { useTasks } from '@/lib/api/queries';
 import {
   formatNaira,
   formatRelativeTime,
+  isUrgent,
   locationLabel,
   type Task,
 } from '@/lib/api/tasks';
@@ -47,6 +48,8 @@ type TaskItem = {
   title: string;
   category: TaskCategory;
   price: string;
+  budget: number;
+  urgent: boolean;
   location: string;
   timeAgo: string;
 };
@@ -72,10 +75,21 @@ function toTaskItem(task: Task): TaskItem {
     title: task.title,
     category: taskCategory(task),
     price: formatNaira(task.budget),
+    budget: task.budget,
+    urgent: isUrgent(task),
     location: locationLabel(task),
     timeAgo: formatRelativeTime(task.createdAt),
   };
 }
+
+/** Advanced-filter budget bands, matched against the raw naira budget. */
+const BUDGET_BANDS: Record<string, (budget: number) => boolean> = {
+  'Any': () => true,
+  '₦1K–₦3K': (b) => b >= 1000 && b <= 3000,
+  '₦3k-5k': (b) => b >= 3000 && b <= 5000,
+  '₦5k-10k': (b) => b >= 5000 && b <= 10000,
+  '₦10k+': (b) => b >= 10000,
+};
 
 const PILL_TO_CATEGORY: Record<string, TaskCategory> = {
   Campus: 'Campus',
@@ -108,35 +122,42 @@ export default function DiscoverScreen() {
   // Open tasks anyone can bid on. Public endpoint — no token required.
   const tasksQ = useTasks({ status: 'open', limit: 50 });
 
+  // Advanced-filter sheet: `selected*` are the sheet's draft; `applied` is what
+  // actually filters the list, set when the user hits Apply.
+  const [selectedBudget, setSelectedBudget] = useState('Any');
+  const [selectedCategory, setSelectedCategory] = useState('Any');
+  const [selectedUrgency, setSelectedUrgency] = useState('Any');
+  const [applied, setApplied] = useState({ budget: 'Any', category: 'Any', urgency: 'Any' });
+
   const tasks = useMemo(() => {
     const items = (tasksQ.data?.tasks ?? []).map(toTaskItem);
 
-    // Pills and search are applied client-side: `GET /api/tasks` takes neither a
-    // text query nor a working category filter (its `categories` param targets a
-    // field the Task model doesn't have, so passing it returns nothing).
+    // Pills, search, and the advanced filters are applied client-side:
+    // `GET /api/tasks` takes neither a text query nor a working category filter
+    // (its `categories` param targets a field the Task model doesn't have, so
+    // passing it returns nothing).
     const wanted = PILL_TO_CATEGORY[activeFilter];
     const term = search.trim().toLowerCase();
+    const wantedAdvanced = PILL_TO_CATEGORY[applied.category];
+    const inBudget = BUDGET_BANDS[applied.budget] ?? BUDGET_BANDS['Any'];
 
     const filtered = items.filter((item) => {
       if (wanted && item.category !== wanted) return false;
       if (term && !item.title.toLowerCase().includes(term)) return false;
+      if (wantedAdvanced && item.category !== wantedAdvanced) return false;
+      if (!inBudget(item.budget)) return false;
+      if (applied.urgency === 'Urgent' && !item.urgent) return false;
       return true;
     });
 
     if (sortBy === 'Highest Budget') {
-      const budgets = new Map(
-        (tasksQ.data?.tasks ?? []).map((t) => [t._id, t.budget] as const),
-      );
-      return [...filtered].sort((a, b) => (budgets.get(b.id) ?? 0) - (budgets.get(a.id) ?? 0));
+      return [...filtered].sort((a, b) => b.budget - a.budget);
     }
     return filtered;
-  }, [tasksQ.data, activeFilter, search, sortBy]);
+  }, [tasksQ.data, activeFilter, search, sortBy, applied]);
 
-  // Filter criteria states
-  const [selectedDistance, setSelectedDistance] = useState('Any');
-  const [selectedBudget, setSelectedBudget] = useState('Any');
-  const [selectedCategory, setSelectedCategory] = useState('Remote');
-  const [selectedUrgency, setSelectedUrgency] = useState('Any');
+  const advancedFilterActive =
+    applied.budget !== 'Any' || applied.category !== 'Any' || applied.urgency !== 'Any';
 
   const getPillIcon = (pill: string, active: boolean) => {
     const color = active ? COLORS.onBrand : COLORS.textSecondary;
@@ -215,7 +236,11 @@ export default function DiscoverScreen() {
         </Pressable>
 
         <Pressable style={styles.filterButton} onPress={() => setFilterSheetVisible(true)}>
-          <MaterialCommunityIcons name="tune" size={20} color={COLORS.textPrimary} />
+          <MaterialCommunityIcons
+            name="tune"
+            size={20}
+            color={advancedFilterActive ? COLORS.primary : COLORS.textPrimary}
+          />
         </Pressable>
       </View>
 
@@ -274,7 +299,7 @@ export default function DiscoverScreen() {
           ) : (
             <View style={styles.listState}>
               <Text style={styles.listStateText}>
-                {search.trim() || activeFilter !== 'All'
+                {search.trim() || activeFilter !== 'All' || advancedFilterActive
                   ? 'No tasks match your filters.'
                   : 'No open tasks right now.'}
               </Text>
@@ -348,23 +373,8 @@ export default function DiscoverScreen() {
             <Text style={styles.sheetTitle}>Advanced Filter</Text>
 
             <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420, width: '100%' }}>
-              {/* Distance */}
-              <View style={styles.filterSection}>
-                <Text style={styles.filterSectionTitle}>Distance</Text>
-                <View style={styles.filterPillsRow}>
-                  {['Any', '1km', '3km', '5km', '10km', 'Remote'].map((val) => {
-                    const active = selectedDistance === val;
-                    return (
-                      <Pressable
-                        key={val}
-                        onPress={() => setSelectedDistance(val)}
-                        style={[styles.filterPill, active && styles.filterPillActive]}>
-                        <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>{val}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
+              {/* No Distance section: the list endpoint returns no distances and the
+                  user's coordinates aren't available here, so it can't be honoured. */}
 
               {/* Budget Range */}
               <View style={styles.filterSection}>
@@ -388,7 +398,7 @@ export default function DiscoverScreen() {
               <View style={styles.filterSection}>
                 <Text style={styles.filterSectionTitle}>Category</Text>
                 <View style={styles.filterPillsRow}>
-                  {['Campus', 'Local Services', 'Errands', 'Remote'].map((val) => {
+                  {['Any', 'Campus', 'Local Services', 'Errands', 'Remote'].map((val) => {
                     const active = selectedCategory === val;
                     return (
                       <Pressable
@@ -427,10 +437,10 @@ export default function DiscoverScreen() {
               <Pressable
                 style={styles.filterResetBtn}
                 onPress={() => {
-                  setSelectedDistance('Any');
                   setSelectedBudget('Any');
-                  setSelectedCategory('Remote');
+                  setSelectedCategory('Any');
                   setSelectedUrgency('Any');
+                  setApplied({ budget: 'Any', category: 'Any', urgency: 'Any' });
                   setFilterSheetVisible(false);
                 }}>
                 <Text style={styles.filterResetBtnText}>Reset</Text>
@@ -438,6 +448,11 @@ export default function DiscoverScreen() {
               <Pressable
                 style={styles.filterApplyBtn}
                 onPress={() => {
+                  setApplied({
+                    budget: selectedBudget,
+                    category: selectedCategory,
+                    urgency: selectedUrgency,
+                  });
                   setFilterSheetVisible(false);
                 }}>
                 <Text style={styles.filterApplyBtnText}>Apply</Text>

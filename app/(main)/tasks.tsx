@@ -43,11 +43,13 @@ import {
   useUserTasksByStatuses,
 } from '@/lib/api/queries';
 import { deleteBid, respondToHireRequest, updateBid, type TaskerBid } from '@/lib/api/bids';
+import { createOrGetConversation } from '@/lib/api/chat';
 import {
   completeTaskerTask,
   formatNaira,
   formatRelativeTime,
   formatShortDate,
+  rateClient,
   rateTask,
   startTaskerTask,
   taskToCard,
@@ -1061,6 +1063,9 @@ type TaskerJob = {
   cancelReason?: string;
   /** Raw amount, for pre-filling the edit-bid field. */
   amount?: number;
+  clientAvatar?: string;
+  /** True once this tasker has rated the client on a completed job. */
+  clientRated?: boolean;
 };
 
 function clientNameOf(task?: Task | null): string {
@@ -1088,6 +1093,8 @@ function taskToJob(task: Task): TaskerJob {
     taskId: task._id,
     title: task.title,
     clientName: clientNameOf(task),
+    clientAvatar:
+      task.user && typeof task.user !== 'string' ? task.user.profilePicture : undefined,
     amount: task.budget,
   };
 
@@ -1100,6 +1107,7 @@ function taskToJob(task: Task): TaskerJob {
       date: formatShortDate(task.completedAt ?? task.updatedAt),
       customerRating: task.rating ?? undefined,
       reviewText: task.reviewText ?? undefined,
+      clientRated: Boolean(task.clientRating),
       progressSegments: segmentsFor(task.status),
     };
   }
@@ -1244,6 +1252,38 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
     onError: (e) => showError(e, 'Could not update the bid.'),
   });
 
+  const openChatMutation = useMutation({
+    mutationFn: ({ taskId }: { taskId: string; clientName: string }) =>
+      createOrGetConversation({ taskId }),
+    onSuccess: (res, variables) => {
+      const conv = res.conversation;
+      const chatName = conv.user?.fullName || variables.clientName || 'Client';
+      router.push({ pathname: '/chat', params: { id: conv._id, name: chatName } });
+    },
+    onError: (e) => showError(e, 'Could not open the chat.'),
+  });
+
+  const openChat = (job: TaskerJob) => {
+    if (!job.taskId) {
+      showError(new Error('This job is no longer linked to a task.'), 'Could not open the chat.');
+      return;
+    }
+    openChatMutation.mutate({ taskId: job.taskId, clientName: job.clientName });
+  };
+
+  const [rateClientJob, setRateClientJob] = useState<TaskerJob | null>(null);
+
+  const rateClientMutation = useMutation({
+    mutationFn: ({ taskId, rating, reviewText }: { taskId: string; rating: number; reviewText?: string }) =>
+      rateClient(taskId, { rating, reviewText }),
+    onSuccess: () => {
+      setRateClientJob(null);
+      refreshJobs();
+      Alert.alert('Thanks!', 'Your review of the client has been submitted.');
+    },
+    onError: (e) => showError(e, 'Could not submit the review.'),
+  });
+
 
   const filteredJobs = jobs.filter((job) => {
     if (activeFilter === 'All') return true;
@@ -1328,7 +1368,7 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
               </View>
             )}
             <View style={styles.buttonRow}>
-              <Pressable style={[styles.btn, styles.btnSecondary]} onPress={() => router.push('/chat')}>
+              <Pressable style={[styles.btn, styles.btnSecondary]} onPress={() => openChat(job)}>
                 <Text style={styles.btnSecondaryText}>Chat</Text>
               </Pressable>
               <Pressable
@@ -1448,7 +1488,7 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
               </View>
             )}
             <View style={styles.buttonRow}>
-              <Pressable style={[styles.btn, styles.btnSecondary]} onPress={() => router.push('/chat')}>
+              <Pressable style={[styles.btn, styles.btnSecondary]} onPress={() => openChat(job)}>
                 <MaterialCommunityIcons name="chat-outline" size={16} color={COLORS.brand} />
                 <Text style={styles.btnSecondaryText}>Open chat</Text>
               </Pressable>
@@ -1487,9 +1527,16 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
                 <Text style={styles.textBoxText}>"{job.reviewText}"</Text>
               </View>
             )}
-            <Pressable style={styles.btnReceipt} onPress={() => router.push('/receipt')}>
-              <Text style={styles.btnReceiptText}>View Receipt</Text>
-            </Pressable>
+            <View style={styles.buttonRow}>
+              {!job.clientRated && (
+                <Pressable style={[styles.btn, styles.btnSecondary]} onPress={() => setRateClientJob(job)}>
+                  <Text style={styles.btnSecondaryText}>Rate client</Text>
+                </Pressable>
+              )}
+              <Pressable style={[styles.btn, styles.btnReceipt]} onPress={() => router.push('/receipt')}>
+                <Text style={styles.btnReceiptText}>View Receipt</Text>
+              </Pressable>
+            </View>
           </>
         );
 
@@ -1507,9 +1554,16 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
               <MaterialCommunityIcons name="account-outline" size={16} color={COLORS.textSecondary} />
               <Text style={styles.jobCardClient}>{job.clientName}</Text>
             </View>
-            <Pressable style={styles.btnReceipt} onPress={() => router.push('/receipt')}>
-              <Text style={styles.btnReceiptText}>View Receipt</Text>
-            </Pressable>
+            <View style={styles.buttonRow}>
+              {!job.clientRated && (
+                <Pressable style={[styles.btn, styles.btnSecondary]} onPress={() => setRateClientJob(job)}>
+                  <Text style={styles.btnSecondaryText}>Rate client</Text>
+                </Pressable>
+              )}
+              <Pressable style={[styles.btn, styles.btnReceipt]} onPress={() => router.push('/receipt')}>
+                <Text style={styles.btnReceiptText}>View Receipt</Text>
+              </Pressable>
+            </View>
           </>
         );
 
@@ -2059,6 +2113,24 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Rate Client Modal */}
+      <RateTaskerModal
+        visible={rateClientJob !== null}
+        onClose={() => setRateClientJob(null)}
+        taskerName={rateClientJob?.clientName ?? ''}
+        taskerAvatar={rateClientJob?.clientAvatar ?? ''}
+        pending={rateClientMutation.isPending}
+        onSubmit={(rating, comment) => {
+          if (rateClientJob?.taskId) {
+            rateClientMutation.mutate({
+              taskId: rateClientJob.taskId,
+              rating,
+              reviewText: comment || undefined,
+            });
+          }
+        }}
+      />
     </View>
   );
 }
