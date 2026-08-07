@@ -320,7 +320,8 @@ export default function TaskDetailsScreen() {
   const matches = (matchesQ.data?.matches ?? []).map(matchToView);
   const bids = (task?.bids ?? []).map(bidToView);
   const budgetText = task ? formatNaira(task.budget) : '';
-  const statusColor = task ? STATUS_COLORS[task.status] : STATUS_COLORS.open;
+  // Fall back for statuses the palette doesn't know (backend may add new ones).
+  const statusColor = (task && STATUS_COLORS[task.status]) || STATUS_COLORS.open;
 
   const inviteMutation = useMutation({
     mutationFn: (taskerId: string) => inviteTasker({ taskId: id as string, taskerId }),

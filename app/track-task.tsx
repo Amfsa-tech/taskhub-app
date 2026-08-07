@@ -409,7 +409,7 @@ export default function TrackTaskScreen() {
             <Text style={styles.timelineHeader}>Completion code</Text>
             {codeQ.isLoading ? (
               <ActivityIndicator color={COLORS.brand} />
-            ) : codeQ.isError || !codeQ.data ? (
+            ) : codeQ.isError || !codeQ.data?.data?.completionCode ? (
               <Text style={styles.securedSubtitle}>
                 The code isn’t available yet. It appears once the tasker starts work.
               </Text>

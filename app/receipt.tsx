@@ -57,9 +57,9 @@ export default function ReceiptScreen() {
     ? [task.assignedTasker.firstName, task.assignedTasker.lastName].filter(Boolean).join(' ')
     : '—';
 
-  const completedIso = task?.completedAt ?? task?.updatedAt;
+  const completedIso = task?.completedAt ?? task?.updatedAt ?? task?.createdAt ?? '';
   const reference = task
-    ? `NTH-${(completedIso ?? task.createdAt).slice(0, 10).replace(/-/g, '')}-${task._id
+    ? `NTH-${completedIso.slice(0, 10).replace(/-/g, '')}-${(task._id ?? '')
         .slice(-6)
         .toUpperCase()}`
     : '';

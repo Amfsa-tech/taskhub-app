@@ -7,10 +7,11 @@ import {
 } from '@expo-google-fonts/geist';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { Stack } from 'expo-router';
+import { Stack, type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import 'react-native-reanimated';
 
@@ -30,6 +31,63 @@ export const unstable_settings = {
 };
 
 SplashScreen.preventAutoHideAsync();
+
+// Catches render-time errors anywhere in the tree; without it a single bad
+// screen takes the whole release app down.
+export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
+  console.error(error);
+  return (
+    <View style={errorStyles.container}>
+      <Text style={errorStyles.title}>Something went wrong</Text>
+      <Text style={errorStyles.message}>
+        An unexpected error occurred. Please try again.
+      </Text>
+      <Pressable
+        style={({ pressed }) => [errorStyles.button, pressed && errorStyles.buttonPressed]}
+        onPress={retry}>
+        <Text style={errorStyles.buttonLabel}>Try again</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+const errorStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f9f9fb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    gap: 12,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#111122',
+  },
+  message: {
+    fontSize: 15,
+    color: '#5a5a70',
+    textAlign: 'center',
+  },
+  button: {
+    marginTop: 12,
+    height: 52,
+    paddingHorizontal: 32,
+    borderRadius: 16,
+    backgroundColor: '#6c3bff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  buttonPressed: {
+    opacity: 0.9,
+  },
+  buttonLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+});
 
 // Product decision: ask for notification permission right at launch. The id
 // only reaches the backend after login (auth-context owns that half).

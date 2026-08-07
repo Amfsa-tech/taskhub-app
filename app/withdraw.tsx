@@ -61,8 +61,8 @@ export default function WithdrawScreen() {
   const [amountInput, setAmountInput] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const available = balanceQ.data?.data.availableToWithdraw ?? 0;
-  const pendingAmount = balanceQ.data?.data.pendingWithdrawals ?? 0;
+  const available = balanceQ.data?.data?.availableToWithdraw ?? 0;
+  const pendingAmount = balanceQ.data?.data?.pendingWithdrawals ?? 0;
   const account = bankQ.data?.data ?? null;
 
   // The backend allows one open request at a time; a non-zero pending total

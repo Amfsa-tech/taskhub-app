@@ -82,7 +82,7 @@ export default function SettingsScreen() {
    * separate backend fields.
    */
   const verificationQ = useVerificationStatus();
-  const isVerified = verificationQ.data?.data.isVerified;
+  const isVerified = verificationQ.data?.data?.isVerified;
   const verificationLabel = verificationQ.isLoading
     ? '…'
     : isVerified

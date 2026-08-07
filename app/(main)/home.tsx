@@ -831,7 +831,7 @@ function TaskerHomeView({ refreshing, onRefresh, insets, user, router }: TaskerH
   const feed = useTaskerFeed();
   const activeJobs = useTaskerTasks();
 
-  const walletBalance = balance.data?.data.walletBalance ?? 0;
+  const walletBalance = balance.data?.data?.walletBalance ?? 0;
 
   // There is no "today's earnings" endpoint, so derive it from the transaction
   // list: credits stamped today. A tasker is only ever credited on completion,
@@ -853,14 +853,14 @@ function TaskerHomeView({ refreshing, onRefresh, insets, user, router }: TaskerH
   // a stored score (the backend keeps none).
   const checks = [
     Boolean(user?.profilePicture),
-    Boolean(verification.data?.data.isVerified),
+    Boolean(verification.data?.data?.isVerified),
     Boolean(user?.bio),
     Boolean(user?.location),
   ];
   const completeness = Math.round((checks.filter(Boolean).length / checks.length) * 100);
   const nextStep = !user?.profilePicture
     ? 'Add profile photo'
-    : !verification.data?.data.isVerified
+    : !verification.data?.data?.isVerified
       ? 'Verify your identity'
       : !user?.bio
         ? 'Add a short bio'
@@ -869,7 +869,7 @@ function TaskerHomeView({ refreshing, onRefresh, insets, user, router }: TaskerH
           : 'Profile complete';
 
   const pendingInvites = (invitations.data?.bids ?? []).filter((b) => b.invitedByUser && b.task);
-  const recommended = (feed.data?.pages ?? []).flatMap((p) => p.tasks).slice(0, 5);
+  const recommended = (feed.data?.pages ?? []).flatMap((p) => p?.tasks ?? []).slice(0, 5);
   const inProgress = (activeJobs.data?.tasks ?? []).filter(
     (t) => t.status === 'assigned' || t.status === 'in-progress',
   );

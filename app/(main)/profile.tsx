@@ -220,13 +220,13 @@ function MenuCard({ items, onItemPress }: { items: MenuItem[]; onItemPress: (key
 }
 
 /** `Elliot Eniola` -> `EE`. Falls back to the first letter of the email. */
-function initialsOf(name: string, email: string): string {
+function initialsOf(name: string, email: string | undefined): string {
   const letters = name
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
     .map((part) => part[0]);
-  return (letters.join('') || email[0] || '?').toUpperCase();
+  return (letters.join('') || email?.[0] || '?').toUpperCase();
 }
 
 export default function ProfileScreen() {
@@ -338,7 +338,8 @@ export default function ProfileScreen() {
   const name =
     user.fullName?.trim() ||
     [user.firstName, user.lastName].filter(Boolean).join(' ').trim() ||
-    user.emailAddress.split('@')[0];
+    user.emailAddress?.split('@')[0] ||
+    'User';
 
   const isVerified = Boolean(user.isKYCVerified);
   const savedCount = saved?.count ?? user.savedTaskersCount ?? 0;

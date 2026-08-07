@@ -86,11 +86,11 @@ export default function WalletScreen() {
   // Taskers have no escrow of their own (escrow is held against the client's
   // wallet) but do have pending withdrawals, so the secondary line differs.
   const available = isTasker
-    ? (taskerBalanceQ.data?.data.availableToWithdraw ?? 0)
-    : (userBalanceQ.data?.data.availableBalance ?? 0);
+    ? (taskerBalanceQ.data?.data?.availableToWithdraw ?? 0)
+    : (userBalanceQ.data?.data?.availableBalance ?? 0);
   const secondaryAmount = isTasker
-    ? (taskerBalanceQ.data?.data.pendingWithdrawals ?? 0)
-    : (userBalanceQ.data?.data.totalInEscrow ?? 0);
+    ? (taskerBalanceQ.data?.data?.pendingWithdrawals ?? 0)
+    : (userBalanceQ.data?.data?.totalInEscrow ?? 0);
   const secondaryLabel = isTasker ? 'pending withdrawal' : 'held in escrow';
 
   const startFunding = async (amount: number) => {

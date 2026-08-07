@@ -28,9 +28,9 @@ const COLORS = {
   border: '#e2e2ec',
 };
 
-function initialsOf(name: string): string {
+function initialsOf(name: string | undefined): string {
   return (
-    name
+    (name ?? '')
       .split(/\s+/)
       .filter(Boolean)
       .slice(0, 2)
@@ -72,7 +72,7 @@ export default function BlockedUsersScreen() {
   };
 
   const filtered = blockedUsers.filter((u) =>
-    u.fullName.toLowerCase().includes(search.toLowerCase()),
+    (u.fullName ?? '').toLowerCase().includes(search.toLowerCase()),
   );
 
   return (

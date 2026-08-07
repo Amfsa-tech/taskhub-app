@@ -15,11 +15,19 @@
       },
       "env": {
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "865414877881-q238vncat0251fof8cq1mn4kdlfc6155.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "865414877881-tihd83p5o5h386g4na6of50lbd2vdagl.apps.googleusercontent.com"
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "865414877881-tihd83p5o5h386g4na6of50lbd2vdagl.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GEOAPIFY_API_KEY": "29458941ce0f4f7cb10e401a186fa2c1",
+        "EXPO_PUBLIC_ONESIGNAL_APP_ID": "5b0e51fe-23be-4617-84b6-1b81845bdca6"
       }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "865414877881-q238vncat0251fof8cq1mn4kdlfc6155.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "865414877881-tihd83p5o5h386g4na6of50lbd2vdagl.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GEOAPIFY_API_KEY": "29458941ce0f4f7cb10e401a186fa2c1",
+        "EXPO_PUBLIC_ONESIGNAL_APP_ID": "5b0e51fe-23be-4617-84b6-1b81845bdca6"
+      }
     }
   },
   "submit": {

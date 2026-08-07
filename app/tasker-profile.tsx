@@ -145,8 +145,8 @@ export default function TaskerProfileScreen() {
   const { data: taskerRes, isLoading, isError } = useTasker(taskerId);
   const { data: reviewsRes } = useTaskerReviews(taskerId);
   const tasker = taskerRes?.data;
-  const reviews = reviewsRes?.data.reviews ?? [];
-  const reviewCount = reviewsRes?.data.pagination.total ?? reviews.length;
+  const reviews = reviewsRes?.data?.reviews ?? [];
+  const reviewCount = reviewsRes?.data?.pagination?.total ?? reviews.length;
 
   const name = tasker
     ? shortName(tasker.firstName, tasker.lastName)
@@ -273,11 +273,11 @@ export default function TaskerProfileScreen() {
                   </View>
 
                   {/* Services */}
-                  {tasker.services.length > 0 ? (
+                  {(tasker.services?.length ?? 0) > 0 ? (
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>Services</Text>
                       <View style={styles.chips}>
-                        {tasker.services.map((service) => (
+                        {(tasker.services ?? []).map((service) => (
                           <View key={service} style={styles.chip}>
                             <Text style={styles.chipText}>{service}</Text>
                           </View>
@@ -287,11 +287,11 @@ export default function TaskerProfileScreen() {
                   ) : null}
 
                   {/* Gallery */}
-                  {tasker.previousWork.length > 0 ? (
+                  {(tasker.previousWork?.length ?? 0) > 0 ? (
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>Gallery</Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.galleryRow}>
-                        {tasker.previousWork.map((work) => (
+                        {(tasker.previousWork ?? []).map((work) => (
                           <Pressable key={work.url} onPress={() => setLightbox(work.url)}>
                             <Image source={{ uri: work.url }} style={styles.galleryImage} contentFit="cover" />
                           </Pressable>
