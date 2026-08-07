@@ -1,13 +1,13 @@
 # TaskHub — Screen → Backend Endpoint Reference
 
-> **Last verified: 2026-08-03**, against `taskhub-app@main` and `task-hub-backend@main`.
+> **Last verified: 2026-08-07**, against `taskhub-app@main` and `task-hub-backend@main`.
 > Every path below was read out of the backend's `routes/*.js` (as mounted in `index.js`) and the app's `lib/api/*` + `lib/auth/*`. **These are real paths, not guesses** — earlier revisions of this doc listed inferred RESTful paths, and most of them were wrong.
 >
 > Purpose: know exactly what is wired, what is one call away, and what genuinely needs backend work.
 
 ## Current state in one paragraph
 
-The app has **67 screens, all built as UI**. **34 of them call the real backend**: the whole auth domain (register → OTP → login → forgot/reset → Google), task browse/detail/create, the post flow incl. AI parsing, chat, notifications, saved taskers, tasker profiles + reviews, task rating, and wallet balance/funding. **The rest run on hardcoded in-file arrays, `useLocalSearchParams`, or `TaskContext`/`LocationContext` (AsyncStorage).** The remaining work is overwhelmingly **frontend wiring against endpoints that already ship** — see Part 3. Only a short list (Part 4) needs new backend. Location search runs on the **external Geoapify API**, no TaskHub backend involved.
+**The full marketplace loop is closed for both roles**: post → bid → accept/pay → escrow → complete → rate → payout → withdraw, all against the real backend. Both roles have **real auth** (the purpose screen's hire/earn choice routes to role-typed login/signup; tasker signup is two-step because `tasker-register` requires ten fields). `dev-auth` is deleted. **Removed entirely (2026-08-06):** the AI Quick Post screen, the whole simulated voice flow, `TaskContext`, and `lib/api/ai.ts` — posting is manual-only, and `POST /api/ai/parse-task` is now dead backend code. Push registration is wired but **dormant** until `EXPO_PUBLIC_ONESIGNAL_APP_ID` is set; in the meantime **email is the notification channel** — nine marketplace events (bids, hire requests/responses, work started/review/completed, payout, withdrawal receipt) now mail via Resend alongside the in-app rows. What's left is Part 4 (needs backend) plus KYC's vendor SDK. Location search runs on the **external Geoapify API**; reverse geocoding falls back to the device geocoder when the key is unset.
 
 ### Conventions
 
@@ -37,11 +37,12 @@ The app has **67 screens, all built as UI**. **34 of them call the real backend*
 | Method | Path | Screen |
 |---|---|---|
 | POST | `/api/auth/user-register` | `create-account` |
-| POST | `/api/auth/user-login` | `login-form` |
-| POST | `/api/auth/verify-email` | `otp` |
+| POST | `/api/auth/tasker-register` | `create-account` → `tasker-details` (all ten required fields in one call) |
+| POST | `/api/auth/user-login` · `/api/auth/tasker-login` | `login-form` (role from the `type` param) |
+| POST | `/api/auth/verify-email` | `otp` (type-aware; tasker lands on home, not purpose-selection) |
 | POST | `/api/auth/resend-verification` | `otp` (Resend) |
-| POST | `/api/auth/forgot-password` | `forgot-password` |
-| POST | `/api/auth/reset-password` | `create-new-password` |
+| POST | `/api/auth/forgot-password` | `forgot-password` (type-aware — the reset code is per-collection) |
+| POST | `/api/auth/reset-password` | `create-new-password` (type-aware) |
 | POST | `/api/auth/google` | `login`, `login-form` |
 | POST | `/api/auth/google/complete-signup` | `google-complete-signup` |
 | GET | `/api/auth/user` · `/api/auth/tasker` | session bootstrap (`auth-context`) |
@@ -54,6 +55,7 @@ The app has **67 screens, all built as UI**. **34 of them call the real backend*
 | GET | `/api/auth/verification-status` | `settings` (both security rows) |
 | GET | `/api/universities` | `location-university` |
 | POST | `/api/auth/logout` | `auth-context.signOut` |
+| PUT · DELETE | `/api/auth/{user,tasker}/notification-id` | `auth-context` (OneSignal id on sign-in / sign-out) — **dormant until `EXPO_PUBLIC_ONESIGNAL_APP_ID` is set + new native builds**. Backend's tasker PUT used to 500 on success; fixed 2026-08-07. |
 
 > `forgot-password` now routes **straight to `create-new-password`** — the `/forgot-password-sent` interstitial is bypassed (it was a dead end with no code input). The screen file still exists and is unreachable.
 
@@ -70,13 +72,16 @@ The app has **67 screens, all built as UI**. **34 of them call the real backend*
 | PATCH | `/api/tasks/:id/status` | `task-details` (cancel) |
 | POST | `/api/bids/invite` | `task-details` via `invite-to-bid-modal` |
 | POST | `/api/bids/hire-request` | `task-details` |
+| POST | `/api/bids` | `task-details` (tasker) — place bid / apply; amount only when `isBiddingEnabled` |
+| PUT · DELETE | `/api/bids/:id` | `task-details` (tasker) + `(main)/tasks` — edit / withdraw |
+| POST | `/api/bids/:id/hire-response` | `task-details` (tasker) + `(main)/tasks` — accept ≠ hired; client still pays |
+| POST | `/api/wallet/withdraw` | `withdraw` (tasker; min ₦500, one open request at a time) |
 | GET | `/api/taskers/nearby` | `(main)/home` carousel |
 | GET | `/api/taskers/:id` | `tasker-profile` |
 | GET | `/api/taskers/:id/reviews` | `tasker-profile` |
 | GET | `/api/saved-taskers` | `saved-taskers`, `(main)/profile` |
 | POST · DELETE | `/api/saved-taskers/:taskerId` | `tasker-profile`, `saved-taskers` |
-| GET | `/api/categories` | `post-category`, `post-service`, `post` |
-| POST | `/api/ai/parse-task` | `post` (natural-language → draft) |
+| GET | `/api/categories` | `post-category`, `post-service` |
 | POST | `/api/support` | `report-issue` |
 | GET | `/api/bids/:id/payment-summary` | `task-agreement` |
 | POST | `/api/bids/:id/accept` | `task-agreement` (was `task-details`) |
@@ -116,13 +121,14 @@ The app has **67 screens, all built as UI**. **34 of them call the real backend*
 | ~~`useTasks`~~ | `GET /api/tasks?status=open` | ✅ **wired** — `(main)/discover` |
 | `deleteNotification` | `DELETE /api/notifications/:id` | `notifications` (swipe-to-delete) |
 | `rateClient` | `POST /api/tasks/:id/rate-client` | no tasker rating UI yet — the tasker never rates the client back |
-| `loginTasker` / `registerTasker` | `/api/auth/tasker-{login,register}` | **still no tasker auth screens**; only reached via `lib/auth/dev-auth.ts`. This is the single biggest remaining gap — every wired tasker surface is unreachable to a real tasker. |
-| `createBid` | `POST /api/bids` | bound in `lib/api/bids.ts`; needs an apply/bid sheet on `discover` / `task-details` |
+| ~~`loginTasker` / `registerTasker`~~ | `/api/auth/tasker-{login,register}` | ✅ **wired (2026-08-06)** — role-typed `login-form` / two-step `create-account` → `tasker-details`. `dev-auth.ts` deleted; "Switch to Tasker mode" is now a real sign-out → sign-in. Google *signup* for taskers is deliberately blocked (complete-signup collects user fields only); Google sign-in works. |
+| ~~`createBid`~~ | `POST /api/bids` | ✅ **wired (2026-08-07)** — place-bid sheet on `task-details` (tasker); state derived from the tasker's own pending bids |
+| ~~`requestWithdrawal`~~ | `POST /api/wallet/withdraw` | ✅ **wired (2026-08-07)** — `/withdraw` screen. PIN deliberately not collected (server never checks it); `stellar_crypto` not surfaced. |
 | `updateTaskerLocation` | `PUT /api/auth/location` | bound; no service-area screen (the feed's 200-mile radius keys off it) |
 | `initiateNinKyc` | `POST /api/v1/nin/verify-nin` | **intentionally uncalled** — needs the QoreID SDK, and calling it creates an orphaned `pending` record (§3.2) |
 | `reportKycFailure` | `POST /api/v1/nin/kyc-failure` | pairs with the above; only meaningful once the SDK can abandon a session |
 | `registerDiditSession` | `POST /api/v1/kyc/register-session` | needs a Didit `sessionId` the app has no way to obtain yet (§3.2) |
-| `requestWithdrawal` / `setupTransactionPin` | `POST /api/wallet/withdraw`, `.../tasker/pin/setup` | no withdrawal screen exists yet (§3.4) |
+| `setupTransactionPin` | `POST /api/wallet/tasker/pin/setup` | deliberately uncalled — the stored PIN is enforced nowhere (§3.4) |
 | `getStellarDepositInfo` | `GET /api/wallet/stellar/deposit-info` | no screen surfaces the XLM deposit address |
 
 ### Follow-ups left behind by that wiring
@@ -234,8 +240,8 @@ Ordered roughly by value. Each row needs a `lib/api/*` function plus screen wiri
 
 **Open items:**
 
-- **No withdrawal screen exists.** `requestWithdrawal` is bound with its constraints documented (min ₦500, at most one pending withdrawal at a time, requires a saved bank account for `bank_transfer`, or a Stellar address for `stellar_crypto`). It debits the wallet immediately and creates a **pending** request for admin approval. Building that screen is net-new UI, not wiring.
-- 🔴 **The transaction PIN is not enforced.** `POST /api/wallet/tasker/pin/setup` hashes and stores `transactionPin`, and its success message says "You can now withdraw funds" — but `transactionPin` is **read nowhere in the backend**, and `requestWithdrawal` never asks for it. A bearer token alone authorizes a payout request. Either enforce it in `requestWithdrawal` or drop the PIN; shipping a withdrawal screen that collects a PIN the server ignores would be worse than having no PIN at all.
+- ✅ **Withdrawal screen built (2026-08-07).** `/withdraw` — balance, saved payout account (routes to `/bank-account` when absent), amount validated against the server's rules, and the one-open-request constraint surfaced up front. Success copy states the real mechanics: wallet debited immediately, money moves on admin approval. A withdrawal-request receipt email now goes out too.
+- 🔴 **The transaction PIN is still not enforced.** `POST /api/wallet/tasker/pin/setup` hashes and stores `transactionPin`, but it is **read nowhere in the backend** and `requestWithdrawal` never asks for it — a bearer token alone authorizes a payout request. The withdrawal screen therefore deliberately collects no PIN. To make it real: enforce it in `requestWithdrawal`, then add a PIN-setup screen and a PIN field.
 
 ### 3.5 Support — ✅ done
 
@@ -273,17 +279,18 @@ Ordered roughly by value. Each row needs a `lib/api/*` function plus screen wiri
 - **`tasker-services` is a prerequisite, not a preference.** `GET /api/tasks/tasker/feed` filters on the tasker's `subCategories`; with none set it returns 200 and an empty list. The home feed's empty state routes there rather than claiming there's no work. The screen's two-step main → sub flow maps directly onto `groupCategories`, and it prefills from the tasker's current selection.
 - 🔴 **`performance` has no analytics endpoint.** Jobs completed, completion rate, bids won, average rating and the earnings chart are all derived client-side from the tasker's tasks, bids and transactions — correct, but truncated by those lists' paging on long histories. **Response time, profile views, repeat customers and invitation rate were removed**: nothing in the backend records them, and they were fixed strings. The "Insights" card was removed for the same reason.
 
-**Still not wired (net-new UI, not wiring):**
+**All three former gaps closed (2026-08-06/07):**
 
-- `POST /api/bids` — a tasker cannot yet *place* a bid from the feed. `discover`/`task-details` need an apply/bid sheet; `applicationInfo` on each feed task already carries the button label, mode and whether the price is editable.
-- No withdrawal screen (§3.4).
-- **No tasker auth screens.** `registerTasker`/`loginTasker` are still reachable only through `lib/auth/dev-auth.ts`. Everything above is exercised via "Switch to Tasker mode" on the profile screen — a real tasker still cannot sign up.
+- ✅ `POST /api/bids` — place-bid sheet on `task-details` (tasker branch rewritten from mock fixtures to the real task + own-bid state; the fake in-progress timeline and Request Completion/Nudge flows were removed — start/complete live in the Jobs tab).
+- ✅ Withdrawal screen (§3.4).
+- ✅ Tasker auth screens (§ Part 2). `dev-auth.ts` is deleted from the codebase.
 
 ### 3.7 Push / presence
 
 | Concern | Endpoint | Notes |
 |---|---|---|
-| OneSignal device id | `PUT /api/auth/{user,tasker}/notification-id`, `DELETE` same | Never called — push cannot be delivered to this app today. |
+| OneSignal device id | `PUT /api/auth/{user,tasker}/notification-id`, `DELETE` same | ✅ Wired (2026-08-07): `lib/push.ts` + `auth-context` register on sign-in, detach on sign-out, deep-link taps. **Dormant** until `EXPO_PUBLIC_ONESIGNAL_APP_ID` is set (`.env` + EAS env) and new native builds ship; OneSignal dashboard still needs FCM creds (Android) + APNs key (iOS). Flip the plugin `mode` to `production` before store builds. |
+| **Email notifications** | via Resend (`RESEND_API_KEY`) | **The active channel while push is dormant.** 2026-08-07: nine events added — poster: new bid, hire response (Payment Required / declined), work started, ready-for-review, completed; tasker: hire request, invite, payout, withdrawal receipt. Pre-existing: new matching task, bid accepted/rejected, task cancelled, withdrawal rejected/completed, KYC, OTP. Chat and self-initiated events stay in-app only. |
 | Web push | `GET /api/push/vapid-public-key`, `POST /api/push/{subscribe,unsubscribe}` | Web-only; not applicable to the native app. |
 | Chat presence | `PATCH /api/chat/presence` | Would drive online dots in `messages` / `chat`. |
 
@@ -301,7 +308,6 @@ These need backend work first. Everything else in this doc does not.
 | **"You gave" reviews** | `my-reviews` | Ratings are written onto the task (`POST /api/tasks/:id/rate`); there's no "reviews authored by me" list endpoint. |
 | **Receipts** | `receipt` | No receipt or PDF endpoint. `GET /api/bids/:id/payment-summary` is the closest existing data. |
 | **Boost / promote a task** | `task-actions-modal` | Not modelled at all. |
-| **Voice transcription** | `voice-post`, `voice-recording`, `voice-understanding` | No audio upload or STT endpoint. `POST /api/ai/parse-task` covers only the **text → draft** half, and `/post` already uses it. The whole voice flow is simulated. |
 | **Profile stats** | `(main)/profile` | Posted/reviews/saved counts have no aggregate endpoint (saved count is derivable from `/api/saved-taskers`). |
 | **Services within a category** | `post-service` | Backend exposes `/api/categories` and `/api/main-categories` only — there's no third "services" level. The screen's two-step category→service model may need flattening instead of a new endpoint. |
 
@@ -309,17 +315,18 @@ These need backend work first. Everything else in this doc does not.
 
 ## Part 5 — Screen-by-screen index
 
-**Data-source key:** `api` = real backend · `ctx:Task`/`ctx:Loc` = AsyncStorage context · `mock` = hardcoded in-file · `params` = passed via route params · `static` = no data · `geo` = Geoapify.
+**Data-source key:** `api` = real backend · `draft ctx` = `PostTaskContext` · `ctx:Loc` = `LocationContext` (AsyncStorage) · `mock` = hardcoded in-file · `params` = passed via route params · `static` = no data · `geo` = Geoapify.
 
 ### Auth & onboarding
 | Route | Data now | Gap |
 |---|---|---|
 | `/splash`, `/onboarding`, `/success` | static | none |
-| `/purpose` | api (dev-auth) | ⚠️ uses `loginOrCreateDevAccount` — auto-registers a throwaway account. **Must not ship.** |
-| `/purpose-selection` | api ✅ | saves interests; non-blocking on failure |
-| `/login` | api ✅ | Google wired; Apple is an explicit "Coming soon" alert |
-| `/login-form` | api ✅ | — |
-| `/create-account` | api ✅ | — |
+| `/purpose` | static | hire/earn choice becomes the `type` param for the whole auth stack (dev-auth removed) |
+| `/purpose-selection` | api ✅ | saves interests; non-blocking on failure; users only (taskers skip it) |
+| `/login` | api ✅ | role-typed; Google wired (tasker signup via Google intentionally blocked); Apple is "Coming soon" |
+| `/login-form` | api ✅ | role-typed — picks `user-login` vs `tasker-login` |
+| `/create-account` | api ✅ | role-typed; tasker mode collects first/last name and continues to `/tasker-details` |
+| `/tasker-details` | api ✅ | tasker signup step 2 — the remaining `tasker-register` fields, one atomic call |
 | `/country-selection` | static | none (Ghana dropped; Nigeria only) |
 | `/phone-number` | api ✅ | shows the live number; no phone-verification endpoint exists |
 | `/otp` | api ✅ | 5-digit codes, matches backend |
@@ -342,25 +349,25 @@ These need backend work first. Everything else in this doc does not.
 | `/(main)/home` | api ✅ + ctx:Loc | — |
 | `/(main)/tasks` | api ✅ | — |
 | `/(main)/messages` | api ✅ | — |
-| `/(main)/profile` | api ✅ (partial) | 🔴 stats counts; ⚠️ tasker-mode switch calls dev-auth |
+| `/(main)/profile` | api ✅ (partial) | 🔴 stats counts; mode switch is now a real sign-out → role-typed login |
 | `/(main)/discover` | api ✅ | search/pills/sort applied client-side — see Part 2 follow-ups |
 
 ### Post / hire flow
+
+> The AI Quick Post (`/post`) and the whole voice flow (`voice-post`, `voice-recording`, `voice-organizing`, `voice-understanding`, `voice-confirm`, `review-task`) were **deleted 2026-08-06**, along with `TaskContext`. Every entry point resets the draft via `useNewPost()` and lands on `/post-category`.
+
 | Route | Data now | Gap |
 |---|---|---|
-| `/post` | api ✅ | AI parse wired |
 | `/post-category`, `/post-service` | api ✅ | 🔴 no true "services" level |
-| `/post-details` | ctx:Task | none (draft state) |
-| `/post-review` | api ✅ | creates the task |
+| `/post-details` | draft ctx | none (PostTaskContext draft state) |
+| `/post-review` | api ✅ | creates the task — the only create path now |
 | `/post-success` | static | none |
-| `/voice-confirm` | ctx:Task | forwards to `/voice-organizing` → `/review-task`; creates nothing itself |
-| `/review-task` | ctx:Task | 🟡 second create path (`TaskContext.addTask`) — should reuse `createTask` |
 | `/choose-existing-task` | api ✅ | real open tasks → `POST /api/bids/invite` |
 
 ### Task management
 | Route | Data now | Gap |
 |---|---|---|
-| `/task-details` | api ✅ | 🟡 edit/delete |
+| `/task-details` | api ✅ | tasker branch rewritten 2026-08-07: real task data, place/edit/withdraw bid, accept/decline invitations. 🟡 poster-side task edit still has no screen |
 | `/task-agreement` | api ✅ | confirm-and-pay: server-computed summary → `acceptBid` |
 | `/track-task` | api ✅ (client side) | real timeline, completion code, cancel; tasker half still mock (§3.6) |
 | `/tasker-profile` | api ✅ | — |
@@ -370,17 +377,13 @@ These need backend work first. Everything else in this doc does not.
 ### Wallet, chat, notifications
 | Route | Data now | Gap |
 |---|---|---|
-| `/wallet` | api ✅ | — |
+| `/wallet` | api ✅ | tasker balance card now has a Withdraw button |
+| `/withdraw` | api ✅ | tasker payout request; PIN deliberately omitted (unenforced server-side) |
 | `/transaction-history` | api ✅ | paged + server-side `?purpose=` filters |
 | `/bank-account` | api ✅ | tasker-only; one account, gateway-resolved name |
 | `/chat` | api ✅ + geo | 🟡 presence |
 | `/notifications` | api ✅ | 🟠 delete |
 | `/notification-details` | params | none needed |
-
-### Voice flow (fully simulated)
-| Route | Data now | Gap |
-|---|---|---|
-| `/voice-post`, `/voice-recording`, `/voice-organizing`, `/voice-understanding` | mock | 🔴 no transcription endpoint |
 
 ### Settings, support, security
 | Route | Data now | Gap |
@@ -398,6 +401,9 @@ These need backend work first. Everything else in this doc does not.
 | `/performance` | api ⚠️ | derived from tasks/bids/transactions; no analytics endpoint (§3.6) |
 
 ### Location (🌐 Geoapify)
+
+> Since 2026-08-06 reverse geocoding no longer requires the Geoapify key: `lib/location/geocoding.ts` falls back to the device's native geocoder, and stored raw "lat, lon" strings self-migrate to place names on read. Search/autocomplete and map tiles still need `EXPO_PUBLIC_GEOAPIFY_API_KEY`.
+
 | Route | Data now | Gap |
 |---|---|---|
 | `/location-permission` | static | none (expo-location) |
@@ -410,12 +416,12 @@ These need backend work first. Everything else in this doc does not.
 
 ## Part 6 — Notes
 
-1. **`lib/auth/dev-auth.ts` is a shipping hazard.** `loginOrCreateDevAccount` auto-registers a throwaway account with a hardcoded password (`Password123!`) and is wired into `/purpose` and the tasker-mode switch in `/(main)/profile`. Both are reachable in a release build. Gate it behind `__DEV__` or replace it with real screens before any store submission.
-2. **`TaskContext` is now a parallel source of truth.** Tasks come from the API on `(main)/tasks`, `home`, and `task-details`, but `review-task`, `post-details`, and `choose-existing-task` still read/write `AsyncStorage` sample tasks. Retiring `TaskContext` down to draft-only state (its `PostTaskContext` role) should happen alongside §3.3.
-3. **Two task-creation paths exist.** `post-review` calls `createTask` (real); `review-task` — the terminal step of the voice flow — calls `TaskContext.addTask` (AsyncStorage only), so **tasks posted by voice never reach the backend**. Collapse to one.
+1. ~~`lib/auth/dev-auth.ts` is a shipping hazard.~~ **Resolved 2026-08-07** — deleted outright; real tasker auth replaced both call sites, and the old mode switch's token-reuse bug (a user JWT re-labeled as a tasker session, 401ing everywhere) went with it.
+2. ~~`TaskContext` is a parallel source of truth.~~ **Resolved 2026-08-06** — deleted with the voice flow. `PostTaskContext` (draft-only) is the sole post-flow state.
+3. ~~Two task-creation paths exist.~~ **Resolved 2026-08-06** — `post-review` → `createTask` is the only path; the AsyncStorage-only voice path is gone.
 4. **Duplicate NIN routes.** `POST /api/nin/submit-nin` and `POST /api/v1/nin/verify-nin` both call `initiateQoreIdKyc`. Pick one before binding, or the app will encode the ambiguity.
 5. **Two verification-status routes.** `GET /api/auth/verification-status` and `GET /api/v1/kyc/verification-status`. Same question.
 6. **Unmounted backend routes.** `routes/taskerRoute.js` and `routes/adminRoute.js` exist but are not mounted in `index.js` — don't bind against them.
 6b. **`GET /api/tasks?categories=` is broken.** `getAllTasks` sets `filterOptions.categories`, but the Task model has `mainCategory` / `subCategory` / `subCategories` and **no `categories` field** — so passing the param matches zero documents. Should be `mainCategory` (or `$in` over `subCategories`). Until it's fixed, category filtering must stay client-side.
 7. **Response-envelope drift.** The backend returns payloads under `task`, `tasks`, `data`, `reviews`, `conversation`, `message`… depending on the route. `lib/api/*` types each individually; keep doing that rather than assuming a shared shape.
-8. **Suggested wiring order.** (a) Part 2 quick wins — `transaction-history`, `discover`, `my-reviews` "About you"; (b) §3.1 account/security; (c) §3.5 `report-issue`; (d) §3.3 task lifecycle, which is the biggest user-visible gap; (e) §3.2 verification; (f) §3.4 wallet, once the user/tasker scoping question is settled; (g) §3.6 tasker mode as its own milestone.
+8. **What's actually left** (2026-08-07): (a) `POST /api/ai/parse-task` + `OPENAI_API_KEY` are dead since the AI removal — delete server-side; (b) §3.2 KYC needs the QoreID SDK (the one genuinely blocked item); (c) enforce-or-drop the transaction PIN (§3.4); (d) push activation is config-only — set `EXPO_PUBLIC_ONESIGNAL_APP_ID`, load FCM/APNs creds into OneSignal, rebuild; (e) Part 4 backend-first features (blocked users, device sessions, notification prefs, receipts, boost, "You gave" reviews, profile stats); (f) smaller follow-ups: poster-side task edit screen, tasker-rates-client UI, service-area screen, chat presence.
