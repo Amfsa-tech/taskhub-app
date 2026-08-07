@@ -43,6 +43,14 @@ export function login(type: AccountType, payload: LoginPayload) {
   return type === 'tasker' ? loginTasker(payload) : loginUser(payload);
 }
 
+/**
+ * Sliding renewal: trade a still-valid token for a fresh 24h one. Called on
+ * cold start so sessions only expire after a full day of inactivity.
+ */
+export function refreshSessionToken() {
+  return api.post<{ status: string; token: string }>(`${BASE}/refresh`);
+}
+
 export function registerUser(payload: UserRegisterPayload) {
   return api.post<RegisterResponse>(`${BASE}/user-register`, payload, { auth: false });
 }

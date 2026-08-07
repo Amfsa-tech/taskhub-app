@@ -24,6 +24,7 @@ import {
   googleCompleteSignup,
   login,
   logout as logoutRequest,
+  refreshSessionToken,
   removeNotificationId,
   updateNotificationId,
 } from './auth-api';
@@ -32,6 +33,7 @@ import {
   clearSession,
   loadSession,
   saveSession,
+  saveToken,
   saveUser,
 } from './storage';
 import type { AccountType, AuthUser, GoogleProfile, LoginPayload } from './types';
@@ -135,6 +137,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setAccountType(null);
             setUser(null);
           }
+        }
+
+        // Sliding renewal: trade the restored token for a fresh 24h one so
+        // active users never hit the hard expiry mid-session. Non-blocking —
+        // if it fails the current token keeps working until it expires. Runs
+        // after the profile refresh so its 401-clears-session path (above)
+        // still compares against the original token.
+        try {
+          const { token: freshToken } = await refreshSessionToken();
+          if (!cancelled && tokenRef.current === session.token && freshToken) {
+            setApiToken(freshToken);
+            setToken(freshToken);
+            await saveToken(freshToken);
+          }
+        } catch {
+          // Ignore: expired/invalid tokens were already handled above.
         }
       } finally {
         if (!cancelled) setIsBootstrapping(false);

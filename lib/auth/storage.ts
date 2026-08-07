@@ -46,6 +46,11 @@ export async function saveUser(user: AuthUser): Promise<void> {
   await SecureStore.setItemAsync(USER_KEY, JSON.stringify(minimalUser(user)));
 }
 
+/** Persist just a renewed token, leaving account type and user untouched. */
+export async function saveToken(token: string): Promise<void> {
+  await SecureStore.setItemAsync(TOKEN_KEY, token);
+}
+
 export async function loadSession(): Promise<StoredSession | null> {
   const [token, accountType, userJson] = await Promise.all([
     SecureStore.getItemAsync(TOKEN_KEY),

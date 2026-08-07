@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -119,8 +119,20 @@ export default function DiscoverScreen() {
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('Newest First');
 
+  // Search runs server-side (title/description match), debounced so we don't
+  // refetch on every keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(search.trim()), 350);
+    return () => clearTimeout(handle);
+  }, [search]);
+
   // Open tasks anyone can bid on. Public endpoint — no token required.
-  const tasksQ = useTasks({ status: 'open', limit: 50 });
+  const tasksQ = useTasks({
+    status: 'open',
+    limit: 50,
+    search: debouncedSearch || undefined,
+  });
 
   // Advanced-filter sheet: `selected*` are the sheet's draft; `applied` is what
   // actually filters the list, set when the user hits Apply.
@@ -132,18 +144,15 @@ export default function DiscoverScreen() {
   const tasks = useMemo(() => {
     const items = (tasksQ.data?.tasks ?? []).map(toTaskItem);
 
-    // Pills, search, and the advanced filters are applied client-side:
-    // `GET /api/tasks` takes neither a text query nor a working category filter
-    // (its `categories` param targets a field the Task model doesn't have, so
-    // passing it returns nothing).
+    // Search happens server-side (see `useTasks` above). The pills and the
+    // advanced filters map onto derived app-side categories (campus / errand /
+    // remote-by-location), so they stay client-side over the fetched page.
     const wanted = PILL_TO_CATEGORY[activeFilter];
-    const term = search.trim().toLowerCase();
     const wantedAdvanced = PILL_TO_CATEGORY[applied.category];
     const inBudget = BUDGET_BANDS[applied.budget] ?? BUDGET_BANDS['Any'];
 
     const filtered = items.filter((item) => {
       if (wanted && item.category !== wanted) return false;
-      if (term && !item.title.toLowerCase().includes(term)) return false;
       if (wantedAdvanced && item.category !== wantedAdvanced) return false;
       if (!inBudget(item.budget)) return false;
       if (applied.urgency === 'Urgent' && !item.urgent) return false;
@@ -154,7 +163,7 @@ export default function DiscoverScreen() {
       return [...filtered].sort((a, b) => b.budget - a.budget);
     }
     return filtered;
-  }, [tasksQ.data, activeFilter, search, sortBy, applied]);
+  }, [tasksQ.data, activeFilter, sortBy, applied]);
 
   const advancedFilterActive =
     applied.budget !== 'Any' || applied.category !== 'Any' || applied.urgency !== 'Any';

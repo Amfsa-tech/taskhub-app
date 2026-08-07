@@ -124,6 +124,8 @@ export interface TaskListParams {
   page?: number;
   limit?: number;
   status?: TaskStatus;
+  /** Case-insensitive server-side match over title/description. */
+  search?: string;
 }
 
 function toQuery(params: object): string {
@@ -148,6 +150,20 @@ export function getTasks(params: TaskListParams = {}, signal?: AbortSignal) {
 /** Single task by id. Public, but returns bids when the caller owns the task. */
 export function getTaskById(id: string, signal?: AbortSignal) {
   return api.get<{ status: string; task: Task }>(`/api/tasks/${id}`, { signal });
+}
+
+export interface UpdateTaskPayload {
+  title?: string;
+  description?: string;
+  budget?: number;
+}
+
+/**
+ * Edit a posted task (owner only). Only the simple fields the post flow
+ * collects — category, images, and location changes remain cancel-and-repost.
+ */
+export function updateTask(id: string, payload: UpdateTaskPayload) {
+  return api.put<{ status: string; message: string; task: Task }>(`/api/tasks/${id}`, payload);
 }
 
 export interface TaskerMatch {

@@ -1251,12 +1251,16 @@ export default function TaskDetailsScreen() {
           <TaskActionsModal
             visible={actionsVisible}
             onClose={() => setActionsVisible(false)}
-            onEdit={() =>
-              Alert.alert(
-                'Edit task',
-                'Editing a posted task isn’t available in the app yet. Cancel it and post again, or contact support.',
-              )
-            }
+            onEdit={() => {
+              if (task?.status === 'open') {
+                router.push({ pathname: '/edit-task', params: { id: id as string } });
+              } else {
+                Alert.alert(
+                  'Edit task',
+                  'Only open tasks can be edited — once a tasker is hired the agreed price is locked in escrow.',
+                );
+              }
+            }}
             onCancel={confirmCancel}
             onDelete={canDelete ? confirmDelete : undefined}
             onReport={() =>

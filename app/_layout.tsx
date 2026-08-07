@@ -102,6 +102,7 @@ function RootNavigator() {
                     <Stack.Screen name="create-new-password" options={{ headerShown: false }} />
                     <Stack.Screen name="reset-success" options={{ headerShown: false }} />
                     <Stack.Screen name="task-agreement" options={{ headerShown: false }} />
+                    <Stack.Screen name="edit-task" options={{ headerShown: false }} />
                     <Stack.Screen name="track-task" options={{ headerShown: false }} />
                     <Stack.Screen name="my-reviews" options={{ headerShown: false }} />
                     <Stack.Screen name="settings" options={{ headerShown: false }} />
