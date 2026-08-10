@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -17,6 +17,7 @@ import Share from '@/assets/icons/share.svg';
 import ShieldSuccess from '@/assets/icons/shield-success.svg';
 import Star from '@/assets/icons/star.svg';
 import { PrimaryButton } from '@/components/taskhub/primary-button';
+import { ReadyToHireModal } from '@/components/taskhub/ready-to-hire-modal';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
 
 const COLORS = {
@@ -137,6 +138,7 @@ function SaveHeart({ taskerId, size = 24 }: { taskerId: string; size?: number })
 
 export default function TaskerProfileScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const params = useLocalSearchParams<{ name?: string; id?: string }>();
   // Callers that know the real tasker (Home, bids) pass `id`; some (chat) pass
   // only a name, in which case we can't fetch and fall back to a minimal view.
@@ -155,6 +157,7 @@ export default function TaskerProfileScreen() {
 
   const [activeTab, setActiveTab] = useState<'about' | 'reviews'>('about');
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [hireOpen, setHireOpen] = useState(false);
 
   const ratingLabel =
     tasker && tasker.averageRating > 0 ? tasker.averageRating.toFixed(1) : 'New';
@@ -325,8 +328,34 @@ export default function TaskerProfileScreen() {
             <SaveHeart taskerId={taskerId} />
           </View>
         ) : null}
-        <PrimaryButton label={`Hire ${firstName}`} onPress={() => {}} style={styles.hireButton} />
+        {/* Chat sends only a name, no `id` — without one there's no tasker to
+            invite, so the button stays disabled rather than routing nowhere. */}
+        <PrimaryButton
+          label={`Hire ${firstName}`}
+          onPress={() => setHireOpen(true)}
+          disabled={!taskerId}
+          style={styles.hireButton}
+        />
       </View>
+
+      {/* Hiring needs a task to hire *for*, so confirm routes to task selection
+          rather than straight at the agreement screen. Same flow as Saved Taskers. */}
+      <ReadyToHireModal
+        visible={hireOpen}
+        taskerName={name}
+        taskerAvatar={tasker?.profilePicture ? { uri: tasker.profilePicture } : null}
+        taskerPrice={null}
+        confirmLabel="Choose a task"
+        onConfirm={() => {
+          setHireOpen(false);
+          if (!taskerId) return;
+          router.push({
+            pathname: '/choose-existing-task',
+            params: { taskerId, taskerName: name },
+          });
+        }}
+        onClose={() => setHireOpen(false)}
+      />
 
       {/* Lightbox */}
       <Modal visible={lightbox !== null} transparent animationType="fade" onRequestClose={() => setLightbox(null)}>

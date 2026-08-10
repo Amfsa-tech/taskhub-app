@@ -253,19 +253,6 @@ export default function HomeScreen() {
               colors={[COLORS.brand]}
             />
           }>
-          {/* Account verification card */}
-          <Pressable style={styles.verifyCard} onPress={() => { }}>
-            <View style={styles.ring}>
-              <VerificationRing width={51} height={51} style={styles.ringImage} color="#ffffff" />
-              <Text style={styles.ringText}>60</Text>
-            </View>
-            <View style={styles.verifyText}>
-              <Text style={styles.verifyTitle}>Complete Verification & Profile</Text>
-              <Text style={styles.verifySubtitle}>Hire Taskers with more confidence</Text>
-            </View>
-            <CaretRight width={9} height={24} />
-          </Pressable>
-
           {/* Quick Category */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Quick Category</Text>
@@ -399,15 +386,7 @@ const styles = StyleSheet.create({
     paddingTop: 24,
     gap: 24,
   },
-  // Account verification
-  verifyCard: {
-    backgroundColor: COLORS.brand,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 16,
-    borderRadius: 16,
-  },
+  // Verification ring — tasker "Complete Verification & Profile" card only
   ring: {
     width: 51,
     height: 51,
@@ -425,23 +404,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     letterSpacing: 0.8,
     color: COLORS.brand,
-  },
-  verifyText: {
-    flex: 1,
-    gap: 4,
-  },
-  verifyTitle: {
-    fontFamily: 'Geist_600SemiBold',
-    fontSize: 16,
-    lineHeight: 21,
-    letterSpacing: -0.32,
-    color: COLORS.onBrand,
-  },
-  verifySubtitle: {
-    fontFamily: 'Geist_500Medium',
-    fontSize: 13,
-    letterSpacing: -0.08,
-    color: COLORS.onBrand,
   },
   // Sections
   section: {
