@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/taskhub/screen-header';
@@ -19,8 +19,10 @@ const COLORS = {
 
 /**
  * The backend records one KYC result per account, not one per document type —
- * so these rows choose how you'd verify, not separate verifications. Only the
- * NIN row leads anywhere; the rest have no backend support at all.
+ * so these rows choose how you'd verify, not separate verifications. NIN is the
+ * only method with backend support; passport, driver's licence and NIN slip were
+ * listed here but had no implementation behind them, so they've been dropped
+ * rather than shown as rows that only raise a "not supported" alert.
  */
 export default function SelectVerificationScreen() {
   const router = useRouter();
@@ -29,23 +31,7 @@ export default function SelectVerificationScreen() {
   const verificationQ = useVerificationStatus();
   const isVerified = verificationQ.data?.data.isVerified === true;
 
-  const methods = [
-    { label: 'NIN Verification', route: '/nin-verification' },
-    { label: 'International Passport', route: null },
-    { label: 'Drivers License', route: null },
-    { label: 'NIN Slip Verification', route: null },
-  ];
-
-  const handlePress = (method: typeof methods[0]) => {
-    if (method.route) {
-      router.push(method.route as any);
-    } else {
-      Alert.alert(
-        'Not available',
-        `${method.label} isn’t supported yet. NIN verification is the only method available.`,
-      );
-    }
-  };
+  const methods = [{ label: 'NIN Verification', route: '/nin-verification' }];
 
   return (
     <View style={styles.container}>
@@ -74,7 +60,7 @@ export default function SelectVerificationScreen() {
               {index > 0 && <View style={styles.divider} />}
               <Pressable
                 style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-                onPress={() => handlePress(method)}>
+                onPress={() => router.push(method.route as any)}>
                 <Text style={styles.rowLabel}>{method.label}</Text>
                 <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
               </Pressable>
