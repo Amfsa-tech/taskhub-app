@@ -43,3 +43,10 @@ app-example
 # generated native folders
 /ios
 /android
+
+# AI coding agent files - not needed for EAS builds
+.agents/
+.claude/
+
+# Other local tooling
+.vscode/

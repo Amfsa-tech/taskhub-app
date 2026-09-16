@@ -523,8 +523,8 @@ export default function TrackTaskScreen() {
 
             {/* Job Details Card inside Sheet */}
             <View style={styles.sheetJobCard}>
-              <Text style={styles.sheetJobTitle}>Design a flyer for an event</Text>
-              <Text style={styles.sheetJobPrice}>₦500,000</Text>
+              <Text style={styles.sheetJobTitle}>{task.title}</Text>
+              <Text style={styles.sheetJobPrice}>{formatNaira(task.budget)}</Text>
             </View>
 
             {/* Checklist Items */}
