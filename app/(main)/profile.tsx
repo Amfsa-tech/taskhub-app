@@ -2,11 +2,13 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useMutation } from '@tanstack/react-query';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Spinner } from '@/components/taskhub/spinner';
-import { useSavedTaskers } from '@/lib/api/queries';
+import { useSavedTaskers, useTaskerPerformance } from '@/lib/api/queries';
+import { ApiError } from '@/lib/api/client';
 import { useAuth } from '@/lib/auth/auth-context';
 
 import BadgeVerified from '@/assets/icons/badge-verified.svg';
@@ -81,6 +83,12 @@ const MENU_GROUP_ACCOUNT: MenuItem[] = [
     iconBg: COLORS.successBg,
     icon: <Wallet width={18} height={18} />,
   },
+  {
+    key: 'spending-analytics',
+    label: 'Spending Analytics',
+    iconBg: '#f0f0f8',
+    icon: <MaterialCommunityIcons name="chart-donut" size={18} color={COLORS.brand} />,
+  },
 ];
 
 const TASKER_MENU_GROUP_ACCOUNT: MenuItem[] = [
@@ -101,28 +109,18 @@ const TASKER_MENU_GROUP_ACCOUNT: MenuItem[] = [
     label: 'Services',
     iconBg: '#f5f0ff',
     icon: <MaterialCommunityIcons name="briefcase-outline" size={18} color={COLORS.brand} />,
-    badge: 'Pending',
   },
   {
     key: 'portfolio',
     label: 'Portfolio',
     iconBg: '#fff4e5',
     icon: <MaterialCommunityIcons name="image-multiple-outline" size={18} color="#e07b00" />,
-    badge: 'Pending',
   },
   {
     key: 'verification',
     label: 'Verification',
     iconBg: COLORS.successBg,
     icon: <ShieldSuccess width={18} height={18} />,
-    badge: 'Pending',
-    badgeColor: COLORS.warningText,
-  },
-  {
-    key: 'availability',
-    label: 'Availability',
-    iconBg: COLORS.draftBg,
-    icon: <MaterialCommunityIcons name="calendar-check-outline" size={18} color="#555" />,
   },
 ];
 
@@ -232,14 +230,41 @@ function initialsOf(name: string, email: string | undefined): string {
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user, accountType, isBootstrapping, signOut } = useAuth();
+  const { user, accountType, isBootstrapping, signOut, switchMode } = useAuth();
 
   // The Saved tile reads from the live query rather than the (cached) user
   // object, so it updates as soon as a tasker is saved or unsaved.
   const { data: saved } = useSavedTaskers();
+  const performanceQ = useTaskerPerformance(accountType === 'tasker');
+  const performance = performanceQ.data?.data;
 
-  // User and tasker are separate accounts with separate tokens, so switching
-  // modes is a real sign-out followed by a sign-in of the other role.
+  const switchMutation = useMutation({
+    mutationFn: switchMode,
+    onSuccess: () => router.replace('/(main)/home'),
+    onError: (error) => {
+      if (error instanceof ApiError && error.status === 404) {
+        const toTasker = accountType === 'user';
+        Alert.alert(
+          `${toTasker ? 'Tasker' : 'User'} account needed`,
+          `No linked ${toTasker ? 'tasker' : 'customer'} account exists yet. Create one to enable instant switching.`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Continue',
+              onPress: () =>
+                router.push({
+                  pathname: '/create-account',
+                  params: { type: toTasker ? 'tasker' : 'user' },
+                }),
+            },
+          ],
+        );
+        return;
+      }
+      Alert.alert('Could not switch mode', error instanceof Error ? error.message : 'Please try again.');
+    },
+  });
+
   const handleSwitchMode = () => {
     const toTasker = accountType === 'user';
     Alert.alert(
@@ -251,13 +276,7 @@ export default function ProfileScreen() {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Continue',
-          onPress: async () => {
-            await signOut();
-            router.replace({
-              pathname: '/login-form',
-              params: { type: toTasker ? 'tasker' : 'user' },
-            });
-          },
+          onPress: () => switchMutation.mutate(),
         },
       ],
     );
@@ -304,6 +323,8 @@ export default function ProfileScreen() {
       router.push('/transaction-history');
     } else if (key === 'bank-account') {
       router.push('/bank-account');
+    } else if (key === 'spending-analytics') {
+      router.push('/spending-analytics' as any);
     } else if (key === 'notifications') {
       router.push('/notifications');
     }
@@ -436,11 +457,13 @@ export default function ProfileScreen() {
           <Pressable style={styles.taskerProfileVerifyCard} onPress={() => router.push('/select-verification')}>
             <View style={styles.ring}>
               <VerificationRing width={51} height={51} style={styles.ringImage} color={COLORS.brand} />
-              <Text style={styles.ringText}>60</Text>
+              <Text style={styles.ringText}>{isVerified ? '100' : user.profilePicture ? '75' : '50'}</Text>
             </View>
             <View style={styles.taskerVerifyText}>
               <Text style={styles.taskerVerifyTitle}>Complete Verification & Profile</Text>
-              <Text style={styles.taskerVerifySubtitle}>Add profile Photo</Text>
+              <Text style={styles.taskerVerifySubtitle}>
+                {isVerified ? 'Profile verified' : user.profilePicture ? 'Complete identity verification' : 'Add profile photo'}
+              </Text>
             </View>
             <CaretRight width={9} height={12} color={COLORS.brand} />
           </Pressable>
@@ -466,10 +489,10 @@ export default function ProfileScreen() {
         {accountType === 'tasker' && (
           <View style={styles.taskerStatCards}>
             {[
-              { value: '8', label: 'Rating' },
-              { value: '82%', label: 'Accept' },
-              { value: '5', label: 'Complete' },
-              { value: '3mins', label: 'Response' },
+              { value: performanceQ.isLoading ? '…' : String(performance?.kpis.averageRating ?? 0), label: 'Rating' },
+              { value: performanceQ.isLoading ? '…' : `${performance?.kpis.acceptanceRate ?? 0}%`, label: 'Accept' },
+              { value: performanceQ.isLoading ? '…' : String(performance?.kpis.jobsCompleted ?? 0), label: 'Complete' },
+              { value: performanceQ.isLoading ? '…' : String(performance?.kpis.repeatUsers ?? 0), label: 'Repeat' },
             ].map((s) => (
               <View key={s.label} style={styles.taskerStatCard}>
                 <Text style={styles.taskerStatValue}>{s.value}</Text>
@@ -480,7 +503,10 @@ export default function ProfileScreen() {
         )}
 
         {/* Switch Card */}
-        <Pressable style={styles.taskerCard} onPress={handleSwitchMode}>
+        <Pressable
+          style={[styles.taskerCard, switchMutation.isPending && styles.disabledCard]}
+          onPress={handleSwitchMode}
+          disabled={switchMutation.isPending}>
           <View style={styles.taskerIcon}>
             <Swap width={24} height={24} />
           </View>

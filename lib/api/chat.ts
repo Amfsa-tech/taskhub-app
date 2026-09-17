@@ -64,7 +64,7 @@ export interface ChatMessage {
   conversation: string;
   senderType: 'user' | 'tasker' | 'system';
   senderUser?: { _id: string; fullName?: string; profilePicture?: string | null } | string | null;
-  senderTasker?: { _id: string; firstName?: string; lastName?: string } | string | null;
+  senderTasker?: { _id: string; firstName?: string; lastName?: string; profilePicture?: string | null } | string | null;
   text?: string | null;
   attachments?: MessageAttachment[];
   status?: 'sent' | 'read';
@@ -136,6 +136,13 @@ export interface ChatNotificationsResponse {
 
 export function getChatNotifications(signal?: AbortSignal) {
   return api.get<ChatNotificationsResponse>('/api/chat/notifications', { signal });
+}
+
+export function updateChatPresence(isOnline: boolean) {
+  return api.patch<{ status: string; data?: { isOnline: boolean; lastSeenAt: string } }>(
+    '/api/chat/presence',
+    { isOnline },
+  );
 }
 
 // ---- View helpers ----

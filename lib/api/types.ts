@@ -16,4 +16,5 @@ export interface ApiErrorBody extends ApiEnvelope {
   emailVerificationRequired?: boolean;
   /** Machine-readable reason, e.g. `no_password_set` from `change-password`. */
   code?: string;
+  blockers?: Array<{ code: string; message: string }>;
 }

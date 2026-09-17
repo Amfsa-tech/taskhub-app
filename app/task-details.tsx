@@ -27,8 +27,6 @@ import MapPin from '@/assets/icons/map-pin.svg';
 import RatingDot from '@/assets/icons/rating-dot.svg';
 import Shield from '@/assets/icons/shield.svg';
 import Star from '@/assets/icons/star.svg';
-
-const SHIELD_IMAGE = require('@/assets/images/3d-shield.png');
 import { InviteToBidModal } from '@/components/taskhub/invite-to-bid-modal';
 import { ReadyToHireModal } from '@/components/taskhub/ready-to-hire-modal';
 import { TaskActionsModal } from '@/components/taskhub/task-actions-modal';
@@ -54,6 +52,8 @@ import {
   type TaskerMatch,
   type TaskStatus,
 } from '@/lib/api/tasks';
+
+const SHIELD_IMAGE = require('@/assets/images/3d-shield.png');
 
 type HireContext =
   | { kind: 'accept'; bidId: string; name: string; avatar: string; price: string }
@@ -82,6 +82,7 @@ const STATUS_COLORS: Record<TaskStatus, { bg: string; text: string }> = {
   open: { bg: '#edfaf3', text: '#0d6639' },
   assigned: { bg: '#eff6ff', text: '#1d4ed8' },
   'in-progress': { bg: '#eff6ff', text: '#1d4ed8' },
+  'awaiting-confirmation': { bg: '#fffbea', text: '#b45309' },
   completed: { bg: '#edfaf3', text: '#0d6639' },
   cancelled: { bg: '#fff1f1', text: '#b01515' },
 };
@@ -1254,7 +1255,7 @@ export default function TaskDetailsScreen() {
             onClose={() => setActionsVisible(false)}
             onEdit={() => {
               if (task?.status === 'open') {
-                router.push({ pathname: '/edit-task', params: { id: id as string } });
+                router.push({ pathname: '/edit-task' as any, params: { id: id as string } });
               } else {
                 Alert.alert(
                   'Edit task',

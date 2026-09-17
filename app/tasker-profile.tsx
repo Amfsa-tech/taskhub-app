@@ -3,7 +3,7 @@ import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Share as NativeShare, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { queryKeys, useSavedTaskers, useTasker, useTaskerReviews } from '@/lib/api/queries';
@@ -171,7 +171,9 @@ export default function TaskerProfileScreen() {
         right={
           <View style={styles.headerIcons}>
             {taskerId ? <SaveHeart taskerId={taskerId} /> : null}
-            <Pressable hitSlop={6} onPress={() => {}}>
+            <Pressable
+              hitSlop={6}
+              onPress={() => NativeShare.share({ message: `View ${tasker?.firstName || 'this tasker'} on TaskHub${taskerId ? ` — tasker ${taskerId}` : ''}` })}>
               <Share width={24} height={24} />
             </Pressable>
           </View>

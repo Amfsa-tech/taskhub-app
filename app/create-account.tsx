@@ -113,12 +113,7 @@ export default function CreateAccountScreen() {
         password,
         country,
       }),
-    onSuccess: (res) => {
-      // In non-production the backend echoes the 5-digit code — log it so the
-      // OTP screen can be tested without a real inbox.
-      if (__DEV__ && res.emailToken) {
-        console.log('[dev] email verification code:', res.emailToken);
-      }
+    onSuccess: () => {
       router.push({
         pathname: '/otp',
         params: { email: email.trim().toLowerCase(), password, type: 'user' },
@@ -147,7 +142,7 @@ export default function CreateAccountScreen() {
     if (isTasker) {
       // No API call yet — registration happens on the details step.
       router.push({
-        pathname: '/tasker-details',
+        pathname: '/tasker-details' as any,
         params: {
           firstName: firstName.trim(),
           lastName: lastName.trim(),
@@ -180,7 +175,7 @@ export default function CreateAccountScreen() {
               <ArrowLeft size={18} color={COLORS.textSecondary} />
               <Text style={styles.tabLabel}>Back</Text>
             </Pressable>
-            <Pressable style={styles.tabButton} hitSlop={8} onPress={() => {}}>
+            <Pressable style={styles.tabButton} hitSlop={8} onPress={() => router.push('/help-support')}>
               <Headset size={18} color={COLORS.textSecondary} />
               <Text style={styles.tabLabel}>Support</Text>
             </Pressable>

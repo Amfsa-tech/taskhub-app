@@ -4,8 +4,10 @@ import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View, Alert, LayoutAnimation, Linking, Platform, UIManager } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useQuery } from '@tanstack/react-query';
 
 import { ScreenHeader } from '@/components/taskhub/screen-header';
+import { getFaqs, getSupportContact } from '@/lib/api/support';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -26,43 +28,19 @@ const COLORS = {
   infoLight: '#eff6ff',
 };
 
-type FAQItem = {
-  id: string;
-  question: string;
-  answer: string;
-};
-
-const FAQ_ITEMS: FAQItem[] = [
-  {
-    id: 'post-task',
-    question: 'How do i post a task',
-    answer: 'Tap the "Post" button on the home screen and follow the steps to describe your task, set a budget, and publish it.',
-  },
-  {
-    id: 'verification',
-    question: 'How are taskers verified?',
-    answer: 'All taskers go through face verification and optional NIN verification before they can accept tasks.',
-  },
-  {
-    id: 'payment',
-    question: 'When do i pay?',
-    answer: 'Payment is held in escrow when you accept a bid. Funds are released to the tasker after you confirm task completion.',
-  },
-  {
-    id: 'cancel',
-    question: 'How do i cancel a task?',
-    answer: 'Open the task detail, tap the menu icon, and select "Cancel Task". Cancellation policies may apply.',
-  },
-  {
-    id: 'dispute',
-    question: 'What if there us a dispute',
-    answer: 'Use the "Report Issue" option in the task detail or contact support directly. Our team resolves disputes within 24 hours.',
-  },
-];
-
 export default function HelpSupportScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const contactQ = useQuery({
+    queryKey: ['support', 'contact'],
+    queryFn: ({ signal }) => getSupportContact(signal),
+  });
+  const faqsQ = useQuery({
+    queryKey: ['support', 'faqs'],
+    queryFn: ({ signal }) => getFaqs(signal),
+  });
+  const contact = contactQ.data?.data.support;
+  const faqItems = faqsQ.data?.data.categories.flatMap((section) => section.faqs) ?? [];
 
   // Expanded state starts closed by default
   const [expandedState, setExpandedState] = useState<Record<string, boolean>>({});
@@ -78,8 +56,19 @@ export default function HelpSupportScreen() {
   // The only real support channels: the in-app report form (POST /api/support)
   // and the support inbox. Live chat / phone lines don't exist yet.
   const handleEmail = () => {
-    Linking.openURL('mailto:support@ngtaskhub.com').catch(() =>
-      Alert.alert('Email Us', 'Reach us at support@ngtaskhub.com'),
+    if (!contact?.email) {
+      Alert.alert('Email unavailable', 'Use Report an issue and we’ll route your message to support.');
+      return;
+    }
+    Linking.openURL(`mailto:${contact.email}`).catch(() =>
+      Alert.alert('Email Us', `Reach us at ${contact.email}`),
+    );
+  };
+
+  const handleLiveChat = () => {
+    if (!contact?.liveChatUrl) return;
+    Linking.openURL(contact.liveChatUrl).catch(() =>
+      Alert.alert('Live chat unavailable', 'Please try again later.'),
     );
   };
 
@@ -103,23 +92,35 @@ export default function HelpSupportScreen() {
             <Text style={styles.supportLabel}>Report an issue</Text>
           </Pressable>
 
-          <Pressable style={styles.supportCard} onPress={handleEmail}>
+          <Pressable
+            style={[styles.supportCard, !contact?.email && styles.disabled]}
+            onPress={handleEmail}>
             <View style={[styles.iconBox, { backgroundColor: COLORS.infoLight }]}>
               <Ionicons name="mail-outline" size={22} color={COLORS.info} />
             </View>
             <Text style={styles.supportLabel}>Email Us</Text>
           </Pressable>
+
+          {contact?.liveChatEnabled && contact.liveChatUrl ? (
+            <Pressable style={styles.supportCard} onPress={handleLiveChat}>
+              <View style={[styles.iconBox, { backgroundColor: COLORS.successLight }]}>
+                <Ionicons name="chatbubble-ellipses-outline" size={22} color={COLORS.success} />
+              </View>
+              <Text style={styles.supportLabel}>Live Chat</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         {/* FAQs */}
         <Text style={styles.sectionHeader}>FREQUENTLY ASKED QUESTIONS</Text>
         <View style={styles.faqCard}>
-          {FAQ_ITEMS.map((faq, index) => {
-            const isExpanded = expandedState[faq.id];
+          {faqItems.map((faq, index) => {
+            const faqId = faq._id;
+            const isExpanded = expandedState[faqId];
             return (
-              <View key={faq.id}>
+              <View key={faqId}>
                 {index > 0 && <View style={styles.divider} />}
-                <Pressable style={styles.faqRow} onPress={() => toggleFAQ(faq.id)}>
+                <Pressable style={styles.faqRow} onPress={() => toggleFAQ(faqId)}>
                   <Text style={styles.faqQuestion}>{faq.question}</Text>
                   <Ionicons
                     name={isExpanded ? 'chevron-up-outline' : 'chevron-down-outline'}
@@ -135,6 +136,13 @@ export default function HelpSupportScreen() {
               </View>
             );
           })}
+          {!faqsQ.isLoading && faqItems.length === 0 ? (
+            <View style={styles.faqAnswerContainer}>
+              <Text style={styles.faqAnswer}>
+                No help articles are published yet. You can still report an issue below.
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         {/* Report Issue Button */}
@@ -262,5 +270,8 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.7,
+  },
+  disabled: {
+    opacity: 0.55,
   },
 });

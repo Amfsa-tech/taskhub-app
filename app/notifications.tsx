@@ -91,8 +91,25 @@ export default function NotificationsScreen() {
 
   const onPressRow = (n: AppNotification) => {
     if (!n.read) readOneMutation.mutate(n._id);
+    const action = n.metadata?.action;
     const taskId = n.metadata?.taskId;
-    if (taskId) router.push({ pathname: '/task-details', params: { id: taskId } });
+    const conversationId = n.metadata?.conversationId;
+
+    if ((action === 'open_conversation' || action === 'view_chat') && conversationId) {
+      router.push({ pathname: '/chat', params: { id: conversationId } });
+    } else if (action === 'view_wallet') {
+      router.push('/wallet');
+    } else if (action === 'view_reviews') {
+      router.push('/my-reviews');
+    } else if (action === 'browse_tasks') {
+      router.push('/(main)/discover');
+    } else if (action === 'review_completion' && taskId) {
+      router.push({ pathname: '/track-task', params: { id: taskId } });
+    } else if (taskId) {
+      router.push({ pathname: '/task-details', params: { id: taskId } });
+    } else if (conversationId) {
+      router.push({ pathname: '/chat', params: { id: conversationId } });
+    }
   };
 
   return (

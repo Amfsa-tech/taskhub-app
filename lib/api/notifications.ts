@@ -48,6 +48,30 @@ export function deleteNotification(id: string) {
   return api.delete<{ status: string; message: string }>(`/api/notifications/${id}`);
 }
 
+export interface NotificationPreferences {
+  emailNotifications: boolean;
+  pushNotifications: boolean;
+  taskUpdates: boolean;
+  messages: boolean;
+  bids: boolean;
+  paymentAlerts: boolean;
+  promotions: boolean;
+}
+
+export function getNotificationPreferences(signal?: AbortSignal) {
+  return api.get<{
+    status: string;
+    data: { notificationPreferences: NotificationPreferences };
+  }>('/api/notifications/preferences', { signal });
+}
+
+export function updateNotificationPreferences(preferences: Partial<NotificationPreferences>) {
+  return api.patch<{
+    status: string;
+    data: { notificationPreferences: NotificationPreferences };
+  }>('/api/notifications/preferences', { notificationPreferences: preferences });
+}
+
 /** ISO timestamp -> "2m ago" / "3h ago" / "5d ago". */
 export function formatRelativeTime(iso?: string): string {
   if (!iso) return '';

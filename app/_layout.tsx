@@ -164,6 +164,9 @@ function RootNavigator() {
                     <Stack.Screen name="track-task" options={{ headerShown: false }} />
                     <Stack.Screen name="my-reviews" options={{ headerShown: false }} />
                     <Stack.Screen name="settings" options={{ headerShown: false }} />
+                    <Stack.Screen name="device-sessions" options={{ headerShown: false }} />
+                    <Stack.Screen name="notification-preferences" options={{ headerShown: false }} />
+                    <Stack.Screen name="deactivate-account" options={{ headerShown: false }} />
                     <Stack.Screen name="change-password" options={{ headerShown: false }} />
                     <Stack.Screen name="change-password-success" options={{ headerShown: false }} />
                     <Stack.Screen name="saved-taskers" options={{ headerShown: false }} />
@@ -177,6 +180,8 @@ function RootNavigator() {
                     <Stack.Screen name="withdraw" options={{ headerShown: false }} />
                     <Stack.Screen name="transaction-history" options={{ headerShown: false }} />
                     <Stack.Screen name="performance" options={{ headerShown: false }} />
+                    <Stack.Screen name="spending-analytics" options={{ headerShown: false }} />
+                    <Stack.Screen name="stellar-deposit" options={{ headerShown: false }} />
                     <Stack.Screen name="tasker-services" options={{ headerShown: false }} />
                     <Stack.Screen name="tasker-portfolio" options={{ headerShown: false }} />
                     <Stack.Screen name="bank-account" options={{ headerShown: false }} />

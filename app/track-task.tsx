@@ -1,16 +1,18 @@
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { RateTaskerModal } from '@/components/taskhub/rate-tasker-modal';
-import { queryKeys, useCompletionCode, useTask } from '@/lib/api/queries';
+import { queryKeys, useTask } from '@/lib/api/queries';
 import {
   changeTaskStatus,
-  completeTaskerTask,
+  confirmTaskCompletion,
   formatNaira,
   startTaskerTask,
+  submitTaskerCompletion,
   rateTask,
   type Task,
   type TaskStatus,
 } from '@/lib/api/tasks';
 import { useAuth } from '@/lib/auth/auth-context';
+import { pickImages, type PickedImage } from '@/lib/image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
@@ -20,6 +22,7 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -54,7 +57,13 @@ type TimelineItem = {
 };
 
 /** Order the backend actually moves a task through. */
-const STATUS_ORDER: TaskStatus[] = ['open', 'assigned', 'in-progress', 'completed'];
+const STATUS_ORDER: TaskStatus[] = [
+  'open',
+  'assigned',
+  'in-progress',
+  'awaiting-confirmation',
+  'completed',
+];
 
 function clockTime(iso?: string | null): string | undefined {
   if (!iso) return undefined;
@@ -97,9 +106,14 @@ function buildTimeline(task: Task): TimelineItem[] {
     },
     { title: 'In progress', status: mark(2) },
     {
+      title: 'Submitted for confirmation',
+      time: clockTime(task.completionSubmittedAt),
+      status: mark(3),
+    },
+    {
       title: 'Completed',
       time: clockTime(task.completedAt),
-      status: mark(3),
+      status: mark(4),
     },
   ];
 }
@@ -127,7 +141,8 @@ export default function TrackTaskScreen() {
   const isTasker = accountType === 'tasker';
 
   const [statusSheetVisible, setStatusSheetVisible] = useState(false);
-  const [taskerCode, setTaskerCode] = useState('');
+  const [completionNote, setCompletionNote] = useState('');
+  const [completionProof, setCompletionProof] = useState<PickedImage[]>([]);
 
   /*
    * Tasker-side state is *derived* from the task, never held locally. A task
@@ -139,15 +154,14 @@ export default function TrackTaskScreen() {
   const escrowStatus: 'pending' | 'secured' =
     task?.escrowStatus === 'held' || task?.status === 'completed' ? 'secured' : 'pending';
 
-  const taskStatusStep: 'start_task' | 'started' | 'completed' =
-    task?.status === 'completed' ? 'completed' : task?.status === 'in-progress' ? 'started' : 'start_task';
-
-  /**
-   * The completion code exists only while the task is in progress, and only the
-   * poster can read it. Handing it to the tasker is what completes the task —
-   * the tasker submits it, and that release is what moves escrow.
-   */
-  const codeQ = useCompletionCode(id, !isTasker && task?.status === 'in-progress');
+  const taskStatusStep: 'start_task' | 'started' | 'awaiting' | 'completed' =
+    task?.status === 'completed'
+      ? 'completed'
+      : task?.status === 'awaiting-confirmation'
+        ? 'awaiting'
+        : task?.status === 'in-progress'
+          ? 'started'
+          : 'start_task';
 
   const refreshTask = () =>
     Promise.all([
@@ -162,24 +176,34 @@ export default function TrackTaskScreen() {
       setStatusSheetVisible(false);
       Alert.alert(
         'Task started',
-        'The customer now has a 6-digit completion code. Ask them for it when the work is done — entering it releases your payment.',
+        'When the work is finished, submit it for the customer to review. Payment remains protected in escrow until they confirm.',
       );
     },
     onError: (err) =>
       Alert.alert('Could not start', err instanceof Error ? err.message : 'Please try again.'),
   });
 
-  const completeWork = useMutation({
-    mutationFn: () => completeTaskerTask(id as string, taskerCode),
+  const submitWork = useMutation({
+    mutationFn: () => submitTaskerCompletion(id as string, completionNote, completionProof),
     onSuccess: async () => {
       await refreshTask();
       setStatusSheetVisible(false);
-      setTaskerCode('');
-      Alert.alert('Task completed', 'Payment has been released from escrow to your wallet.');
+      setCompletionNote('');
+      setCompletionProof([]);
+      Alert.alert('Work submitted', 'The customer has been notified. Payment stays in escrow until they confirm completion.');
     },
-    // A wrong code is a 400 with a specific message — surface it as-is.
     onError: (err) =>
-      Alert.alert('Could not complete', err instanceof Error ? err.message : 'Please try again.'),
+      Alert.alert('Could not submit work', err instanceof Error ? err.message : 'Please try again.'),
+  });
+
+  const confirmCompletion = useMutation({
+    mutationFn: () => confirmTaskCompletion(id as string),
+    onSuccess: async () => {
+      await refreshTask();
+      Alert.alert('Completion confirmed', 'Escrow has been released to the tasker.');
+    },
+    onError: (err) =>
+      Alert.alert('Could not confirm completion', err instanceof Error ? err.message : 'Please try again.'),
   });
 
   const cancel = useMutation({
@@ -403,24 +427,26 @@ export default function TrackTaskScreen() {
           </View>
         )}
 
-        {/* Completion code — the poster's half of the hand-off. */}
-        {!isTasker && task.status === 'in-progress' ? (
+        {/* Submitted work is authoritative backend data and is reviewed before release. */}
+        {!isTasker && task.status === 'awaiting-confirmation' ? (
           <View style={styles.card}>
-            <Text style={styles.timelineHeader}>Completion code</Text>
-            {codeQ.isLoading ? (
-              <ActivityIndicator color={COLORS.brand} />
-            ) : codeQ.isError || !codeQ.data?.data?.completionCode ? (
-              <Text style={styles.securedSubtitle}>
-                The code isn’t available yet. It appears once the tasker starts work.
-              </Text>
-            ) : (
-              <>
-                <Text style={styles.completionCode}>{codeQ.data.data.completionCode}</Text>
-                <Text style={styles.securedSubtitle}>
-                  Give this code to {taskerName} only when the work is done. Entering it releases
-                  the payment from escrow.
-                </Text>
-              </>
+            <Text style={styles.timelineHeader}>Review completed work</Text>
+            <Text style={styles.securedSubtitle}>
+              {task.completionSubmission?.note || `${taskerName} marked this task as finished.`}
+            </Text>
+            {(task.completionSubmission?.attachments ?? []).map((attachment) =>
+              attachment.type?.startsWith('image/') ? (
+                <Image
+                  key={attachment.url}
+                  source={{ uri: attachment.url }}
+                  style={styles.proofImage}
+                  contentFit="cover"
+                />
+              ) : (
+                <Pressable key={attachment.url} onPress={() => Linking.openURL(attachment.url)}>
+                  <Text style={styles.proofLink}>Attachment: {attachment.name || 'Open proof'}</Text>
+                </Pressable>
+              ),
             )}
           </View>
         ) : null}
@@ -474,25 +500,37 @@ export default function TrackTaskScreen() {
             label={
               taskStatusStep === 'completed'
                 ? 'Task Completed'
+                : taskStatusStep === 'awaiting'
+                  ? 'Awaiting Customer Confirmation'
                 : taskStatusStep === 'started'
-                  ? 'Enter completion code'
+                  ? 'Submit Completed Work'
                   : 'Start Task'
             }
             onPress={() => {
-              if (taskStatusStep !== 'completed') setStatusSheetVisible(true);
+              if (taskStatusStep === 'start_task' || taskStatusStep === 'started') {
+                setStatusSheetVisible(true);
+              }
             }}
-            disabled={taskStatusStep === 'completed'}
-            variant={taskStatusStep === 'completed' ? 'secondary' : 'primary'}
+            disabled={taskStatusStep === 'completed' || taskStatusStep === 'awaiting'}
+            variant={taskStatusStep === 'completed' || taskStatusStep === 'awaiting' ? 'secondary' : 'primary'}
           />
         ) : (
-          /*
-           * The poster cannot mark a task complete: `PATCH /api/tasks/:id/status`
-           * only allows them to cancel. Completion is the tasker submitting the
-           * code above, which is what releases escrow — so the old "Confirm
-           * Completion → Release Payment" button described a flow the backend
-           * has never had. Cancel is the real action available here.
-           */
-          canCancel ? (
+          task.status === 'awaiting-confirmation' ? (
+            <PrimaryButton
+              label={confirmCompletion.isPending ? 'Confirming…' : 'Confirm Completion & Release Payment'}
+              disabled={confirmCompletion.isPending}
+              onPress={() =>
+                Alert.alert(
+                  'Confirm completion?',
+                  'This releases the escrowed payment to the tasker and cannot be undone.',
+                  [
+                    { text: 'Review again', style: 'cancel' },
+                    { text: 'Confirm and release', onPress: () => confirmCompletion.mutate() },
+                  ],
+                )
+              }
+            />
+          ) : canCancel ? (
             <PrimaryButton
               label={cancel.isPending ? 'Cancelling…' : 'Cancel Task'}
               variant="secondary"
@@ -599,30 +637,40 @@ export default function TrackTaskScreen() {
             ) : taskStatusStep === 'started' ? (
               <>
                 <Text style={styles.codeHint}>
-                  Ask the customer for the 6-digit completion code on their tracking screen.
-                  Entering it here releases your payment.
+                  Describe what was completed and optionally attach proof. The customer must
+                  confirm before escrow is released.
                 </Text>
                 <TextInput
-                  style={styles.codeEntry}
-                  value={taskerCode}
-                  onChangeText={(t) => setTaskerCode(t.replace(/\D/g, '').slice(0, 6))}
-                  placeholder="000000"
+                  style={[styles.codeEntry, styles.noteEntry]}
+                  value={completionNote}
+                  onChangeText={setCompletionNote}
+                  placeholder="What did you complete?"
                   placeholderTextColor="#9a9ab0"
-                  keyboardType="number-pad"
-                  maxLength={6}
+                  multiline
+                  maxLength={1000}
                 />
+                <Pressable
+                  style={styles.proofPicker}
+                  onPress={async () => setCompletionProof(await pickImages(5))}>
+                  <Ionicons name="images-outline" size={18} color={COLORS.brand} />
+                  <Text style={styles.proofLink}>
+                    {completionProof.length > 0
+                      ? `${completionProof.length} proof image${completionProof.length === 1 ? '' : 's'} selected`
+                      : 'Add proof images (optional)'}
+                  </Text>
+                </Pressable>
                 <Pressable
                   style={[
                     styles.sheetButton,
                     { backgroundColor: '#0d6639' },
-                    (taskerCode.length !== 6 || completeWork.isPending) && { opacity: 0.5 },
+                    submitWork.isPending && { opacity: 0.5 },
                   ]}
-                  disabled={taskerCode.length !== 6 || completeWork.isPending}
-                  onPress={() => completeWork.mutate()}>
-                  {completeWork.isPending ? (
+                  disabled={submitWork.isPending}
+                  onPress={() => submitWork.mutate()}>
+                  {submitWork.isPending ? (
                     <ActivityIndicator color="#ffffff" />
                   ) : (
-                    <Text style={styles.sheetButtonText}>Complete & get paid</Text>
+                    <Text style={styles.sheetButtonText}>Submit for confirmation</Text>
                   )}
                 </Pressable>
               </>
@@ -774,6 +822,33 @@ const styles = StyleSheet.create({
     letterSpacing: 6,
     color: COLORS.brand,
     paddingVertical: 8,
+  },
+  noteEntry: {
+    minHeight: 96,
+    paddingVertical: 12,
+    textAlignVertical: 'top',
+  },
+  proofPicker: {
+    minHeight: 48,
+    borderRadius: 12,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  proofImage: {
+    width: '100%',
+    height: 220,
+    borderRadius: 16,
+    backgroundColor: COLORS.sunken,
+  },
+  proofLink: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    color: COLORS.brand,
   },
   timelineHeader: {
     fontFamily: 'Geist_600SemiBold',

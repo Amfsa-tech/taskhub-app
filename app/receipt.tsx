@@ -15,8 +15,9 @@ import { Ionicons } from '@expo/vector-icons';
 
 import ShieldCheck from '@/assets/icons/shield-check.svg';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
-import { useTask } from '@/lib/api/queries';
+import { useQuery } from '@tanstack/react-query';
 import { formatLongDate, formatNaira } from '@/lib/api/tasks';
+import { getTransactionReceipt } from '@/lib/api/wallet';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -32,37 +33,19 @@ const COLORS = {
   buttonGreyText: '#78788c',
 };
 
-/**
- * Receipt for a completed task, built from the real task record.
- *
- * Client-borne fee model: the customer paid `escrowAmount` (budget + fee), the
- * tasker received the full budget. The stored breakdown is preferred; older
- * tasks without one fall back to deriving it from the budget at the 10% rate.
- */
 export default function ReceiptScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const [copied, setCopied] = useState(false);
 
-  const taskQ = useTask(id);
-  const task = taskQ.data?.task;
-
-  const budget = task?.budget ?? 0;
-  const platformFee = task?.platformFee || Math.round(budget * 0.1);
-  const taskerReceived = task?.taskerPayout || budget;
-  const totalPaid = task?.escrowAmount || budget + platformFee;
-
-  const taskerName = task?.assignedTasker
-    ? [task.assignedTasker.firstName, task.assignedTasker.lastName].filter(Boolean).join(' ')
-    : '—';
-
-  const completedIso = task?.completedAt ?? task?.updatedAt ?? task?.createdAt ?? '';
-  const reference = task
-    ? `NTH-${completedIso.slice(0, 10).replace(/-/g, '')}-${(task._id ?? '')
-        .slice(-6)
-        .toUpperCase()}`
-    : '';
+  const receiptQ = useQuery({
+    queryKey: ['wallet', 'receipt', id],
+    queryFn: ({ signal }) => getTransactionReceipt(id!, signal),
+    enabled: Boolean(id),
+  });
+  const receipt = receiptQ.data?.data;
+  const reference = receipt?.receiptNo ?? '';
 
   const handleCopy = () => {
     try {
@@ -78,7 +61,7 @@ export default function ReceiptScreen() {
     router.push('/(main)/tasks');
   };
 
-  if (taskQ.isLoading) {
+  if (receiptQ.isLoading) {
     return (
       <View style={styles.container}>
         <StatusBar style="dark" />
@@ -90,16 +73,14 @@ export default function ReceiptScreen() {
     );
   }
 
-  if (!task || task.status !== 'completed') {
+  if (!receipt) {
     return (
       <View style={styles.container}>
         <StatusBar style="dark" />
         <ScreenHeader title="Receipt" />
         <View style={styles.centerState}>
           <Text style={styles.emptyText}>
-            {!task
-              ? 'This receipt could not be loaded.'
-              : 'A receipt is available once the task is completed.'}
+            This receipt could not be loaded. It may not belong to this account.
           </Text>
           <Pressable style={styles.btnSecondary} onPress={handleBackToTask}>
             <Text style={styles.btnSecondaryText}>Back To My Task</Text>
@@ -121,41 +102,45 @@ export default function ReceiptScreen() {
         showsVerticalScrollIndicator={false}>
         {/* Top Header Section */}
         <View style={styles.topSection}>
-          <Text style={styles.statusText}>Task Completed</Text>
-          <Text style={styles.amountText}>{formatNaira(totalPaid)}</Text>
-          <Text style={styles.dateText}>{formatLongDate(completedIso)}</Text>
+          <Text style={styles.statusText}>{receipt.status}</Text>
+          <Text style={styles.amountText}>{formatNaira(receipt.amount)}</Text>
+          <Text style={styles.dateText}>{formatLongDate(receipt.date)}</Text>
         </View>
 
         {/* Details Card */}
         <View style={styles.card}>
           <View style={styles.row}>
             <Text style={styles.label}>Task</Text>
-            <Text style={styles.value}>{task.title}</Text>
+            <Text style={styles.value}>{receipt.taskTitle || receipt.description || 'Transaction'}</Text>
           </View>
           <View style={styles.row}>
-            <Text style={styles.label}>Tasker</Text>
-            <Text style={styles.value}>{taskerName}</Text>
+            <Text style={styles.label}>Counterparty</Text>
+            <Text style={styles.value}>{receipt.counterparty || 'TaskHub'}</Text>
           </View>
           <View style={styles.row}>
-            <Text style={styles.label}>Posted</Text>
-            <Text style={styles.value}>{formatLongDate(task.createdAt)}</Text>
+            <Text style={styles.label}>Created</Text>
+            <Text style={styles.value}>{formatLongDate(receipt.createdAt || receipt.date)}</Text>
           </View>
           <View style={styles.row}>
-            <Text style={styles.label}>Completed</Text>
-            <Text style={styles.value}>{formatLongDate(completedIso)}</Text>
+            <Text style={styles.label}>Processed</Text>
+            <Text style={styles.value}>{formatLongDate(receipt.date)}</Text>
           </View>
           <View style={styles.row}>
             <Text style={styles.label}>Payment Method</Text>
-            <Text style={styles.value}>TaskHub Wallet</Text>
+            <Text style={styles.value}>{receipt.provider || 'TaskHub Wallet'}</Text>
           </View>
-          <View style={styles.row}>
-            <Text style={styles.label}>Platform Fee</Text>
-            <Text style={styles.valueBold}>{formatNaira(platformFee)}</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.label}>Tasker Received</Text>
-            <Text style={styles.valueBold}>{formatNaira(taskerReceived)}</Text>
-          </View>
+          {receipt.platformFee != null && (
+            <View style={styles.row}>
+              <Text style={styles.label}>Platform Fee</Text>
+              <Text style={styles.valueBold}>{formatNaira(receipt.platformFee)}</Text>
+            </View>
+          )}
+          {receipt.taskerReceived != null && (
+            <View style={styles.row}>
+              <Text style={styles.label}>Tasker Received</Text>
+              <Text style={styles.valueBold}>{formatNaira(receipt.taskerReceived)}</Text>
+            </View>
+          )}
         </View>
 
         {/* Escrow Badge */}
@@ -164,8 +149,8 @@ export default function ReceiptScreen() {
             <ShieldCheck width={20} height={20} />
           </View>
           <View style={styles.escrowTextCol}>
-            <Text style={styles.escrowTitle}>Escrow Released</Text>
-            <Text style={styles.escrowSubtitle}>Payment was protected by TaskHub Escrow</Text>
+            <Text style={styles.escrowTitle}>Verified Transaction</Text>
+            <Text style={styles.escrowSubtitle}>This receipt was generated from TaskHub records</Text>
           </View>
         </View>
 

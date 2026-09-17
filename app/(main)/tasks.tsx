@@ -45,7 +45,7 @@ import {
 import { deleteBid, respondToHireRequest, updateBid, type TaskerBid } from '@/lib/api/bids';
 import { createOrGetConversation } from '@/lib/api/chat';
 import {
-  completeTaskerTask,
+  submitTaskerCompletion,
   formatNaira,
   formatRelativeTime,
   formatShortDate,
@@ -1066,6 +1066,7 @@ type TaskerJob = {
   clientAvatar?: string;
   /** True once this tasker has rated the client on a completed job. */
   clientRated?: boolean;
+  taskStatus?: Task['status'];
 };
 
 function clientNameOf(task?: Task | null): string {
@@ -1082,6 +1083,7 @@ function clientNameOf(task?: Task | null): string {
  */
 function segmentsFor(status: Task['status']): { total: number; active: number } {
   if (status === 'completed') return { total: 4, active: 4 };
+  if (status === 'awaiting-confirmation') return { total: 4, active: 4 };
   if (status === 'in-progress') return { total: 4, active: 3 };
   return { total: 4, active: 2 };
 }
@@ -1096,6 +1098,7 @@ function taskToJob(task: Task): TaskerJob {
     clientAvatar:
       task.user && typeof task.user !== 'string' ? task.user.profilePicture : undefined,
     amount: task.budget,
+    taskStatus: task.status,
   };
 
   if (task.status === 'completed') {
@@ -1166,7 +1169,7 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
   const [editBidVisible, setEditBidVisible] = useState(false);
   const [editAmount, setEditAmount] = useState('');
   const [editMessage, setEditMessage] = useState('');
-  const [completionCode, setCompletionCode] = useState('');
+  const [completionNote, setCompletionNote] = useState('');
 
   const queryClient = useQueryClient();
   const assigned = useTaskerTasks();
@@ -1200,25 +1203,24 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
       refreshJobs();
       Alert.alert(
         'Task started',
-        'The customer has been sent a 6-digit completion code. Ask them for it when you finish — entering it releases your payment.',
+        'Submit the finished work when it is ready. Payment remains in escrow until the customer confirms completion.',
       );
     },
     onError: (e) => showError(e, 'Could not start the task.'),
   });
 
   const completeMutation = useMutation({
-    mutationFn: ({ taskId, code }: { taskId: string; code: string }) =>
-      completeTaskerTask(taskId, code),
+    mutationFn: ({ taskId, note }: { taskId: string; note: string }) =>
+      submitTaskerCompletion(taskId, note),
     onSuccess: () => {
       refreshJobs();
       queryClient.invalidateQueries({ queryKey: queryKeys.taskerBalance() });
       queryClient.invalidateQueries({ queryKey: queryKeys.taskerTransactions() });
       setCompletionSheetVisible(false);
-      setCompletionCode('');
+      setCompletionNote('');
       setRequestSentVisible(true);
     },
-    // A wrong code comes back as a 400 with a specific message — show it verbatim.
-    onError: (e) => showError(e, 'Could not complete the task.'),
+    onError: (e) => showError(e, 'Could not submit the completed work.'),
   });
 
   const hireResponseMutation = useMutation({
@@ -1408,7 +1410,7 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
             </View>
             {job.bidText && (
               <View style={styles.textBox}>
-                <Text style={styles.textBoxText}>"{job.bidText}"</Text>
+                <Text style={styles.textBoxText}>&ldquo;{job.bidText}&rdquo;</Text>
               </View>
             )}
             <View style={styles.buttonRow}>
@@ -1440,7 +1442,7 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
             </View>
             {job.invitationText && (
               <View style={styles.textBox}>
-                <Text style={styles.textBoxText}>"{job.invitationText}"</Text>
+                <Text style={styles.textBoxText}>&ldquo;{job.invitationText}&rdquo;</Text>
               </View>
             )}
             <View style={styles.buttonRow}>
@@ -1524,7 +1526,7 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
             </View>
             {job.reviewText && (
               <View style={styles.textBox}>
-                <Text style={styles.textBoxText}>"{job.reviewText}"</Text>
+                <Text style={styles.textBoxText}>&ldquo;{job.reviewText}&rdquo;</Text>
               </View>
             )}
             <View style={styles.buttonRow}>
@@ -1684,7 +1686,7 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
             </View>
             <Text style={styles.reminderTitle}>Reminder Sent</Text>
             <Text style={styles.reminderSubtitle}>
-              We've notified Sarah K.. You'll receive a notification when they respond.
+              We&apos;ve notified Sarah K.. You&apos;ll receive a notification when they respond.
             </Text>
           </View>
         </Pressable>
@@ -1778,14 +1780,14 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
                   <Text style={styles.sheetButtonText}>Start Task</Text>
                 )}
               </Pressable>
-            ) : (selectedJob?.progressSegments?.active ?? 2) === 3 ? (
+            ) : selectedJob?.taskStatus === 'in-progress' ? (
               <Pressable
                 style={[styles.sheetButton, { backgroundColor: '#0d6639' }]}
                 onPress={() => {
                   setStatusSheetVisible(false);
                   setCompletionSheetVisible(true);
                 }}>
-                <Text style={styles.sheetButtonText}>Task Started</Text>
+                <Text style={styles.sheetButtonText}>Submit Completed Work</Text>
               </Pressable>
             ) : (
               <Pressable
@@ -1803,10 +1805,10 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
         <Pressable style={styles.sheetBackdrop} onPress={() => setCompletionSheetVisible(false)}>
           <Pressable style={[styles.bottomSheet, { paddingBottom: insets.bottom + 16 }]} onPress={() => { }}>
             <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>Complete Task</Text>
+            <Text style={styles.sheetTitle}>Submit Completed Work</Text>
             <Text style={styles.sheetSubtitle}>
-              Ask the customer for the 6-digit completion code on their tracking screen. Entering
-              it here finishes the task and releases your payment from escrow immediately.
+              Tell the customer what was completed. They will review it and confirm before escrow
+              is released.
             </Text>
 
             {/* Job Details Card inside Sheet */}
@@ -1817,12 +1819,12 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
 
             <TextInput
               style={styles.codeInput}
-              value={completionCode}
-              onChangeText={(t) => setCompletionCode(t.replace(/\D/g, '').slice(0, 6))}
-              placeholder="000000"
+              value={completionNote}
+              onChangeText={setCompletionNote}
+              placeholder="What did you complete?"
               placeholderTextColor="#9a9ab0"
-              keyboardType="number-pad"
-              maxLength={6}
+              multiline
+              maxLength={1000}
               autoFocus
             />
 
@@ -1831,18 +1833,18 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
               style={[
                 styles.sheetButton,
                 { backgroundColor: COLORS.brand },
-                (completionCode.length !== 6 || completeMutation.isPending) && { opacity: 0.5 },
+                completeMutation.isPending && { opacity: 0.5 },
               ]}
-              disabled={completionCode.length !== 6 || completeMutation.isPending}
+              disabled={completeMutation.isPending}
               onPress={() => {
                 if (selectedJob?.taskId) {
-                  completeMutation.mutate({ taskId: selectedJob.taskId, code: completionCode });
+                  completeMutation.mutate({ taskId: selectedJob.taskId, note: completionNote });
                 }
               }}>
               {completeMutation.isPending ? (
                 <ActivityIndicator color="#ffffff" />
               ) : (
-                <Text style={styles.sheetButtonText}>Complete & get paid</Text>
+                <Text style={styles.sheetButtonText}>Submit for confirmation</Text>
               )}
             </Pressable>
 
@@ -1850,7 +1852,7 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
               style={styles.btnNotYet}
               onPress={() => {
                 setCompletionSheetVisible(false);
-                setCompletionCode('');
+                setCompletionNote('');
               }}>
               <Text style={styles.btnNotYetText}>Not Yet</Text>
             </Pressable>
@@ -1862,9 +1864,9 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
       <Modal visible={requestSentVisible} transparent animationType="fade" onRequestClose={() => setRequestSentVisible(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setRequestSentVisible(false)}>
           <View style={styles.successDialog}>
-            <Text style={styles.dialogTitle}>Task Completed</Text>
+            <Text style={styles.dialogTitle}>Work Submitted</Text>
             <Text style={styles.dialogSubtitle}>
-              Payment has been released from escrow to your wallet.
+              The customer has been notified. Payment remains in escrow until they confirm the work.
             </Text>
             <Pressable
               style={styles.dialogButton}
@@ -1881,7 +1883,7 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
           <View style={styles.successDialog}>
             <Text style={styles.dialogTitle}>Decline Invitation?</Text>
             <Text style={styles.dialogSubtitle}>
-              Are you sure you want to decline "{selectedJob?.title}" from {selectedJob?.clientName}? This can't be undone.
+              Are you sure you want to decline &ldquo;{selectedJob?.title}&rdquo; from {selectedJob?.clientName}? This can&apos;t be undone.
             </Text>
 
             <Pressable
@@ -1998,7 +2000,7 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
                 </View>
                 <View style={styles.stepInfo}>
                   <Text style={styles.stepTitle}>Update progress</Text>
-                  <Text style={styles.stepSubtitle}>Use the "Update" button on the card to move through task stages.</Text>
+                  <Text style={styles.stepSubtitle}>Use the &ldquo;Update&rdquo; button on the card to move through task stages.</Text>
                 </View>
               </View>
             </View>

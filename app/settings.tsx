@@ -165,14 +165,35 @@ export default function SettingsScreen() {
               label="Blocked user"
               onPress={() => router.push('/blocked-users')}
             />
+            <View style={styles.divider} />
+            <SettingRow
+              icon="notifications-outline"
+              iconBg="#f3eeff"
+              iconColor={COLORS.brand}
+              label="Notification preferences"
+              onPress={isTasker ? undefined : () => router.push('/notification-preferences' as any)}
+              value={isTasker ? 'User accounts only' : undefined}
+              showChevron={!isTasker}
+            />
           </View>
         </View>
 
-        {/* Security group — verification only, so taskers only. Device
-            sessions were removed: the backend has no session model. */}
+        <View style={styles.section}>
+          <Text style={styles.sectionHeader}>SECURITY</Text>
+          <View style={styles.groupCard}>
+            <SettingRow
+              icon="phone-portrait-outline"
+              iconBg="#f3eeff"
+              iconColor={COLORS.brand}
+              label="Device sessions"
+              onPress={() => router.push('/device-sessions' as any)}
+            />
+          </View>
+        </View>
+
         {isTasker && (
           <View style={styles.section}>
-            <Text style={styles.sectionHeader}>SECURITY</Text>
+            <Text style={styles.sectionHeader}>VERIFICATION</Text>
             <View style={styles.groupCard}>
               <SettingRow
                 icon="shield-checkmark-outline"
@@ -238,6 +259,15 @@ export default function SettingsScreen() {
               label="Log Out"
               danger
               onPress={handleLogout}
+            />
+            <View style={styles.divider} />
+            <SettingRow
+              icon="trash-outline"
+              iconBg="#fff1f1"
+              iconColor={COLORS.danger}
+              label="Delete Account"
+              danger
+              onPress={() => router.push('/deactivate-account' as any)}
             />
           </View>
         </View>

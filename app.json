@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "TaskHub",
+    "name": "Taskhub Connect",
     "slug": "taskhub-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -17,7 +17,7 @@
       }
     },
     "android": {
-      "package": "com.amfsatech.taskhub",
+      "package": "com.taskhub.connect",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
+import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -13,7 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/taskhub/screen-header';
-import { useTaskerTransactionsPaged, useWalletTransactionsPaged } from '@/lib/api/queries';
+import { useTaskerTransactionsPaged, useTaskerWithdrawals, useWalletTransactionsPaged } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth/auth-context';
 import { formatLongDate, formatNaira } from '@/lib/api/tasks';
 import {
@@ -48,6 +49,7 @@ const FILTERS: { label: string; purpose?: WalletTransactionPurpose }[] = [
 ];
 
 export default function TransactionHistoryScreen() {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const [filterIndex, setFilterIndex] = useState(0);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -62,10 +64,26 @@ export default function TransactionHistoryScreen() {
   const activeFilter = isTasker ? FILTERS[0] : FILTERS[filterIndex];
   const userTxQ = useWalletTransactionsPaged(activeFilter.purpose, !isTasker);
   const taskerTxQ = useTaskerTransactionsPaged(isTasker);
+  const withdrawalsQ = useTaskerWithdrawals(isTasker);
   const txQ = isTasker ? taskerTxQ : userTxQ;
 
-  const transactions = txQ.data?.pages.flatMap((p) => p.transactions) ?? [];
-  const totalRecords = txQ.data?.pages[0]?.totalRecords ?? 0;
+  const ledgerTransactions = txQ.data?.pages.flatMap((p) => p.transactions) ?? [];
+  const withdrawalTransactions = (withdrawalsQ.data?.withdrawals ?? []).map((withdrawal) => ({
+    _id: withdrawal._id,
+    amount: withdrawal.amount,
+    type: 'debit' as const,
+    description: withdrawal.payoutMethod === 'stellar_crypto'
+      ? 'Stellar withdrawal'
+      : `Withdrawal to ${withdrawal.bankDetails?.bankName || 'bank account'}`,
+    status: withdrawal.status === 'paid' ? 'success' as const : withdrawal.status === 'rejected' ? 'failed' as const : 'pending' as const,
+    reference: withdrawal._id,
+    paymentPurpose: 'withdrawal',
+    createdAt: withdrawal.createdAt,
+    isWithdrawal: true,
+  }));
+  const transactions = [...ledgerTransactions, ...withdrawalTransactions]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const totalRecords = (txQ.data?.pages[0]?.totalRecords ?? 0) + (withdrawalsQ.data?.totalRecords ?? 0);
 
   return (
     <View style={styles.container}>
@@ -104,8 +122,8 @@ export default function TransactionHistoryScreen() {
         keyExtractor={(item) => item._id}
         contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 20 }]}
         showsVerticalScrollIndicator={false}
-        refreshing={txQ.isRefetching && !txQ.isFetchingNextPage}
-        onRefresh={() => txQ.refetch()}
+        refreshing={(txQ.isRefetching || withdrawalsQ.isRefetching) && !txQ.isFetchingNextPage}
+        onRefresh={() => Promise.all([txQ.refetch(), withdrawalsQ.refetch()])}
         onEndReachedThreshold={0.4}
         onEndReached={() => {
           if (txQ.hasNextPage && !txQ.isFetchingNextPage) txQ.fetchNextPage();
@@ -141,7 +159,12 @@ export default function TransactionHistoryScreen() {
           const credit = item.type === 'credit';
 
           return (
-            <View style={styles.card}>
+            <Pressable
+              style={({ pressed }) => [styles.card, pressed && styles.btnPressed]}
+              disabled={item.isWithdrawal}
+              onPress={() =>
+                router.push({ pathname: '/receipt', params: { id: item._id } })
+              }>
               {index > 0 && <View style={styles.divider} />}
               <View style={styles.transactionRow}>
                 <View style={[styles.iconBox, { backgroundColor: icon.bg }]}>
@@ -161,7 +184,7 @@ export default function TransactionHistoryScreen() {
                   <Text style={[styles.txStatus, { color: status.color }]}>{status.label}</Text>
                 </View>
               </View>
-            </View>
+            </Pressable>
           );
         }}
       />

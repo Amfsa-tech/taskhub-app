@@ -21,6 +21,40 @@ export interface SupportRequestResponse {
   message: string;
 }
 
+export interface SupportContact {
+  email: string;
+  phone: string;
+  liveChatEnabled: boolean;
+  liveChatUrl: string;
+}
+
+export interface FaqItem {
+  _id: string;
+  category: string;
+  question: string;
+  answer: string;
+  order: number;
+}
+
+export interface FaqCategory {
+  category: string;
+  faqs: FaqItem[];
+}
+
+export function getSupportContact(signal?: AbortSignal) {
+  return api.get<{ status: string; data: { support: SupportContact } }>('/api/support/contact', {
+    auth: false,
+    signal,
+  });
+}
+
+export function getFaqs(signal?: AbortSignal) {
+  return api.get<{
+    status: string;
+    data: { total: number; grouped: Record<string, FaqItem[]>; categories: FaqCategory[] };
+  }>('/api/faqs', { auth: false, signal });
+}
+
 export function submitSupportRequest(payload: SupportRequestPayload) {
   // No token required, and sending one changes nothing server-side.
   return api.post<SupportRequestResponse>('/api/support', payload, { auth: false });

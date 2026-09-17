@@ -41,6 +41,33 @@ export interface WalletTransaction {
   createdAt: string;
   previousBalance?: number;
   balanceAfter?: number;
+  /** Synthetic history row backed by the withdrawal ledger, not the transaction ledger. */
+  isWithdrawal?: boolean;
+}
+
+export interface TransactionReceipt {
+  receiptNo: string;
+  status: string;
+  type: 'credit' | 'debit';
+  purpose?: string;
+  description?: string;
+  taskTitle?: string;
+  amount: number;
+  currency?: string;
+  balanceAfter?: number | null;
+  provider?: string;
+  counterparty?: string;
+  taskerName?: string;
+  userName?: string;
+  platformFee?: number | null;
+  taskerReceived?: number | null;
+  date: string;
+  createdAt?: string;
+}
+
+export interface TransactionReceiptResponse {
+  status: string;
+  data: TransactionReceipt;
 }
 
 export interface TransactionsResponse {
@@ -79,6 +106,30 @@ export function getWalletTransactions(
   const qs = usp.toString();
   return api.get<TransactionsResponse>(
     `/api/wallet/user/transactions${qs ? `?${qs}` : ''}`,
+    { signal },
+  );
+}
+
+/** Official server-generated receipt. `id` may be a transaction, reference, or linked task id. */
+export function getTransactionReceipt(id: string, signal?: AbortSignal) {
+  return api.get<TransactionReceiptResponse>(
+    `/api/wallet/transactions/${encodeURIComponent(id)}/receipt`,
+    { signal },
+  );
+}
+
+export interface SpendingAnalytics {
+  totalSpent: number;
+  totalFunded: number;
+  net: number;
+  transactionCount: number;
+  breakdownByPurpose: Array<{ purpose: string; total: number; count: number }>;
+  monthly: Array<{ month: string; spent: number; funded: number }>;
+}
+
+export function getSpendingAnalytics(signal?: AbortSignal) {
+  return api.get<{ status: string; data: SpendingAnalytics }>(
+    '/api/wallet/user/spending-analytics',
     { signal },
   );
 }
@@ -165,6 +216,32 @@ export interface BankAccount {
   accountName: string;
 }
 
+export interface SavedBankAccount extends BankAccount {
+  _id: string;
+  bankCode?: string;
+  isDefault: boolean;
+}
+
+export function getSavedBankAccounts(signal?: AbortSignal) {
+  return api.get<{ status: string; results: number; data: SavedBankAccount[] }>(
+    '/api/wallet/tasker/banks',
+    { signal },
+  );
+}
+
+export function addSavedBankAccount(payload: Omit<SavedBankAccount, '_id'>) {
+  return api.post<{ status: string; message: string; data: SavedBankAccount[] }>(
+    '/api/wallet/tasker/banks',
+    payload,
+  );
+}
+
+export function deleteSavedBankAccount(bankId: string) {
+  return api.delete<{ status: string; message: string; data: SavedBankAccount[] }>(
+    `/api/wallet/tasker/banks/${bankId}`,
+  );
+}
+
 /** `data` is `null` when no account has been saved yet. */
 export interface BankAccountResponse {
   status: string;
@@ -207,8 +284,7 @@ export function setTaskerBankAccount(payload: SetBankAccountPayload) {
 
 // ---- Withdrawals (TASKER side) ----
 //
-// No screen calls these yet — there is no withdrawal UI. They're bound so the
-// contracts are recorded in one place when that screen gets built.
+// Tasker withdrawal contracts.
 
 export type PayoutMethod = 'bank_transfer' | 'stellar_crypto';
 
@@ -219,6 +295,8 @@ export interface WithdrawalPayload {
   payoutMethod?: PayoutMethod;
   /** Required when `payoutMethod` is `stellar_crypto`. */
   stellarAddress?: string;
+  /** Select one of the authenticated tasker's saved payout accounts. */
+  bankId?: string;
 }
 
 export interface WithdrawalResponse {
@@ -268,7 +346,33 @@ export function setupTransactionPin(payload: SetupPinPayload) {
 
 export interface StellarDepositInfoResponse {
   status: string;
-  data: unknown;
+  data: {
+    walletAddress: string;
+    memoId: string;
+    network: string;
+    exchangeRate?: number;
+  };
+}
+
+export interface WithdrawalRecord {
+  _id: string;
+  amount: number;
+  status: 'pending' | 'approved' | 'rejected' | 'paid';
+  payoutMethod: PayoutMethod;
+  bankDetails?: BankAccount;
+  stellarDetails?: { publicKey?: string };
+  createdAt: string;
+}
+
+export function getWithdrawalHistory(signal?: AbortSignal) {
+  return api.get<{
+    status: string;
+    results: number;
+    totalRecords: number;
+    totalPages: number;
+    currentPage: number;
+    withdrawals: WithdrawalRecord[];
+  }>('/api/wallet/tasker/withdrawals?limit=100', { signal });
 }
 
 /** XLM deposit address for the non-custodial funding bridge. No screen shows this. */

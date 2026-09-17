@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -15,8 +16,13 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { queryKeys, useBanks, useTaskerBankAccount } from '@/lib/api/queries';
-import { setTaskerBankAccount, type Bank } from '@/lib/api/wallet';
+import { queryKeys, useBanks, useSavedBankAccounts, useTaskerBankAccount } from '@/lib/api/queries';
+import {
+  addSavedBankAccount,
+  deleteSavedBankAccount,
+  setTaskerBankAccount,
+  type Bank,
+} from '@/lib/api/wallet';
 import { useAuth } from '@/lib/auth/auth-context';
 
 const COLORS = {
@@ -34,17 +40,9 @@ const COLORS = {
 };
 
 /**
- * Payout bank account — **tasker only**.
- *
- * Three things the previous mock got structurally wrong, all fixed here:
- *   1. The backend stores exactly **one** account (`Tasker.bankAccount` is a
- *      single embedded object). Saving replaces it; there is no delete endpoint.
- *      The old screen kept an array with add/remove.
- *   2. The **account name is not entered** — the backend resolves it with the
- *      payment gateway from the number + bank code. That resolution is the
- *      validation, so a typo fails loudly instead of saving a wrong name.
- *   3. Banks come from `GET /api/wallet/banks` because saving needs the bank
- *      `code`, which a hardcoded list of display names can't supply.
+ * Payout accounts — tasker only. New details are first verified through the
+ * gateway-backed legacy endpoint, then persisted in the backend's multi-bank
+ * collection. That keeps verification and account selection server-authoritative.
  */
 export default function BankAccountScreen() {
   const router = useRouter();
@@ -55,8 +53,10 @@ export default function BankAccountScreen() {
   const isTasker = accountType === 'tasker';
 
   const accountQ = useTaskerBankAccount(isTasker);
+  const savedBanksQ = useSavedBankAccounts(isTasker);
   const banksQ = useBanks(isTasker);
   const account = accountQ.data?.data ?? null;
+  const savedAccounts = savedBanksQ.data?.data ?? [];
 
   // UI state: 'list' | 'add'
   const [view, setView] = useState<'list' | 'add'>('list');
@@ -76,13 +76,22 @@ export default function BankAccountScreen() {
   const canSave = Boolean(selectedBank) && accountNumber.trim().length === 10;
 
   const save = useMutation({
-    mutationFn: () =>
-      setTaskerBankAccount({
+    mutationFn: async () => {
+      const verified = await setTaskerBankAccount({
         accountNumber: accountNumber.trim(),
         bankCode: (selectedBank as Bank).code,
-      }),
+      });
+      return addSavedBankAccount({
+        ...verified.data,
+        bankCode: (selectedBank as Bank).code,
+        isDefault: savedAccounts.length === 0,
+      });
+    },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.taskerBankAccount() });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.taskerBankAccount() }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.savedBankAccounts() }),
+      ]);
       setSelectedBank(null);
       setAccountNumber('');
       setShowSuccessModal(true);
@@ -91,6 +100,14 @@ export default function BankAccountScreen() {
         setView('list');
       }, 1600);
     },
+  });
+
+  const remove = useMutation({
+    mutationFn: deleteSavedBankAccount,
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.savedBankAccounts() }),
+    onError: (error) =>
+      Alert.alert('Could not remove account', error instanceof Error ? error.message : 'Please try again.'),
   });
 
   // Client accounts have no payout account to manage — every endpoint here
@@ -153,23 +170,47 @@ export default function BankAccountScreen() {
         {view === 'list' ? (
           // ─── List View ───
           <View style={styles.listSection}>
-            {accountQ.isLoading ? (
+            {savedBanksQ.isLoading || accountQ.isLoading ? (
               <View style={styles.successContainer}>
                 <ActivityIndicator color={COLORS.brand} />
               </View>
-            ) : accountQ.isError ? (
+            ) : savedBanksQ.isError && accountQ.isError ? (
               <View style={styles.successContainer}>
                 <Text style={styles.infoCardSub}>Couldn’t load your payout account.</Text>
                 <Pressable hitSlop={8} onPress={() => accountQ.refetch()}>
                   <Text style={styles.addBankText}>Retry</Text>
                 </Pressable>
               </View>
+            ) : savedAccounts.length > 0 ? (
+              savedAccounts.map((saved) => (
+                <View key={saved._id} style={styles.accountCard}>
+                  <View style={styles.accountDetails}>
+                    <Text style={styles.accountNo}>{saved.accountNumber}</Text>
+                    <Text style={styles.accountHolder}>{saved.accountName}</Text>
+                    <Text style={styles.bankNameLabel}>
+                      {saved.bankName}{saved.isDefault ? ' · Default' : ''}
+                    </Text>
+                  </View>
+                  <Pressable
+                    hitSlop={8}
+                    style={styles.deleteBtn}
+                    disabled={remove.isPending}
+                    onPress={() =>
+                      Alert.alert('Remove payout account?', 'It will no longer be available for withdrawals.', [
+                        { text: 'Keep', style: 'cancel' },
+                        { text: 'Remove', style: 'destructive', onPress: () => remove.mutate(saved._id) },
+                      ])
+                    }>
+                    <Ionicons name="trash-outline" size={20} color={COLORS.dangerText} />
+                  </Pressable>
+                </View>
+              ))
             ) : account ? (
               <View style={styles.accountCard}>
                 <View style={styles.accountDetails}>
                   <Text style={styles.accountNo}>{account.accountNumber}</Text>
                   <Text style={styles.accountHolder}>{account.accountName}</Text>
-                  <Text style={styles.bankNameLabel}>{account.bankName}</Text>
+                  <Text style={styles.bankNameLabel}>{account.bankName} · Legacy account</Text>
                 </View>
               </View>
             ) : (
@@ -178,10 +219,9 @@ export default function BankAccountScreen() {
               </View>
             )}
 
-            {/* One account per tasker: saving another replaces this one. */}
             <Pressable style={styles.addBankBox} onPress={() => setView('add')}>
               <Text style={styles.addBankText}>
-                {account ? 'Replace bank account' : 'Add bank account'}
+                Add bank account
               </Text>
             </Pressable>
           </View>

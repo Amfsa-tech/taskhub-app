@@ -14,9 +14,11 @@ import {
   getBanks,
   getTaskerBalance,
   getTaskerBankAccount,
+  getSavedBankAccounts,
   getTaskerTransactions,
   getWalletBalance,
   getWalletTransactions,
+  getWithdrawalHistory,
   type WalletTransactionPurpose,
 } from './wallet';
 import { getBidPaymentSummary, getTaskerBids, type BidStatus } from './bids';
@@ -30,6 +32,7 @@ import {
   getTaskMatches,
   getTasks,
   getTaskerFeed,
+  getTaskerPerformance,
   getTaskerTasks,
   getUserTasks,
   type Task,
@@ -62,6 +65,8 @@ export const queryKeys = {
   kycStatus: () => ['kyc', 'status'] as const,
   banks: () => ['wallet', 'banks'] as const,
   taskerBankAccount: () => ['wallet', 'tasker', 'bank-account'] as const,
+  taskerWithdrawals: () => ['wallet', 'tasker', 'withdrawals'] as const,
+  savedBankAccounts: () => ['wallet', 'tasker', 'saved-banks'] as const,
   paymentSummary: (bidId: string) => ['bids', 'payment-summary', bidId] as const,
   completionCode: (taskId: string) => ['tasks', 'completion-code', taskId] as const,
   // Tasker side
@@ -70,6 +75,7 @@ export const queryKeys = {
   taskerBids: (status?: BidStatus) => ['bids', 'tasker', status ?? 'all'] as const,
   taskerBalance: () => ['wallet', 'tasker', 'balance'] as const,
   taskerTransactions: () => ['wallet', 'tasker', 'transactions'] as const,
+  taskerPerformance: () => ['taskers', 'performance'] as const,
 };
 
 /** Tasks posted by the signed-in user. */
@@ -411,6 +417,47 @@ export function useTaskerTransactions(enabled = true) {
   return useQuery({
     queryKey: queryKeys.taskerTransactions(),
     queryFn: ({ signal }) => getTaskerTransactions({ limit: 50 }, signal),
+    enabled,
+  });
+}
+
+export function useSavedBankAccounts(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.savedBankAccounts(),
+    queryFn: ({ signal }) => getSavedBankAccounts(signal),
+    enabled,
+    retry: false,
+  });
+}
+
+export function useTaskerWithdrawals(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.taskerWithdrawals(),
+    queryFn: ({ signal }) => getWithdrawalHistory(signal),
+    enabled,
+    retry: false,
+  });
+}
+
+export function useInfiniteMessages(conversationId?: string) {
+  return useInfiniteQuery({
+    queryKey: [...queryKeys.messages(conversationId ?? ''), 'infinite'],
+    queryFn: ({ pageParam, signal }) =>
+      getMessages(conversationId as string, { limit: 30, before: pageParam as string | undefined }, signal),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) =>
+      last.hasMore && last.messages.length > 0
+        ? last.messages[0]?.createdAt
+        : undefined,
+    enabled: Boolean(conversationId),
+    refetchInterval: 5_000,
+  });
+}
+
+export function useTaskerPerformance(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.taskerPerformance(),
+    queryFn: ({ signal }) => getTaskerPerformance(signal),
     enabled,
   });
 }

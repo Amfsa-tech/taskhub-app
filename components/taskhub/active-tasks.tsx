@@ -1,6 +1,7 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { TaskCard } from '@/components/taskhub/task-card';
+import { useRouter } from 'expo-router';
 import { useUserTasks } from '@/lib/api/queries';
 import { isActiveTask, taskToCard } from '@/lib/api/tasks';
 
@@ -12,6 +13,7 @@ const COLORS = {
 };
 
 export function ActiveTasks({ onTaskPress }: { onTaskPress?: (taskId: string) => void }) {
+  const router = useRouter();
   const { data, isLoading, isError, refetch, isRefetching } = useUserTasks();
 
   const activeTasks = (data?.tasks ?? []).filter(isActiveTask);
@@ -20,7 +22,7 @@ export function ActiveTasks({ onTaskPress }: { onTaskPress?: (taskId: string) =>
     <View style={styles.section}>
       <View style={styles.header}>
         <Text style={styles.sectionTitle}>Your Active Tasks</Text>
-        <Pressable hitSlop={8} onPress={() => {}}>
+        <Pressable hitSlop={8} onPress={() => router.push('/(main)/tasks')}>
           <Text style={styles.viewAll}>View all</Text>
         </Pressable>
       </View>

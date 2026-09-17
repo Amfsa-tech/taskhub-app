@@ -18,7 +18,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/taskhub/screen-header';
-import { useTaskerBalance, useTaskerBankAccount } from '@/lib/api/queries';
+import { useSavedBankAccounts, useTaskerBalance, useTaskerBankAccount } from '@/lib/api/queries';
 import { formatNaira } from '@/lib/api/tasks';
 import { requestWithdrawal } from '@/lib/api/wallet';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -57,20 +57,37 @@ export default function WithdrawScreen() {
 
   const balanceQ = useTaskerBalance(isTasker);
   const bankQ = useTaskerBankAccount(isTasker);
+  const savedBanksQ = useSavedBankAccounts(isTasker);
 
   const [amountInput, setAmountInput] = useState('');
+  const [method, setMethod] = useState<'bank_transfer' | 'stellar_crypto'>('bank_transfer');
+  const [stellarAddress, setStellarAddress] = useState('');
+  const [selectedBankId, setSelectedBankId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const available = balanceQ.data?.data?.availableToWithdraw ?? 0;
   const pendingAmount = balanceQ.data?.data?.pendingWithdrawals ?? 0;
   const account = bankQ.data?.data ?? null;
+  const savedBanks = savedBanksQ.data?.data ?? [];
+  const selectedBank =
+    savedBanks.find((bank) => bank._id === selectedBankId) ||
+    savedBanks.find((bank) => bank.isDefault) ||
+    savedBanks[0] ||
+    null;
+  const hasPayoutAccount = Boolean(selectedBank || account);
 
   // The backend allows one open request at a time; a non-zero pending total
   // means the next request would be rejected, so say that up front.
   const hasPendingWithdrawal = pendingAmount > 0;
 
   const withdrawMutation = useMutation({
-    mutationFn: (amount: number) => requestWithdrawal({ amount }),
+    mutationFn: (amount: number) =>
+      requestWithdrawal({
+        amount,
+        payoutMethod: method,
+        bankId: method === 'bank_transfer' ? selectedBank?._id : undefined,
+        stellarAddress: method === 'stellar_crypto' ? stellarAddress.trim() : undefined,
+      }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['wallet'] });
       Alert.alert(
@@ -99,10 +116,14 @@ export default function WithdrawScreen() {
       setError(`That's more than your available balance of ${formatNaira(available)}.`);
       return;
     }
+    if (method === 'stellar_crypto' && !stellarAddress.trim()) {
+      setError('Enter the Stellar destination address.');
+      return;
+    }
     withdrawMutation.mutate(amount);
   };
 
-  const loading = balanceQ.isLoading || bankQ.isLoading;
+  const loading = balanceQ.isLoading || bankQ.isLoading || savedBanksQ.isLoading;
   const submitting = withdrawMutation.isPending;
 
   if (!isTasker) {
@@ -157,20 +178,57 @@ export default function WithdrawScreen() {
 
               {/* Destination account */}
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Paying out to</Text>
-                {account ? (
+                <Text style={styles.sectionTitle}>Payout method</Text>
+                <View style={styles.methodRow}>
+                  <Pressable style={[styles.methodButton, method === 'bank_transfer' && styles.methodButtonActive]} onPress={() => setMethod('bank_transfer')}><Text style={[styles.methodText, method === 'bank_transfer' && styles.methodTextActive]}>Bank account</Text></Pressable>
+                  <Pressable style={[styles.methodButton, method === 'stellar_crypto' && styles.methodButtonActive]} onPress={() => setMethod('stellar_crypto')}><Text style={[styles.methodText, method === 'stellar_crypto' && styles.methodTextActive]}>Stellar</Text></Pressable>
+                </View>
+                {method === 'stellar_crypto' ? (
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Stellar public address"
+                    placeholderTextColor={COLORS.placeholder}
+                    value={stellarAddress}
+                    onChangeText={setStellarAddress}
+                    autoCapitalize="characters"
+                    autoCorrect={false}
+                  />
+                ) : selectedBank ? (
+                  <View style={styles.accountList}>
+                    {savedBanks.map((bank) => (
+                      <Pressable
+                        key={bank._id}
+                        style={[styles.accountCard, bank._id === selectedBank._id && styles.accountCardSelected]}
+                        onPress={() => setSelectedBankId(bank._id)}>
+                        <View style={styles.bankIcon}>
+                          <Ionicons name="business-outline" size={20} color={COLORS.brand} />
+                        </View>
+                        <View style={styles.accountInfo}>
+                          <Text style={styles.accountName}>{bank.accountName}</Text>
+                          <Text style={styles.accountMeta}>{bank.bankName} • {bank.accountNumber}</Text>
+                        </View>
+                        <Ionicons
+                          name={bank._id === selectedBank._id ? 'radio-button-on' : 'radio-button-off'}
+                          size={21}
+                          color={COLORS.brand}
+                        />
+                      </Pressable>
+                    ))}
+                    <Pressable hitSlop={8} onPress={() => router.push('/bank-account')}>
+                      <Text style={styles.changeLink}>Manage payout accounts</Text>
+                    </Pressable>
+                  </View>
+                ) : account ? (
                   <View style={styles.accountCard}>
                     <View style={styles.bankIcon}>
                       <Ionicons name="business-outline" size={20} color={COLORS.brand} />
                     </View>
                     <View style={styles.accountInfo}>
                       <Text style={styles.accountName}>{account.accountName}</Text>
-                      <Text style={styles.accountMeta}>
-                        {account.bankName} • {account.accountNumber}
-                      </Text>
+                      <Text style={styles.accountMeta}>{account.bankName} • {account.accountNumber}</Text>
                     </View>
                     <Pressable hitSlop={8} onPress={() => router.push('/bank-account')}>
-                      <Text style={styles.changeLink}>Change</Text>
+                      <Text style={styles.changeLink}>Manage</Text>
                     </Pressable>
                   </View>
                 ) : (
@@ -200,7 +258,7 @@ export default function WithdrawScreen() {
                     if (error) setError(null);
                   }}
                   keyboardType="numeric"
-                  editable={!hasPendingWithdrawal && !!account}
+                  editable={!hasPendingWithdrawal && (method === 'stellar_crypto' || hasPayoutAccount)}
                 />
                 <Text style={styles.hint}>
                   Requests are reviewed before payout — the amount is reserved from your balance
@@ -216,10 +274,10 @@ export default function WithdrawScreen() {
                 style={({ pressed }) => [
                   styles.button,
                   pressed && styles.pressed,
-                  (submitting || hasPendingWithdrawal || !account) && styles.buttonDisabled,
+                  (submitting || hasPendingWithdrawal || (method === 'bank_transfer' && !hasPayoutAccount)) && styles.buttonDisabled,
                 ]}
                 onPress={submit}
-                disabled={submitting || hasPendingWithdrawal || !account}>
+                disabled={submitting || hasPendingWithdrawal || (method === 'bank_transfer' && !hasPayoutAccount)}>
                 {submitting ? (
                   <ActivityIndicator color={COLORS.onBrand} />
                 ) : (
@@ -309,6 +367,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
   },
+  methodRow: { flexDirection: 'row', gap: 10 },
+  methodButton: { flex: 1, height: 44, borderRadius: 12, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.surface },
+  methodButtonActive: { borderColor: COLORS.brand, backgroundColor: COLORS.brandSubtle },
+  methodText: { fontFamily: 'Geist_600SemiBold', fontSize: 14, color: COLORS.textSecondary },
+  methodTextActive: { color: COLORS.brand },
+  accountList: { gap: 10 },
+  accountCardSelected: { borderColor: COLORS.brand },
   bankIcon: {
     width: 40,
     height: 40,

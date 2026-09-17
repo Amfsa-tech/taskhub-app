@@ -32,6 +32,7 @@ type ChatRowView = {
   time: string;
   unread: number;
   avatar: string;
+  taskerId?: string;
 };
 
 function ChatRow({ chat, onPress }: { chat: ChatRowView; onPress: () => void }) {
@@ -87,6 +88,7 @@ export default function MessagesScreen() {
       time: formatRelativeTime(c.lastMessageAt ?? c.updatedAt),
       unread: unreadFor(c, accountType),
       avatar,
+      taskerId: c.tasker?._id,
     };
   });
 
@@ -136,7 +138,7 @@ export default function MessagesScreen() {
               key={chat.id}
               chat={chat}
               onPress={() =>
-                router.push({ pathname: '/chat', params: { id: chat.id, name: chat.name } })
+                router.push({ pathname: '/chat', params: { id: chat.id, name: chat.name, avatar: chat.avatar, taskerId: chat.taskerId ?? '' } })
               }
             />
           ))}

@@ -13,9 +13,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useTaskerBids, useTaskerTasks, useTaskerTransactions } from '@/lib/api/queries';
+import { useTaskerPerformance, useTaskerTransactions } from '@/lib/api/queries';
 import { formatNaira } from '@/lib/api/tasks';
-import { useAuth } from '@/lib/auth/auth-context';
 
 
 
@@ -49,11 +48,9 @@ const MONTH_LABELS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'S
 /**
  * Earnings buckets derived from the tasker's own transaction list.
  *
- * There is **no analytics endpoint** — no aggregate, no per-period totals — so
- * everything on this screen is computed from `GET /api/wallet/tasker/transactions`
- * and `GET /api/tasks/tasker/tasks`. That has one consequence worth keeping in
- * mind: those lists are paged, so a very long history is truncated to what was
- * fetched. Short windows are exact; the 1-year view can undercount.
+ * Period buckets come from the tasker's authoritative transaction list. KPI
+ * totals below come from `/api/taskers/performance`, avoiding client-side
+ * guesses about accepted, completed, repeated, and rated work.
  */
 function bucketEarnings(
   transactions: { amount: number; type: string; status: string; createdAt: string }[],
@@ -113,61 +110,48 @@ export default function PerformanceScreen() {
   const [dropPos, setDropPos] = useState({ top: 0, right: 0 });
   const periodBtnRef = useRef<View>(null);
 
-  const { user } = useAuth();
   const transactionsQ = useTaskerTransactions();
-  const tasksQ = useTaskerTasks();
-  const bidsQ = useTaskerBids();
+  const performanceQ = useTaskerPerformance();
 
   const transactions = transactionsQ.data?.transactions ?? [];
-  const tasks = tasksQ.data?.tasks ?? [];
-  const bids = bidsQ.data?.bids ?? [];
+  const performance = performanceQ.data?.data;
 
   const bars = bucketEarnings(transactions, period, new Date());
   const periodTotal = bars.reduce((sum, b) => sum + b.value, 0);
   const maxBar = Math.max(...bars.map((b) => b.value), 1);
 
-  const completed = tasks.filter((t) => t.status === 'completed').length;
-  const cancelled = tasks.filter((t) => t.status === 'cancelled').length;
-  const finished = completed + cancelled;
-
-  const acceptedBids = bids.filter((b) => b.status === 'accepted').length;
-
-  // Only the metrics the data can actually support. Response time, profile
-  // views, repeat customers and invitation rate were on this screen as fixed
-  // strings; nothing in the backend records them, so they are gone rather than
-  // shown as invented numbers.
   const stats = [
     {
       label: 'Jobs completed',
-      value: String(completed),
+      value: performance ? String(performance.kpis.jobsCompleted) : '—',
       icon: 'briefcase-outline',
       iconColor: COLORS.brand,
       bg: COLORS.brandSubtle,
     },
     {
       label: 'Completion rate',
-      value: finished > 0 ? `${Math.round((completed / finished) * 100)}%` : '—',
+      value: performance ? `${Math.round(performance.kpis.completionRate)}%` : '—',
       icon: 'trending-up',
       iconColor: COLORS.brand,
       bg: COLORS.brandSubtle,
     },
     {
-      label: 'Bids won',
-      value: bids.length > 0 ? `${Math.round((acceptedBids / bids.length) * 100)}%` : '—',
+      label: 'Acceptance rate',
+      value: performance ? `${Math.round(performance.kpis.acceptanceRate)}%` : '—',
       icon: 'check-circle-outline',
       iconColor: COLORS.successText,
       bg: COLORS.successBg,
     },
     {
       label: 'Average rating',
-      value: user?.averageRating ? `${user.averageRating.toFixed(1)}/5` : '—',
+      value: performance ? `${performance.kpis.averageRating.toFixed(1)}/5` : '—',
       icon: 'star-outline',
       iconColor: '#e07b00',
       bg: '#fff4e5',
     },
   ];
 
-  const loading = transactionsQ.isLoading || tasksQ.isLoading || bidsQ.isLoading;
+  const loading = transactionsQ.isLoading || performanceQ.isLoading;
 
   return (
     <View style={styles.container}>

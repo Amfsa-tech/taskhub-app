@@ -56,7 +56,7 @@ export function HireAgainModal({ visible, onClose, taskerName }: Props) {
 
           {/* Subtitle */}
           <Text style={styles.subtitle}>
-            Choose how you'd like to work with {firstName}. You'll discuss the details first, then confirm the task before any payment is made.
+            Choose how you&apos;d like to work with {firstName}. You&apos;ll discuss the details first, then confirm the task before any payment is made.
           </Text>
 
           {/* Options */}

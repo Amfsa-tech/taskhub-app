@@ -13,7 +13,13 @@ import type {
 import type { PickedImage } from '@/lib/image-picker';
 import { api } from './client';
 
-export type TaskStatus = 'open' | 'assigned' | 'in-progress' | 'completed' | 'cancelled';
+export type TaskStatus =
+  | 'open'
+  | 'assigned'
+  | 'in-progress'
+  | 'awaiting-confirmation'
+  | 'completed'
+  | 'cancelled';
 
 export type TaskEscrowStatus =
   | 'not_held'
@@ -33,6 +39,19 @@ export interface CategoryRef {
 export interface TaskImage {
   url: string;
   publicId: string;
+}
+
+export interface CompletionSubmission {
+  note?: string;
+  submittedBy?: string;
+  submittedAt?: string;
+  attachments?: Array<{
+    url: string;
+    publicId?: string;
+    type?: string;
+    name?: string;
+    size?: number;
+  }>;
 }
 
 export interface TaskLocation {
@@ -103,6 +122,8 @@ export interface Task {
   platformFee?: number;
   taskerPayout?: number;
   completedAt?: string | null;
+  completionSubmittedAt?: string | null;
+  completionSubmission?: CompletionSubmission | null;
   // Present on `getUserTasks` (per-task bid summary).
   bidCount?: number;
   pendingBidCount?: number;
@@ -427,9 +448,7 @@ export function getTaskerTasks(params: TaskListParams = {}, signal?: AbortSignal
 /**
  * Start an assigned task (`assigned → in-progress`).
  *
- * The backend generates the 6-digit completion code here and notifies the
- * poster; it is deliberately stripped from this response, so the tasker never
- * sees it. They have to get it from the client to finish the job.
+ * The backend notifies the poster when work begins.
  */
 export function startTaskerTask(id: string) {
   return api.patch<{ status: string; message: string; task: Task }>(
@@ -439,16 +458,54 @@ export function startTaskerTask(id: string) {
 }
 
 /**
- * Complete a task (`in-progress → completed`) by submitting the code the client
- * read off their `track-task` screen. This is what releases escrow — the tasker
- * is paid the bid amount and the platform keeps its fee.
- *
- * 400s on a wrong code, so surface the message rather than a generic failure.
+ * Submit completed work (`in-progress → awaiting-confirmation`). Escrow remains
+ * held until the poster reviews and confirms the submission.
  */
-export function completeTaskerTask(id: string, completionCode: string) {
+export function submitTaskerCompletion(id: string, note = '', attachments: PickedImage[] = []) {
+  if (attachments.length === 0) {
+    return api.patch<{ status: string; message: string; task: Task }>(
+      `/api/tasks/${id}/status/tasker`,
+      { status: 'awaiting-confirmation', note: note.trim() },
+    );
+  }
+
+  const form = new FormData();
+  form.append('status', 'awaiting-confirmation');
+  form.append('note', note.trim());
+  for (const attachment of attachments.slice(0, 5)) {
+    form.append(
+      'attachments',
+      { uri: attachment.uri, name: attachment.name, type: attachment.type } as unknown as Blob,
+    );
+  }
   return api.patch<{ status: string; message: string; task: Task }>(
     `/api/tasks/${id}/status/tasker`,
-    { status: 'completed', completionCode },
+    form,
+  );
+}
+
+export interface TaskerPerformance {
+  summary: { totalEarnings: number; todayEarnings: number; walletBalance: number; jobsCompleted: number };
+  kpis: {
+    jobsCompleted: number;
+    acceptanceRate: number;
+    completionRate: number;
+    averageRating: number;
+    repeatUsers: number;
+    profileViews: number;
+  };
+  insights: string[];
+}
+
+export function getTaskerPerformance(signal?: AbortSignal) {
+  return api.get<{ status: string; data: TaskerPerformance }>('/api/taskers/performance', { signal });
+}
+
+/** Poster confirmation is the only client action that releases held escrow. */
+export function confirmTaskCompletion(id: string) {
+  return api.patch<{ status: string; message: string; task: Task }>(
+    `/api/tasks/${id}/status`,
+    { status: 'completed' },
   );
 }
 
@@ -546,6 +603,8 @@ export function statusLabel(status: TaskStatus): string {
       return 'Assigned';
     case 'in-progress':
       return 'In Progress';
+    case 'awaiting-confirmation':
+      return 'Awaiting Confirmation';
     case 'completed':
       return 'Completed';
     case 'cancelled':
@@ -611,7 +670,7 @@ export function taskToCard(task: Task): TaskCardModel {
 
 /** Adapt a backend task onto the `InProgressTaskCard` view model. */
 export function taskToInProgressCard(task: Task): InProgressTaskModel {
-  const awaiting = task.escrowStatus === 'release_requested';
+  const awaiting = task.status === 'awaiting-confirmation';
   return {
     id: task._id,
     status: awaiting ? 'awaiting_payment' : 'in_progress',
@@ -645,7 +704,12 @@ export function taskToCompletedCard(task: Task): CompletedTaskModel {
 }
 
 /** Statuses that count as "active" (not finished or cancelled). */
-export const ACTIVE_TASK_STATUSES: TaskStatus[] = ['open', 'assigned', 'in-progress'];
+export const ACTIVE_TASK_STATUSES: TaskStatus[] = [
+  'open',
+  'assigned',
+  'in-progress',
+  'awaiting-confirmation',
+];
 
 export function isActiveTask(task: Task): boolean {
   return ACTIVE_TASK_STATUSES.includes(task.status);

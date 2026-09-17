@@ -114,10 +114,7 @@ export default function TaskerDetailsScreen() {
         originState: originState.trim(),
         address: address.trim(),
       }),
-    onSuccess: (res) => {
-      if (__DEV__ && res.emailToken) {
-        console.log('[dev] email verification code:', res.emailToken);
-      }
+    onSuccess: () => {
       router.push({
         pathname: '/otp',
         params: { email, password, type: 'tasker' },
@@ -174,7 +171,7 @@ export default function TaskerDetailsScreen() {
               <ArrowLeft size={18} color={COLORS.textSecondary} />
               <Text style={styles.tabLabel}>Back</Text>
             </Pressable>
-            <Pressable style={styles.tabButton} hitSlop={8} onPress={() => {}}>
+            <Pressable style={styles.tabButton} hitSlop={8} onPress={() => router.push('/help-support')}>
               <Headset size={18} color={COLORS.textSecondary} />
               <Text style={styles.tabLabel}>Support</Text>
             </Pressable>

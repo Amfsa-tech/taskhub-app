@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -64,8 +63,6 @@ export default function LoginScreen() {
     }
   };
 
-  const comingSoon = () => Alert.alert('Coming soon', 'Apple sign-in is not available yet.');
-
   return (
     <ImageBackground
       source={require('@/assets/images/login-bg.jpg')}
@@ -87,7 +84,7 @@ export default function LoginScreen() {
           <ArrowLeft size={18} color={COLORS.white} />
           <Text style={styles.tabLabel}>Back</Text>
         </Pressable>
-        <Pressable style={styles.tabButton} hitSlop={8} onPress={() => {}}>
+        <Pressable style={styles.tabButton} hitSlop={8} onPress={() => router.push('/help-support')}>
           <Headset size={18} color={COLORS.white} />
         </Pressable>
       </View>
@@ -122,12 +119,6 @@ export default function LoginScreen() {
             )}
           </Pressable>
 
-          <Pressable
-            style={({ pressed }) => [styles.button, styles.appleButton, pressed && styles.pressed]}
-            onPress={comingSoon}>
-            <Ionicons name="logo-apple" size={20} color={COLORS.white} />
-            <Text style={styles.appleLabel}>Continue with Apple</Text>
-          </Pressable>
         </View>
       </View>
     </ImageBackground>
@@ -211,14 +202,5 @@ const styles = StyleSheet.create({
     fontSize: 17,
     letterSpacing: -0.41,
     color: COLORS.googleText,
-  },
-  appleButton: {
-    backgroundColor: COLORS.black,
-  },
-  appleLabel: {
-    fontFamily: 'Geist_500Medium',
-    fontSize: 17,
-    letterSpacing: -0.41,
-    color: COLORS.white,
   },
 });

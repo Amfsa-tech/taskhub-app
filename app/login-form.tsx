@@ -1,11 +1,9 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useMutation } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -107,9 +105,6 @@ export default function LoginFormScreen() {
       setGoogleBusy(false);
     }
   };
-
-  const appleUnavailable = () =>
-    Alert.alert('Coming soon', 'Apple sign-in is not available yet.');
 
   const isSubmitting = loginMutation.isPending;
 
@@ -225,12 +220,6 @@ export default function LoginFormScreen() {
                   <Text style={styles.googleLabel}>Continue with Google</Text>
                 </>
               )}
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.socialButton, styles.appleButton, pressed && styles.pressed]}
-              onPress={appleUnavailable}>
-              <Ionicons name="logo-apple" size={20} color={COLORS.onBrand} />
-              <Text style={styles.appleLabel}>Continue with Apple</Text>
             </Pressable>
           </View>
         </ScrollView>
@@ -373,13 +362,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     letterSpacing: -0.41,
     color: COLORS.googleText,
-  },
-  appleButton: { backgroundColor: COLORS.black },
-  appleLabel: {
-    fontFamily: 'Geist_500Medium',
-    fontSize: 17,
-    letterSpacing: -0.41,
-    color: COLORS.onBrand,
   },
   footer: { paddingHorizontal: 16, paddingTop: 8 },
   altRow: { height: 48, alignItems: 'center', justifyContent: 'center' },

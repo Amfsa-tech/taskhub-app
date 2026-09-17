@@ -108,7 +108,8 @@ export default function TaskerServicesScreen() {
   const toggleCategory = (id: string) => {
     setSelectedCategories((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
     // Drop any selected service whose parent category just went away.
@@ -129,7 +130,8 @@ export default function TaskerServicesScreen() {
   const toggleService = (id: string) => {
     setSelectedServices((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
@@ -184,7 +186,7 @@ export default function TaskerServicesScreen() {
           contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
           showsVerticalScrollIndicator={false}>
           <Text style={styles.pageTitle}>What kind of tasks do you want to use TaskHub for?</Text>
-          <Text style={styles.pageSubtitle}>Pick one or more. We'll personalize your experience.</Text>
+          <Text style={styles.pageSubtitle}>Pick one or more. We&apos;ll personalize your experience.</Text>
 
           <View style={styles.categoryList}>
             {groups.map((group) => {

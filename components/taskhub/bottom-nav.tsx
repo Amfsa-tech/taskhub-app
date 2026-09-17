@@ -1,5 +1,4 @@
 import { type BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -62,7 +61,6 @@ function TabButton({
 // Rendered once as the Tabs navigator's persistent tab bar.
 export function BottomNav({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const router = useRouter();
   const startNewPost = useNewPost();
   const messagesBadge = useChatUnreadCount();
   const { accountType } = useAuth();

@@ -1,11 +1,13 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
+import * as DocumentPicker from 'expo-document-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -27,10 +29,11 @@ import {
   isMine,
   markConversationRead,
   sendMessage,
+  updateChatPresence,
   type ChatMessage,
   type MessageAttachment,
 } from '@/lib/api/chat';
-import { useMessages } from '@/lib/api/queries';
+import { useInfiniteMessages } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth/auth-context';
 import { pickImages, type PickedImage } from '@/lib/image-picker';
 
@@ -49,7 +52,7 @@ const COLORS = {
   error: '#dc2626',
 };
 
-const QUICK_REPLIES = ['On my way!', 'How Long?', 'Thanks!', 'You are welcome'];
+const QUICK_REPLIES = ["I'm ready to start", 'How long will it take?', 'Thanks!', "You're welcome"];
 
 function formatMessageTime(iso: string): string {
   const d = new Date(iso);
@@ -70,16 +73,25 @@ function Bubble({
   text,
   time,
   attachments,
+  avatar,
+  senderName,
 }: {
   mine: boolean;
   text: string;
   time: string;
   attachments?: MessageAttachment[];
+  avatar?: string;
+  senderName?: string;
 }) {
   const images = (attachments ?? []).filter(isImageAttachment);
   const files = (attachments ?? []).filter((a) => !isImageAttachment(a));
   return (
     <View style={[styles.bubbleRow, mine ? styles.bubbleRowMine : styles.bubbleRowTheirs]}>
+      {!mine ? (
+        <View style={styles.senderAvatar}>
+          {avatar ? <Image source={{ uri: avatar }} style={styles.senderAvatarImage} contentFit="cover" /> : <Text style={styles.senderInitial}>{senderName?.[0]?.toUpperCase() || '?'}</Text>}
+        </View>
+      ) : null}
       <View style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleTheirs]}>
         {images.map((img) => (
           <Image key={img.url} source={{ uri: img.url }} style={styles.attachImage} contentFit="cover" />
@@ -118,12 +130,12 @@ export default function ChatScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { accountType } = useAuth();
-  const params = useLocalSearchParams<{ id?: string; name?: string }>();
+  const params = useLocalSearchParams<{ id?: string; name?: string; avatar?: string; taskerId?: string }>();
   const conversationId = params.id;
   const name = params.name ?? 'Chat';
 
-  const { data, isLoading, isError, refetch } = useMessages(conversationId);
-  const messages = data?.messages ?? [];
+  const { data, isLoading, isError, refetch, hasNextPage, fetchNextPage, isFetchingNextPage } = useInfiniteMessages(conversationId);
+  const messages = [...(data?.pages ?? [])].reverse().flatMap((page) => page.messages);
 
   const [draft, setDraft] = useState('');
   const scrollRef = useRef<ScrollView>(null);
@@ -136,10 +148,24 @@ export default function ChatScreen() {
       .catch(() => {});
   }, [conversationId, queryClient]);
 
+  useEffect(() => {
+    updateChatPresence(true).catch(() => {});
+    const subscription = AppState.addEventListener('change', (state) => {
+      updateChatPresence(state === 'active').catch(() => {});
+    });
+    return () => {
+      subscription.remove();
+      updateChatPresence(false).catch(() => {});
+    };
+  }, []);
+
   const sendMutation = useMutation({
     mutationFn: (payload: { text?: string; attachments?: PickedImage[] }) =>
       sendMessage(conversationId as string, payload.text ?? '', payload.attachments),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['chat'] }),
+    onSuccess: (_data, variables) => {
+      if (variables.text) setDraft((current) => current === variables.text ? '' : current);
+      queryClient.invalidateQueries({ queryKey: ['chat'] });
+    },
     onError: (err) =>
       Alert.alert('Message not sent', err instanceof Error ? err.message : 'Please try again.'),
   });
@@ -147,7 +173,6 @@ export default function ChatScreen() {
   const send = (text: string) => {
     const body = text.trim();
     if (!body || !conversationId) return;
-    setDraft('');
     sendMutation.mutate({ text: body });
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
   };
@@ -156,6 +181,36 @@ export default function ChatScreen() {
     if (!conversationId) return;
     const picked = await pickImages(1);
     if (picked.length) sendMutation.mutate({ attachments: picked });
+  };
+
+  const sendDocument = async () => {
+    if (!conversationId) return;
+    const result = await DocumentPicker.getDocumentAsync({
+      multiple: true,
+      copyToCacheDirectory: true,
+      type: ['application/pdf', 'text/*', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+    });
+    if (result.canceled) return;
+    const picked: PickedImage[] = result.assets.slice(0, 5).map((asset) => ({
+      uri: asset.uri,
+      name: asset.name,
+      type: asset.mimeType || 'application/octet-stream',
+    }));
+    if (picked.length) sendMutation.mutate({ attachments: picked });
+  };
+
+  const incomingIdentity = (message: ChatMessage) => {
+    const sender = message.senderType === 'tasker' ? message.senderTasker : message.senderUser;
+    if (sender && typeof sender !== 'string') {
+      const senderName = message.senderType === 'user'
+        ? (sender as Exclude<ChatMessage['senderUser'], string | null | undefined>).fullName
+        : [
+            (sender as Exclude<ChatMessage['senderTasker'], string | null | undefined>).firstName,
+            (sender as Exclude<ChatMessage['senderTasker'], string | null | undefined>).lastName,
+          ].filter(Boolean).join(' ');
+      return { senderName: senderName || name, avatar: sender.profilePicture || params.avatar || '' };
+    }
+    return { senderName: name, avatar: params.avatar || '' };
   };
 
   return (
@@ -168,7 +223,8 @@ export default function ChatScreen() {
           <View style={styles.headerIcons}>
             <Pressable
               hitSlop={6}
-              onPress={() => router.push({ pathname: '/tasker-profile', params: { name } })}>
+              disabled={!params.taskerId}
+              onPress={() => params.taskerId && router.push({ pathname: '/tasker-profile', params: { id: params.taskerId } })}>
               <UserCircle width={24} height={24} />
             </Pressable>
             <Pressable hitSlop={6} onPress={() => router.push('/report-issue')}>
@@ -205,7 +261,13 @@ export default function ChatScreen() {
                 <Text style={styles.emptyText}>No messages yet. Say hello!</Text>
               </View>
             ) : (
-              messages.map((m: ChatMessage) =>
+              <>
+              {hasNextPage ? (
+                <Pressable style={styles.loadOlder} disabled={isFetchingNextPage} onPress={() => fetchNextPage()}>
+                  <Text style={styles.retry}>{isFetchingNextPage ? 'Loading…' : 'Load older messages'}</Text>
+                </Pressable>
+              ) : null}
+              {messages.map((m: ChatMessage) =>
                 m.senderType === 'system' ? (
                   <SystemNote key={m._id} text={m.text ?? ''} />
                 ) : (
@@ -215,9 +277,11 @@ export default function ChatScreen() {
                     text={m.text ?? ''}
                     time={formatMessageTime(m.createdAt)}
                     attachments={m.attachments}
+                    {...incomingIdentity(m)}
                   />
                 ),
-              )
+              )}
+              </>
             )}
           </ScrollView>
         )}
@@ -242,6 +306,9 @@ export default function ChatScreen() {
             <Pressable style={styles.iconTile} onPress={sendPhoto}>
               <ImageSquare width={24} height={24} />
             </Pressable>
+            <Pressable style={styles.iconTile} onPress={sendDocument}>
+              <Text style={styles.documentIcon}>＋</Text>
+            </Pressable>
             <View style={styles.inputField}>
               <TextInput
                 style={styles.inputText}
@@ -253,7 +320,7 @@ export default function ChatScreen() {
                 returnKeyType="send"
               />
             </View>
-            <Pressable style={[styles.iconTile, styles.sendTile]} onPress={() => send(draft)}>
+            <Pressable style={[styles.iconTile, styles.sendTile, sendMutation.isPending && styles.disabled]} disabled={sendMutation.isPending} onPress={() => send(draft)}>
               <PaperPlaneTilt width={24} height={24} />
             </Pressable>
           </View>
@@ -280,6 +347,8 @@ const styles = StyleSheet.create({
   },
   bubbleRow: {
     flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
   },
   bubbleRowMine: { justifyContent: 'flex-end' },
   bubbleRowTheirs: { justifyContent: 'flex-start' },
@@ -323,6 +392,10 @@ const styles = StyleSheet.create({
   },
   bubbleTimeTheirs: { color: COLORS.textSecondary },
   bubbleTimeMine: { color: COLORS.onBrandSubtle },
+  senderAvatar: { width: 28, height: 28, borderRadius: 999, overflow: 'hidden', backgroundColor: '#f3eeff', alignItems: 'center', justifyContent: 'center' },
+  senderAvatarImage: { width: '100%', height: '100%' },
+  senderInitial: { fontFamily: 'Geist_600SemiBold', fontSize: 12, color: COLORS.brand },
+  loadOlder: { alignSelf: 'center', minHeight: 36, justifyContent: 'center', paddingHorizontal: 16 },
   systemRow: {
     alignItems: 'center',
   },
@@ -406,6 +479,8 @@ const styles = StyleSheet.create({
   sendTile: {
     backgroundColor: COLORS.sendTile,
   },
+  documentIcon: { fontFamily: 'Geist_600SemiBold', fontSize: 24, color: COLORS.brand },
+  disabled: { opacity: 0.5 },
   inputField: {
     flex: 1,
     height: 44,

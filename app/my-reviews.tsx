@@ -5,8 +5,8 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useReviewsAboutMe } from '@/lib/api/queries';
-import { formatRelativeTime, type ClientReview } from '@/lib/api/tasks';
+import { useReviewsAboutMe, useUserTasks } from '@/lib/api/queries';
+import { formatRelativeTime, type ClientReview, type Task } from '@/lib/api/tasks';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -48,13 +48,35 @@ function toReviewVM(review: ClientReview): ReviewVM {
   };
 }
 
+function taskReviewToVM(task: Task): ReviewVM {
+  const tasker = task.assignedTasker;
+  const first = tasker?.firstName?.trim() ?? '';
+  const last = tasker?.lastName?.trim() ?? '';
+  const category = task.mainCategory && typeof task.mainCategory === 'object'
+    ? task.mainCategory.displayName || task.mainCategory.name
+    : '';
+  return {
+    id: task._id,
+    name: [first, last ? `${last[0]}.` : ''].filter(Boolean).join(' ') || 'Tasker',
+    initials: `${first[0] ?? ''}${last[0] ?? ''}`.toUpperCase() || 'T',
+    rating: task.rating ?? 0,
+    message: task.reviewText ?? '',
+    tag: category,
+    time: formatRelativeTime(task.ratedAt),
+  };
+}
+
 export default function MyReviewsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'about' | 'gave'>('about');
 
   const aboutQ = useReviewsAboutMe();
-  const reviews = (aboutQ.data?.reviews ?? []).map(toReviewVM);
+  const givenQ = useUserTasks({ status: 'completed', limit: 100 });
+  const reviews = activeTab === 'about'
+    ? (aboutQ.data?.reviews ?? []).map(toReviewVM)
+    : (givenQ.data?.tasks ?? []).filter((task) => Boolean(task.rating)).map(taskReviewToVM);
+  const activeQuery = activeTab === 'about' ? aboutQ : givenQ;
 
   return (
     <View style={styles.container}>
@@ -94,36 +116,24 @@ export default function MyReviewsScreen() {
         style={styles.flex}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 40 }]}
         showsVerticalScrollIndicator={false}>
-        {/*
-          "You gave" has no backend: ratings a client leaves are written onto the
-          task itself (`POST /api/tasks/:id/rate`) and there's no endpoint that
-          lists them back. Showing a stub beats showing invented reviews.
-        */}
-        {activeTab === 'gave' ? (
-          <View style={styles.stateBox}>
-            <Text style={styles.stateText}>
-              Reviews you’ve written aren’t available yet.
-            </Text>
-          </View>
-        ) : aboutQ.isLoading ? (
+        {activeQuery.isLoading ? (
           <View style={styles.stateBox}>
             <ActivityIndicator color={COLORS.brand} />
           </View>
-        ) : aboutQ.isError ? (
+        ) : activeQuery.isError ? (
           <View style={styles.stateBox}>
             <Text style={styles.stateErrorText}>Couldn’t load your reviews.</Text>
-            <Pressable hitSlop={8} onPress={() => aboutQ.refetch()}>
+            <Pressable hitSlop={8} onPress={() => activeQuery.refetch()}>
               <Text style={styles.retry}>Retry</Text>
             </Pressable>
           </View>
         ) : reviews.length === 0 ? (
           <View style={styles.stateBox}>
-            <Text style={styles.stateText}>No reviews about you yet.</Text>
+            <Text style={styles.stateText}>{activeTab === 'about' ? 'No reviews about you yet.' : 'You haven’t reviewed a completed task yet.'}</Text>
           </View>
         ) : null}
 
-        {activeTab === 'about' &&
-          reviews.map((review) => (
+        {reviews.map((review) => (
           <View key={review.id} style={styles.card}>
             <View style={styles.cardHeader}>
               <View style={styles.avatar}>
@@ -143,7 +153,10 @@ export default function MyReviewsScreen() {
                   ))}
                 </View>
               </View>
-              <Pressable hitSlop={8} onPress={() => {}} style={styles.flagButton}>
+              <Pressable
+                hitSlop={8}
+                onPress={() => router.push({ pathname: '/report-issue', params: { taskId: review.id } })}
+                style={styles.flagButton}>
                 <Ionicons name="flag-outline" size={18} color="#a0a0ba" />
               </Pressable>
             </View>

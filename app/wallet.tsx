@@ -172,10 +172,15 @@ export default function WalletScreen() {
           {isTasker && (
             <Pressable
               style={({ pressed }) => [styles.fundButton, pressed && styles.pressed]}
-              onPress={() => router.push('/withdraw')}>
+              onPress={() => router.push('/withdraw' as any)}>
               <Text style={styles.fundLabel}>Withdraw</Text>
             </Pressable>
           )}
+          <Pressable
+            style={({ pressed }) => [styles.stellarLink, pressed && styles.pressed]}
+            onPress={() => router.push('/stellar-deposit' as any)}>
+            <Text style={styles.stellarLinkText}>Stellar deposit details</Text>
+          </Pressable>
         </View>
 
         {/* Transactions */}
@@ -274,6 +279,8 @@ const styles = StyleSheet.create({
     letterSpacing: -0.32,
     color: COLORS.brand,
   },
+  stellarLink: { minHeight: 40, alignItems: 'center', justifyContent: 'center' },
+  stellarLinkText: { fontFamily: 'Geist_600SemiBold', fontSize: 14, color: COLORS.onBrand, textDecorationLine: 'underline' },
   sectionTitle: {
     fontFamily: 'Geist_600SemiBold',
     fontSize: 20,

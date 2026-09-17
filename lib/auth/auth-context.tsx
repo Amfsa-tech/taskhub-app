@@ -26,6 +26,7 @@ import {
   logout as logoutRequest,
   refreshSessionToken,
   removeNotificationId,
+  switchAccountMode,
   updateNotificationId,
 } from './auth-api';
 import { getGoogleIdToken } from './google';
@@ -70,6 +71,8 @@ interface AuthContextValue {
   signOut: () => Promise<void>;
   /** Re-fetch the full profile for the current account. */
   refreshProfile: () => Promise<void>;
+  /** Switch to the linked counterpart account without asking for credentials again. */
+  switchMode: () => Promise<AuthUser>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -280,6 +283,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await saveUser(fresh);
   }, [accountType]);
 
+  const switchMode = useCallback(async () => {
+    const res = await switchAccountMode();
+    setApiToken(res.token);
+    const { user: nextUser } = await getProfile(res.user_type);
+    applySession(res.user_type, res.token, nextUser);
+    await saveSession({ token: res.token, accountType: res.user_type, user: nextUser });
+    return nextUser;
+  }, [applySession]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       isBootstrapping,
@@ -293,6 +305,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession,
       signOut,
       refreshProfile,
+      switchMode,
     }),
     [
       isBootstrapping,
@@ -305,6 +318,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession,
       signOut,
       refreshProfile,
+      switchMode,
     ],
   );
 

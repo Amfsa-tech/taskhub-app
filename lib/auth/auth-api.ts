@@ -1,6 +1,6 @@
 // Auth endpoint bindings. All paths are relative to `/api/auth`.
 
-import { api } from '@/lib/api/client';
+import { api, apiRequest } from '@/lib/api/client';
 import type { PickedImage } from '@/lib/image-picker';
 import type {
   AccountType,
@@ -208,6 +208,58 @@ export function updateTaskerLocation(payload: UpdateUserLocationPayload) {
 
 export function logout() {
   return api.post<MessageResponse>(`${BASE}/logout`);
+}
+
+export interface SwitchModeResponse {
+  status: string;
+  message: string;
+  token: string;
+  user_type: AccountType;
+  expiresIn?: string;
+}
+
+export function switchAccountMode() {
+  return api.post<SwitchModeResponse>(`${BASE}/switch-mode`, {});
+}
+
+export interface DeviceSession {
+  _id: string;
+  deviceName: string;
+  ipAddress: string;
+  location: string;
+  lastActiveAt: string;
+  createdAt: string;
+  isCurrentDevice: boolean;
+}
+
+export function getDeviceSessions(signal?: AbortSignal) {
+  return api.get<{ status: string; results: number; data: DeviceSession[] }>(`${BASE}/sessions`, {
+    signal,
+  });
+}
+
+export function terminateDeviceSession(sessionId: string) {
+  return api.delete<{ status: string; message: string }>(`${BASE}/sessions/${sessionId}`);
+}
+
+export function logoutOtherDevices(password: string) {
+  return api.post<{ status: string; message: string; terminatedCount?: number }>(
+    `${BASE}/sessions/logout-all`,
+    { password },
+  );
+}
+
+export interface DeleteAccountPayload {
+  confirmation: 'DELETE';
+  password?: string;
+  idToken?: string;
+}
+
+export function deleteAccount(payload: DeleteAccountPayload) {
+  return apiRequest<{ status: string; message: string; data: { deletedRoles: AccountType[] } }>(`${BASE}/account`, {
+    method: 'DELETE',
+    body: payload,
+  });
 }
 
 /**

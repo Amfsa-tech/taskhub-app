@@ -54,3 +54,21 @@ Bottom-sheet modals are rendered using the React Native native `<Modal>` compone
 - **Close Gesture**: Tapping outside the sheet (the backdrop overlay) must trigger `onClose`.
 - **Interaction Prevention**: The inner sheet container must wrap its content inside an empty `Pressable` wrapper `onPress={() => {}}` to prevent sheet taps from bubbling up and closing the overlay.
 
+---
+
+## Parity Screens — Established 2026-09-16
+
+- Security, preferences, analytics, payout, support, and receipt screens retain the baseline canvas/surface hierarchy and `16px` screen gutter.
+- Destructive account/session actions use `#fff1f1` surfaces with `#b01515` text; they require explicit confirmation and never optimistically imply success.
+- Server-authoritative detail cards use `16px` radius and a `1px #e0e0ea` border. Compact selectable methods use `12px` radius; selected methods switch to `#f3eeff` with a `#6c3bff` border.
+- Async screens provide centered loading, explicit empty/error copy, and a brand-colored retry action. Financial actions remain disabled while pending.
+- Financial summary cards use the brand surface with white primary values; transaction breakdowns use white cards and subtle dividers.
+- Settings groups use uppercase 12px section labels, white 16px cards, 32px icon tiles, and 12px vertical rows.
+
+## Destructive Identity Flows: Established 2026-09-17
+
+- Permanent account deletion uses the existing danger surface and requires typed `DELETE` confirmation plus a native destructive confirmation alert.
+- Deletion explains linked-role scope, retained de-identified financial records, and server-enforced blockers before the action.
+- Backend blocker details remain visible in an amber 16px card so users can resolve each item without losing their entered confirmation state.
+- Reauthentication accepts a password or launches fresh Google sign-in for Google-only accounts. The submit action stays pending until the complete linked identity deletion finishes.
+
