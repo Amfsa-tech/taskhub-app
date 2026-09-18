@@ -115,9 +115,14 @@ export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const listRef = useRef<FlatList<Slide>>(null);
+  const hasFinishedRef = useRef(false);
   const [index, setIndex] = useState(0);
 
-  const finish = () => router.push('/purpose');
+  const finish = () => {
+    if (hasFinishedRef.current) return;
+    hasFinishedRef.current = true;
+    router.replace('/purpose');
+  };
 
   const handleNext = () => {
     if (index < SLIDES.length - 1) {

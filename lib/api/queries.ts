@@ -45,7 +45,10 @@ export const queryKeys = {
   tasks: (params?: TaskListParams) => ['tasks', 'all', params ?? {}] as const,
   task: (id: string) => ['tasks', 'detail', id] as const,
   taskMatches: (id: string) => ['tasks', 'matches', id] as const,
-  nearbyTaskers: () => ['taskers', 'nearby'] as const,
+  nearbyTaskers: (coords?: { latitude: number; longitude: number }) =>
+    coords
+      ? ['taskers', 'nearby', coords.latitude, coords.longitude] as const
+      : ['taskers', 'nearby'] as const,
   tasker: (id: string) => ['taskers', 'detail', id] as const,
   taskerReviews: (id: string) => ['taskers', 'reviews', id] as const,
   reviewsAboutMe: () => ['reviews', 'about-me'] as const,
@@ -154,10 +157,10 @@ export function useTaskerReviews(id?: string) {
 }
 
 /** Top taskers near the user (falls back to top-rated). Backs the home carousel. */
-export function useNearbyTaskers() {
+export function useNearbyTaskers(coords?: { latitude: number; longitude: number }) {
   return useQuery({
-    queryKey: queryKeys.nearbyTaskers(),
-    queryFn: ({ signal }) => getNearbyTaskers(undefined, signal),
+    queryKey: queryKeys.nearbyTaskers(coords),
+    queryFn: ({ signal }) => getNearbyTaskers(coords, signal),
     staleTime: 5 * 60 * 1000,
   });
 }

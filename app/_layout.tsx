@@ -164,12 +164,15 @@ function RootNavigator() {
                     <Stack.Screen name="track-task" options={{ headerShown: false }} />
                     <Stack.Screen name="my-reviews" options={{ headerShown: false }} />
                     <Stack.Screen name="settings" options={{ headerShown: false }} />
+                    <Stack.Screen name="connected-accounts" options={{ headerShown: false }} />
+                    <Stack.Screen name="link-role-account" options={{ headerShown: false }} />
                     <Stack.Screen name="device-sessions" options={{ headerShown: false }} />
                     <Stack.Screen name="notification-preferences" options={{ headerShown: false }} />
                     <Stack.Screen name="deactivate-account" options={{ headerShown: false }} />
                     <Stack.Screen name="change-password" options={{ headerShown: false }} />
                     <Stack.Screen name="change-password-success" options={{ headerShown: false }} />
                     <Stack.Screen name="saved-taskers" options={{ headerShown: false }} />
+                    <Stack.Screen name="taskers" options={{ headerShown: false }} />
                     <Stack.Screen name="receipt" options={{ headerShown: false }} />
                     <Stack.Screen name="help-support" options={{ headerShown: false }} />
                     <Stack.Screen name="blocked-users" options={{ headerShown: false }} />

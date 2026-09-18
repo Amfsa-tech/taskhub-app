@@ -138,7 +138,43 @@ export interface GoogleAuthResponse {
   expiresIn: string;
   linkedNow?: boolean;
   created?: boolean;
+  availableRoles?: AccountType[];
+  roleFallback?: boolean;
 }
+
+export interface AppleProfile {
+  email: string;
+  name: string;
+  givenName: string;
+  familyName: string;
+  picture: string;
+}
+
+export interface AppleAuthPayload {
+  identityToken: string;
+  authorizationCode: string;
+  nonce: string;
+  user_type: AccountType;
+  fullName?: string;
+  givenName?: string;
+  familyName?: string;
+}
+
+export interface SocialCompleteSignupPayload {
+  signupToken: string;
+  user_type: AccountType;
+  fullName?: string;
+  country?: string;
+  phoneNumber?: string;
+  residentState?: string;
+  address?: string;
+  dateOfBirth?: string;
+  firstName?: string;
+  lastName?: string;
+  originState?: string;
+}
+
+export type LinkedRolePayload = Omit<SocialCompleteSignupPayload, 'signupToken'>;
 
 /**
  * Phase 2 — finish creating a brand-new Google account. After the backend

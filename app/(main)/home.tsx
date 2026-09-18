@@ -270,7 +270,7 @@ export default function HomeScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>Top Taskers near you</Text>
-              <Pressable hitSlop={8} onPress={() => { }}>
+              <Pressable hitSlop={8} onPress={() => router.push('/taskers' as any)}>
                 <Text style={styles.seeAll}>See all</Text>
               </Pressable>
             </View>

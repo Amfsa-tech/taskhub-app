@@ -19,6 +19,7 @@ import { ArrowLeft } from '@/components/icons/arrow-left';
 import { CaretDown } from '@/components/icons/caret-down';
 import { Check } from '@/components/icons/check';
 import { useAuth } from '@/lib/auth/auth-context';
+import { clearPendingAppleSignup, getPendingAppleSignup } from '@/lib/auth/apple';
 import { clearPendingGoogleSignup, getPendingGoogleSignup } from '@/lib/auth/google';
 import { useSelectedCountry } from '@/lib/onboarding/country';
 
@@ -37,22 +38,31 @@ const COLORS = {
 export default function GoogleCompleteSignupScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { completeGoogleSignup } = useAuth();
+  const { completeAppleSignup, completeGoogleSignup } = useAuth();
   const country = useSelectedCountry();
 
   // Captured once — set by the login screen before navigating here.
-  const [pending] = useState(getPendingGoogleSignup);
+  const [pendingGoogle] = useState(getPendingGoogleSignup);
+  const [pendingApple] = useState(getPendingAppleSignup);
+  const pending = pendingApple ?? pendingGoogle;
+  const providerName = pendingApple ? 'Apple' : 'Google';
   const [fullName, setFullName] = useState(pending?.profile.name ?? '');
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const completeMutation = useMutation({
     mutationFn: () => {
-      if (!pending?.idToken) {
-        throw new Error('Your Google session expired. Please try signing in again.');
+      if (pendingApple?.signupToken) {
+        return completeAppleSignup({
+          signupToken: pendingApple.signupToken,
+          type: 'user',
+          fullName: fullName.trim(),
+          country,
+        });
       }
+      if (!pendingGoogle?.idToken) throw new Error('Your social sign-in session expired. Please try again.');
       return completeGoogleSignup({
-        idToken: pending.idToken,
+        idToken: pendingGoogle.idToken,
         type: 'user',
         fullName: fullName.trim(),
         country,
@@ -60,6 +70,7 @@ export default function GoogleCompleteSignupScreen() {
     },
     onSuccess: () => {
       clearPendingGoogleSignup();
+      clearPendingAppleSignup();
       router.replace('/purpose-selection');
     },
     onError: (err) => {
@@ -94,7 +105,7 @@ export default function GoogleCompleteSignupScreen() {
           </Pressable>
           <Text style={styles.title}>Session expired</Text>
           <Text style={styles.subtitle}>
-            Please tap “Continue with Google” again to finish creating your account.
+            Please tap “Continue with {providerName}” again to finish creating your account.
           </Text>
         </View>
       </View>

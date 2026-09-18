@@ -182,6 +182,14 @@ export default function SettingsScreen() {
           <Text style={styles.sectionHeader}>SECURITY</Text>
           <View style={styles.groupCard}>
             <SettingRow
+              icon="key-outline"
+              iconBg="#edfaf3"
+              iconColor="#0d6639"
+              label="Connected accounts"
+              onPress={() => router.push('/connected-accounts' as any)}
+            />
+            <View style={styles.divider} />
+            <SettingRow
               icon="phone-portrait-outline"
               iconBg="#f3eeff"
               iconColor={COLORS.brand}

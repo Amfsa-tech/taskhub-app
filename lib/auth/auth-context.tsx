@@ -15,20 +15,28 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import { Platform } from 'react-native';
 
 import { ApiError, setApiToken } from '@/lib/api/client';
 import { watchPushSubscriptionId } from '@/lib/push';
+import { queryClient } from '@/lib/query-client';
 import {
+  appleAuth,
+  completeSocialSignup,
+  createLinkedRole,
   getProfile,
   googleAuth,
   googleCompleteSignup,
   login,
+  linkAccountAndSwitch,
   logout as logoutRequest,
   refreshSessionToken,
   removeNotificationId,
   switchAccountMode,
   updateNotificationId,
 } from './auth-api';
+import { getAppleCredential } from './apple';
 import { getGoogleIdToken } from './google';
 import {
   clearSession,
@@ -37,12 +45,16 @@ import {
   saveToken,
   saveUser,
 } from './storage';
-import type { AccountType, AuthUser, GoogleProfile, LoginPayload } from './types';
+import type { AccountType, AppleProfile, AuthUser, GoogleCompleteSignupPayload, GoogleProfile, LinkedRolePayload, LoginPayload, SocialCompleteSignupPayload } from './types';
 
 /** Result of a Google sign-in attempt: either signed in, or needs Phase-2 completion. */
 export type GoogleSignInOutcome =
-  | { kind: 'signed-in'; user: AuthUser }
+  | { kind: 'signed-in'; user: AuthUser; accountType: AccountType; roleFallback: boolean }
   | { kind: 'needs-signup'; idToken: string; profile: GoogleProfile };
+
+export type AppleSignInOutcome =
+  | { kind: 'signed-in'; user: AuthUser; accountType: AccountType; roleFallback: boolean }
+  | { kind: 'needs-signup'; signupToken: string; profile: AppleProfile };
 
 interface AuthContextValue {
   /** True until the persisted session has been read on launch. */
@@ -59,13 +71,10 @@ interface AuthContextValue {
    * when no account exists yet, so the caller can open the completion screen.
    */
   signInWithGoogle: (type: AccountType) => Promise<GoogleSignInOutcome>;
+  signInWithApple: (type: AccountType) => Promise<AppleSignInOutcome>;
   /** Finish a Google signup (Phase 2) with the collected fields, then sign in. */
-  completeGoogleSignup: (args: {
-    idToken: string;
-    type: AccountType;
-    fullName: string;
-    country: string;
-  }) => Promise<AuthUser>;
+  completeGoogleSignup: (args: Omit<GoogleCompleteSignupPayload, 'user_type'> & { type: AccountType }) => Promise<AuthUser>;
+  completeAppleSignup: (args: Omit<SocialCompleteSignupPayload, 'user_type'> & { type: AccountType }) => Promise<AuthUser>;
   /** Adopt a session obtained elsewhere (e.g. right after verify-email). */
   setSession: (type: AccountType, token: string, user: AuthUser) => Promise<void>;
   signOut: () => Promise<void>;
@@ -73,6 +82,9 @@ interface AuthContextValue {
   refreshProfile: () => Promise<void>;
   /** Switch to the linked counterpart account without asking for credentials again. */
   switchMode: () => Promise<AuthUser>;
+  /** Prove ownership of an existing opposite-role profile and switch to it. */
+  linkRoleAndSwitch: (email: string, password: string) => Promise<AuthUser>;
+  createRoleAndSwitch: (payload: LinkedRolePayload) => Promise<AuthUser>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -88,6 +100,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   tokenRef.current = token;
   const accountTypeRef = useRef<AccountType | null>(null);
   accountTypeRef.current = accountType;
+
+  // Apple can revoke an app credential outside Taskhub. Clear the local
+  // session immediately; the server notification endpoint revokes server
+  // sessions and provider linkage independently.
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+    const subscription = AppleAuthentication.addRevokeListener(() => {
+      clearSession().finally(() => {
+        setApiToken(null);
+        setToken(null);
+        setAccountType(null);
+        setUser(null);
+        queryClient.removeQueries();
+      });
+    });
+    return () => subscription.remove();
+  }, []);
 
   // Whenever a session is active, hand the device's OneSignal subscription id
   // to the backend (it may arrive late — first grant of the permission prompt —
@@ -205,7 +234,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { user } = await getProfile(nextType);
         applySession(nextType, res.token, user);
         await saveSession({ token: res.token, accountType: nextType, user });
-        return { kind: 'signed-in', user };
+        return { kind: 'signed-in', user, accountType: nextType, roleFallback: Boolean(res.roleFallback) };
       } catch (err) {
         // 404 + `account_not_found` means there's no account yet — hand the
         // caller the idToken + profile so it can run the completion screen.
@@ -221,19 +250,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [applySession],
   );
 
+  const signInWithApple = useCallback(
+    async (type: AccountType): Promise<AppleSignInOutcome> => {
+      const credential = await getAppleCredential();
+      try {
+        const res = await appleAuth({ ...credential, user_type: type });
+        const nextType = res.user_type ?? type;
+        setApiToken(res.token);
+        const { user } = await getProfile(nextType);
+        applySession(nextType, res.token, user);
+        await saveSession({ token: res.token, accountType: nextType, user });
+        return { kind: 'signed-in', user, accountType: nextType, roleFallback: Boolean(res.roleFallback) };
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) {
+          const body = err.body as { code?: string; signupToken?: string; appleProfile?: AppleProfile } | undefined;
+          if (body?.code === 'account_not_found' && body.signupToken && body.appleProfile) {
+            return { kind: 'needs-signup', signupToken: body.signupToken, profile: body.appleProfile };
+          }
+        }
+        throw err;
+      }
+    },
+    [applySession],
+  );
+
   const completeGoogleSignup = useCallback(
-    async ({
-      idToken,
-      type,
-      fullName,
-      country,
-    }: {
-      idToken: string;
-      type: AccountType;
-      fullName: string;
-      country: string;
-    }): Promise<AuthUser> => {
-      const res = await googleCompleteSignup({ idToken, user_type: type, fullName, country });
+    async ({ type, ...fields }: Omit<GoogleCompleteSignupPayload, 'user_type'> & { type: AccountType }): Promise<AuthUser> => {
+      const res = await googleCompleteSignup({ ...fields, user_type: type });
+      const nextType = res.user_type ?? type;
+      setApiToken(res.token);
+      const { user } = await getProfile(nextType);
+      applySession(nextType, res.token, user);
+      await saveSession({ token: res.token, accountType: nextType, user });
+      return user;
+    },
+    [applySession],
+  );
+
+  const completeAppleSignup = useCallback(
+    async ({ type, ...fields }: Omit<SocialCompleteSignupPayload, 'user_type'> & { type: AccountType }): Promise<AuthUser> => {
+      const res = await completeSocialSignup({ ...fields, user_type: type });
       const nextType = res.user_type ?? type;
       setApiToken(res.token);
       const { user } = await getProfile(nextType);
@@ -274,6 +330,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(null);
     setAccountType(null);
     setUser(null);
+    queryClient.removeQueries();
   }, []);
 
   const refreshProfile = useCallback(async () => {
@@ -289,6 +346,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { user: nextUser } = await getProfile(res.user_type);
     applySession(res.user_type, res.token, nextUser);
     await saveSession({ token: res.token, accountType: res.user_type, user: nextUser });
+    queryClient.removeQueries();
+    return nextUser;
+  }, [applySession]);
+
+  const linkRoleAndSwitch = useCallback(async (email: string, password: string) => {
+    const res = await linkAccountAndSwitch(email.trim().toLowerCase(), password);
+    setApiToken(res.token);
+    const { user: nextUser } = await getProfile(res.user_type);
+    applySession(res.user_type, res.token, nextUser);
+    await saveSession({ token: res.token, accountType: res.user_type, user: nextUser });
+    queryClient.removeQueries();
+    return nextUser;
+  }, [applySession]);
+
+  const createRoleAndSwitch = useCallback(async (payload: LinkedRolePayload) => {
+    const res = await createLinkedRole(payload);
+    setApiToken(res.token);
+    const { user: nextUser } = await getProfile(res.user_type);
+    applySession(res.user_type, res.token, nextUser);
+    await saveSession({ token: res.token, accountType: res.user_type, user: nextUser });
+    queryClient.removeQueries();
     return nextUser;
   }, [applySession]);
 
@@ -301,11 +379,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       accountType,
       signIn,
       signInWithGoogle,
+      signInWithApple,
       completeGoogleSignup,
+      completeAppleSignup,
       setSession,
       signOut,
       refreshProfile,
       switchMode,
+      linkRoleAndSwitch,
+      createRoleAndSwitch,
     }),
     [
       isBootstrapping,
@@ -314,11 +396,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       accountType,
       signIn,
       signInWithGoogle,
+      signInWithApple,
       completeGoogleSignup,
+      completeAppleSignup,
       setSession,
       signOut,
       refreshProfile,
       switchMode,
+      linkRoleAndSwitch,
+      createRoleAndSwitch,
     ],
   );
 

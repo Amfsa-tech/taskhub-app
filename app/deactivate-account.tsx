@@ -10,6 +10,7 @@ import { ApiError } from '@/lib/api/client';
 import { deleteAccount } from '@/lib/auth/auth-api';
 import { useAuth } from '@/lib/auth/auth-context';
 import { getGoogleIdToken } from '@/lib/auth/google';
+import { getAppleCredential } from '@/lib/auth/apple';
 
 const COLORS = { canvas: '#f9f9fb', surface: '#ffffff', text: '#111122', secondary: '#5a5a70', border: '#e0e0ea', danger: '#b01515' };
 type Blocker = { code: string; message: string };
@@ -29,6 +30,14 @@ export default function DeleteAccountScreen() {
         if (error instanceof ApiError && error.code === 'google_reauth_required') {
           const idToken = await getGoogleIdToken();
           return deleteAccount({ confirmation: 'DELETE', idToken });
+        }
+        if (error instanceof ApiError && error.code === 'apple_reauth_required') {
+          const credential = await getAppleCredential();
+          return deleteAccount({
+            confirmation: 'DELETE',
+            appleIdentityToken: credential.identityToken,
+            appleNonce: credential.nonce,
+          });
         }
         throw error;
       }
@@ -76,7 +85,7 @@ export default function DeleteAccountScreen() {
         <View style={styles.field}>
           <Text style={styles.label}>PASSWORD</Text>
           <TextInput value={password} onChangeText={setPassword} secureTextEntry placeholder="Enter your password, if you use one" placeholderTextColor="#a0a0ba" style={styles.input} autoCapitalize="none" />
-          <Text style={styles.helper}>Google-only accounts will be asked to sign in with Google again.</Text>
+          <Text style={styles.helper}>Accounts without a password will be asked to sign in with their connected Google or Apple account again.</Text>
         </View>
         <View style={styles.field}>
           <Text style={styles.label}>TYPE DELETE TO CONFIRM</Text>

@@ -17,8 +17,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ArrowLeft } from '@/components/icons/arrow-left';
 import { ArrowRight } from '@/components/icons/arrow-right';
+import { Check } from '@/components/icons/check';
 import { Headset } from '@/components/icons/headset';
 import { registerTasker } from '@/lib/auth/auth-api';
+import { useAuth } from '@/lib/auth/auth-context';
+import { clearPendingAppleSignup, getPendingAppleSignup } from '@/lib/auth/apple';
+import { clearPendingGoogleSignup, getPendingGoogleSignup } from '@/lib/auth/google';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -85,12 +89,15 @@ function Field({
 export default function TaskerDetailsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { firstName, lastName, email, password, country } = useLocalSearchParams<{
+  const { completeAppleSignup, completeGoogleSignup, createRoleAndSwitch } = useAuth();
+  const { firstName, lastName, email, password, country, social, linked } = useLocalSearchParams<{
     firstName?: string;
     lastName?: string;
     email?: string;
     password?: string;
     country?: string;
+    social?: 'apple' | 'google';
+    linked?: string;
   }>();
 
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -99,22 +106,45 @@ export default function TaskerDetailsScreen() {
   const [originState, setOriginState] = useState('');
   const [address, setAddress] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [agreed, setAgreed] = useState(false);
+  const isSocial = social === 'apple' || social === 'google';
+  const isLinkedRole = linked === 'true';
+  const requiresConsent = isSocial || isLinkedRole;
 
   const registerMutation = useMutation({
-    mutationFn: () =>
-      registerTasker({
+    mutationFn: async () => {
+      const details = {
         firstName: firstName ?? '',
         lastName: lastName ?? '',
-        emailAddress: email ?? '',
-        password: password ?? '',
         country: country || 'Nigeria',
         phoneNumber: phoneNumber.trim(),
         dateOfBirth: dateOfBirth.trim(),
         residentState: residentState.trim(),
         originState: originState.trim(),
         address: address.trim(),
-      }),
+      };
+      if (social === 'apple') {
+        const pending = getPendingAppleSignup();
+        if (!pending) throw new Error('Your Apple sign-in session expired. Please try again.');
+        return completeAppleSignup({ signupToken: pending.signupToken, type: 'tasker', ...details });
+      }
+      if (social === 'google') {
+        const pending = getPendingGoogleSignup();
+        if (!pending) throw new Error('Your Google sign-in session expired. Please try again.');
+        return completeGoogleSignup({ idToken: pending.idToken, type: 'tasker', ...details });
+      }
+      if (isLinkedRole) {
+        return createRoleAndSwitch({ user_type: 'tasker', ...details });
+      }
+      return registerTasker({ ...details, emailAddress: email ?? '', password: password ?? '' });
+    },
     onSuccess: () => {
+      if (isSocial || isLinkedRole) {
+        clearPendingAppleSignup();
+        clearPendingGoogleSignup();
+        router.replace('/(main)/home');
+        return;
+      }
       router.push({
         pathname: '/otp',
         params: { email, password, type: 'tasker' },
@@ -127,8 +157,12 @@ export default function TaskerDetailsScreen() {
 
   const submit = () => {
     setError(null);
-    if (!email || !password || !firstName || !lastName) {
+    if ((!isSocial && !isLinkedRole && (!email || !password)) || !firstName || !lastName) {
       setError('Your signup details were lost. Please go back and start again.');
+      return;
+    }
+    if (requiresConsent && !agreed) {
+      setError('Please agree to the Terms of Service to continue.');
       return;
     }
     if (
@@ -181,7 +215,7 @@ export default function TaskerDetailsScreen() {
           <View style={styles.header}>
             <Text style={styles.title}>Almost there</Text>
             <Text style={styles.subtitle}>
-              A few more details to set up your tasker account — step 2 of 2
+              A few more details to set up your tasker account, step 2 of 2
             </Text>
           </View>
 
@@ -226,6 +260,18 @@ export default function TaskerDetailsScreen() {
 
         {/* Footer */}
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+          {requiresConsent ? (
+            <Pressable
+              style={styles.consent}
+              onPress={() => setAgreed((value) => !value)}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: agreed }}>
+              <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
+                {agreed ? <Check size={14} color="#ffffff" /> : null}
+              </View>
+              <Text style={styles.consentText}>I agree to the Taskhub Terms of Service, User Agreement, and Privacy Policy.</Text>
+            </Pressable>
+          ) : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <Pressable
             style={({ pressed }) => [
@@ -343,6 +389,33 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.6,
+  },
+  consent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    paddingVertical: 4,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 1.5,
+    borderColor: COLORS.placeholder,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  checkboxChecked: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  consentText: {
+    flex: 1,
+    fontFamily: 'Geist_400Regular',
+    fontSize: 14,
+    lineHeight: 19,
+    color: COLORS.iconSecondary,
   },
   buttonLabel: {
     fontFamily: 'Geist_500Medium',

@@ -1,9 +1,11 @@
 import { useMutation } from '@tanstack/react-query';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -20,6 +22,7 @@ import { Eye } from '@/components/icons/eye';
 import { GoogleLogo } from '@/components/icons/google-logo';
 import { ApiError } from '@/lib/api/client';
 import { useAuth } from '@/lib/auth/auth-context';
+import { isAppleSignInAvailable, setPendingAppleSignup } from '@/lib/auth/apple';
 import { setPendingGoogleSignup } from '@/lib/auth/google';
 
 const COLORS = {
@@ -43,12 +46,18 @@ export default function LoginFormScreen() {
   // Carried from the purpose/login screens; picks between the user and tasker
   // backend endpoints (same payload either way).
   const accountType = type === 'tasker' ? 'tasker' : 'user';
-  const { signIn, signInWithGoogle } = useAuth();
+  const { signIn, signInWithApple, signInWithGoogle } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
+  const [appleBusy, setAppleBusy] = useState(false);
+  const [appleAvailable, setAppleAvailable] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    isAppleSignInAvailable().then(setAppleAvailable).catch(() => setAppleAvailable(false));
+  }, []);
 
   const loginMutation = useMutation({
     mutationFn: () =>
@@ -84,11 +93,16 @@ export default function LoginFormScreen() {
     try {
       const outcome = await signInWithGoogle(accountType);
       if (outcome.kind === 'signed-in') {
+        if (outcome.roleFallback) {
+          Alert.alert('Role not created yet', `Your ${accountType} role is not set up, so Taskhub opened your ${outcome.accountType} role.`);
+        }
         router.replace('/home');
       } else if (accountType === 'tasker') {
-        // google-complete-signup collects user-side fields only; new taskers
-        // go through the email flow's two-step signup instead.
-        setError('No tasker account for this Google account yet. Please sign up with email first.');
+        setPendingGoogleSignup({ idToken: outcome.idToken, profile: outcome.profile });
+        router.push({
+          pathname: '/tasker-details' as any,
+          params: { social: 'google', firstName: outcome.profile.givenName, lastName: outcome.profile.familyName, email: outcome.profile.email, country: 'Nigeria' },
+        });
       } else {
         // No account yet — carry the verified token to the completion screen.
         setPendingGoogleSignup({ idToken: outcome.idToken, profile: outcome.profile });
@@ -103,6 +117,37 @@ export default function LoginFormScreen() {
       }
     } finally {
       setGoogleBusy(false);
+    }
+  };
+
+  const handleApple = async () => {
+    if (appleBusy) return;
+    setError(null);
+    setAppleBusy(true);
+    try {
+      const outcome = await signInWithApple(accountType);
+      if (outcome.kind === 'signed-in') {
+        if (outcome.roleFallback) {
+          Alert.alert('Role not created yet', `Your ${accountType} role is not set up, so Taskhub opened your ${outcome.accountType} role.`);
+        }
+        router.replace('/home');
+      } else if (accountType === 'tasker') {
+        setPendingAppleSignup({ signupToken: outcome.signupToken, profile: outcome.profile });
+        router.push({
+          pathname: '/tasker-details' as any,
+          params: { social: 'apple', firstName: outcome.profile.givenName, lastName: outcome.profile.familyName, email: outcome.profile.email, country: 'Nigeria' },
+        });
+      } else {
+        setPendingAppleSignup({ signupToken: outcome.signupToken, profile: outcome.profile });
+        router.push('/google-complete-signup');
+      }
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (code !== 'ERR_REQUEST_CANCELED') {
+        setError(err instanceof Error ? err.message : 'Apple sign-in failed. Please try again.');
+      }
+    } finally {
+      setAppleBusy(false);
     }
   };
 
@@ -221,6 +266,16 @@ export default function LoginFormScreen() {
                 </>
               )}
             </Pressable>
+            {appleAvailable ? (
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                cornerRadius={8}
+                style={styles.appleButton}
+                onPress={handleApple}
+                accessibilityLabel={appleBusy ? 'Signing in with Apple' : 'Continue with Apple'}
+              />
+            ) : null}
           </View>
         </ScrollView>
 
@@ -251,6 +306,7 @@ const styles = StyleSheet.create({
     padding: 8,
     alignSelf: 'flex-start',
   },
+  appleButton: { width: '100%', height: 48 },
   tabLabel: {
     fontFamily: 'Geist_500Medium',
     fontSize: 15,

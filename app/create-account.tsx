@@ -22,6 +22,7 @@ import { Check } from '@/components/icons/check';
 import { Eye } from '@/components/icons/eye';
 import { Headset } from '@/components/icons/headset';
 import { registerUser } from '@/lib/auth/auth-api';
+import { useAuth } from '@/lib/auth/auth-context';
 import { useSelectedCountry } from '@/lib/onboarding/country';
 
 const COLORS = {
@@ -92,10 +93,13 @@ export default function CreateAccountScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { type } = useLocalSearchParams<{ type?: string }>();
+  const { accountType, createRoleAndSwitch, isAuthenticated, user } = useAuth();
   // Tasker signup runs in two steps: this screen collects the account basics,
   // then /tasker-details gathers the rest of what `tasker-register` requires
   // (phone, DOB, states, address) — the endpoint 400s without all ten fields.
   const isTasker = type === 'tasker';
+  const targetType = isTasker ? 'tasker' : 'user';
+  const isLinkedRoleCreation = isAuthenticated && accountType !== targetType;
   const [fullName, setFullName] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -105,15 +109,20 @@ export default function CreateAccountScreen() {
   const country = useSelectedCountry();
   const [error, setError] = useState<string | null>(null);
 
-  const registerMutation = useMutation({
-    mutationFn: () =>
-      registerUser({
+  const registerMutation = useMutation<unknown, Error, void>({
+    mutationFn: () => isLinkedRoleCreation
+      ? createRoleAndSwitch({ user_type: 'user', fullName: fullName.trim(), country })
+      : registerUser({
         fullName: fullName.trim(),
         emailAddress: email.trim().toLowerCase(),
         password,
         country,
       }),
     onSuccess: () => {
+      if (isLinkedRoleCreation) {
+        router.replace('/(main)/home');
+        return;
+      }
       router.push({
         pathname: '/otp',
         params: { email: email.trim().toLowerCase(), password, type: 'user' },
@@ -127,11 +136,11 @@ export default function CreateAccountScreen() {
   const submit = () => {
     setError(null);
     const nameMissing = isTasker ? !firstName.trim() || !lastName.trim() : !fullName.trim();
-    if (nameMissing || !email.trim() || !password) {
-      setError('Please fill in your name, email, and password.');
+    if (nameMissing || (!isLinkedRoleCreation && (!email.trim() || !password))) {
+      setError(isLinkedRoleCreation ? 'Please fill in your name.' : 'Please fill in your name, email, and password.');
       return;
     }
-    if (password.length < 6) {
+    if (!isLinkedRoleCreation && password.length < 6) {
       setError('Password must be at least 6 characters.');
       return;
     }
@@ -149,6 +158,7 @@ export default function CreateAccountScreen() {
           email: email.trim().toLowerCase(),
           password,
           country,
+          linked: isLinkedRoleCreation ? 'true' : undefined,
         },
       });
       return;
@@ -185,7 +195,7 @@ export default function CreateAccountScreen() {
           <View style={styles.header}>
             <Text style={styles.title}>{isTasker ? 'Become a Tasker' : 'Create Account'}</Text>
             <Text style={styles.subtitle}>
-              {isTasker ? 'Earn on NGTaskHub — step 1 of 2' : 'Join NGTaskHub today'}
+              {isLinkedRoleCreation ? `Add this role to ${user?.emailAddress ?? 'your Taskhub identity'}` : isTasker ? 'Earn on NGTaskHub, step 1 of 2' : 'Join NGTaskHub today'}
             </Text>
           </View>
 
@@ -217,20 +227,12 @@ export default function CreateAccountScreen() {
                 autoCapitalize="words"
               />
             )}
-            <Field
-              label="Email Address"
-              placeholder="Enter your email address"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-            />
-            <Field
-              label="Password"
-              placeholder="Enter password"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
+            {!isLinkedRoleCreation ? (
+              <>
+                <Field label="Email Address" placeholder="Enter your email address" value={email} onChangeText={setEmail} keyboardType="email-address" />
+                <Field label="Password" placeholder="Enter password" value={password} onChangeText={setPassword} secureTextEntry />
+              </>
+            ) : null}
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>Country</Text>
               <Pressable
@@ -283,14 +285,14 @@ export default function CreateAccountScreen() {
             )}
           </Pressable>
 
-          <Pressable
+          {!isLinkedRoleCreation ? <Pressable
             hitSlop={8}
             onPress={() => router.replace({ pathname: '/login-form', params: { type } })}
             style={styles.loginRow}>
             <Text style={styles.loginMuted}>
               Already have an account? <Text style={styles.loginLink}>Login</Text>
             </Text>
-          </Pressable>
+          </Pressable> : null}
         </View>
       </KeyboardAvoidingView>
     </View>

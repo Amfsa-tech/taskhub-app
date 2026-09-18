@@ -250,6 +250,10 @@ export default function ProfileScreen() {
           [
             { text: 'Cancel', style: 'cancel' },
             {
+              text: 'Link existing',
+              onPress: () => router.push('/link-role-account' as any),
+            },
+            {
               text: 'Continue',
               onPress: () =>
                 router.push({
@@ -269,9 +273,7 @@ export default function ProfileScreen() {
     const toTasker = accountType === 'user';
     Alert.alert(
       toTasker ? 'Switch to Tasker mode' : 'Switch to user mode',
-      `You'll be signed out, then log in${toTasker ? ' or sign up' : ''} with your ${
-        toTasker ? 'tasker' : 'customer'
-      } account.`,
+      `Taskhub will securely switch to the ${toTasker ? 'tasker' : 'customer'} role linked to this identity.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {

@@ -1,7 +1,8 @@
 import { LinearGradient } from 'expo-linear-gradient';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -9,6 +10,7 @@ import { ArrowLeft } from '@/components/icons/arrow-left';
 import { GoogleLogo } from '@/components/icons/google-logo';
 import { Headset } from '@/components/icons/headset';
 import { useAuth } from '@/lib/auth/auth-context';
+import { isAppleSignInAvailable, setPendingAppleSignup } from '@/lib/auth/apple';
 import { GoogleSignInUnavailableError, setPendingGoogleSignup } from '@/lib/auth/google';
 
 const COLORS = {
@@ -26,8 +28,14 @@ export default function LoginScreen() {
   const { type } = useLocalSearchParams<{ type?: string }>();
   // Set by the purpose screen ("I want to Earn" → tasker). Defaults to user.
   const accountType = type === 'tasker' ? 'tasker' : 'user';
-  const { signInWithGoogle } = useAuth();
+  const { signInWithApple, signInWithGoogle } = useAuth();
   const [googleBusy, setGoogleBusy] = useState(false);
+  const [appleBusy, setAppleBusy] = useState(false);
+  const [appleAvailable, setAppleAvailable] = useState(false);
+
+  useEffect(() => {
+    isAppleSignInAvailable().then(setAppleAvailable).catch(() => setAppleAvailable(false));
+  }, []);
 
   const handleGoogle = async () => {
     if (googleBusy) return;
@@ -35,15 +43,16 @@ export default function LoginScreen() {
     try {
       const outcome = await signInWithGoogle(accountType);
       if (outcome.kind === 'signed-in') {
+        if (outcome.roleFallback) {
+          Alert.alert('Role not created yet', `Your ${accountType} role is not set up, so Taskhub opened your ${outcome.accountType} role.`);
+        }
         router.replace('/home');
       } else if (accountType === 'tasker') {
-        // google-complete-signup only collects the user-side fields; the
-        // tasker endpoint requires phone/DOB/states/address, which the email
-        // flow's second step gathers. Send new taskers there.
-        Alert.alert(
-          'No tasker account yet',
-          'There is no tasker account for this Google account. Please sign up with email first.',
-        );
+        setPendingGoogleSignup({ idToken: outcome.idToken, profile: outcome.profile });
+        router.push({
+          pathname: '/tasker-details' as any,
+          params: { social: 'google', firstName: outcome.profile.givenName, lastName: outcome.profile.familyName, email: outcome.profile.email, country: 'Nigeria' },
+        });
       } else {
         // No account yet — carry the verified token to the completion screen.
         setPendingGoogleSignup({ idToken: outcome.idToken, profile: outcome.profile });
@@ -60,6 +69,36 @@ export default function LoginScreen() {
       }
     } finally {
       setGoogleBusy(false);
+    }
+  };
+
+  const handleApple = async () => {
+    if (appleBusy) return;
+    setAppleBusy(true);
+    try {
+      const outcome = await signInWithApple(accountType);
+      if (outcome.kind === 'signed-in') {
+        if (outcome.roleFallback) {
+          Alert.alert('Role not created yet', `Your ${accountType} role is not set up, so Taskhub opened your ${outcome.accountType} role.`);
+        }
+        router.replace('/home');
+      } else if (accountType === 'tasker') {
+        setPendingAppleSignup({ signupToken: outcome.signupToken, profile: outcome.profile });
+        router.push({
+          pathname: '/tasker-details' as any,
+          params: { social: 'apple', firstName: outcome.profile.givenName, lastName: outcome.profile.familyName, email: outcome.profile.email, country: 'Nigeria' },
+        });
+      } else {
+        setPendingAppleSignup({ signupToken: outcome.signupToken, profile: outcome.profile });
+        router.push('/google-complete-signup');
+      }
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (code !== 'ERR_REQUEST_CANCELED') {
+        Alert.alert('Apple sign-in failed', err instanceof Error ? err.message : 'Please try again.');
+      }
+    } finally {
+      setAppleBusy(false);
     }
   };
 
@@ -100,6 +139,17 @@ export default function LoginScreen() {
             <Text style={styles.emailLabel}>Continue with Email</Text>
           </Pressable>
 
+          {appleAvailable ? (
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+              cornerRadius={12}
+              style={styles.appleButton}
+              onPress={handleApple}
+              accessibilityLabel={appleBusy ? 'Signing in with Apple' : 'Continue with Apple'}
+            />
+          ) : null}
+
           <Pressable
             style={({ pressed }) => [
               styles.button,
@@ -130,6 +180,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.black,
   },
+  appleButton: { width: '100%', height: 48 },
   overlay: {
     position: 'absolute',
     left: 0,

@@ -40,7 +40,7 @@ export function isGoogleSignInAvailable(): boolean {
 }
 
 /** Launch the native Google account chooser and return a verified ID token. */
-export async function getGoogleIdToken(): Promise<string> {
+export async function getGoogleIdToken(options: { chooseAccount?: boolean } = {}): Promise<string> {
   if (!nativeModule?.GoogleSignin) {
     throw new GoogleSignInUnavailableError();
   }
@@ -62,6 +62,11 @@ export async function getGoogleIdToken(): Promise<string> {
     configured = true;
   }
 
+  // Clear only this app's cached Google session so every authentication or
+  // provider-link action presents an explicit account choice.
+  if (options.chooseAccount !== false) {
+    await GoogleSignin.signOut().catch(() => {});
+  }
   await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
   const result = await GoogleSignin.signIn();
   // Support both the current ({ data: { idToken } }) and legacy ({ idToken }) shapes.

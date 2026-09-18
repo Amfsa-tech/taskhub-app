@@ -4,12 +4,14 @@ import { api, apiRequest } from '@/lib/api/client';
 import type { PickedImage } from '@/lib/image-picker';
 import type {
   AccountType,
+  AppleAuthPayload,
   ChangePasswordPayload,
   ForgotPasswordPayload,
   GoogleAuthPayload,
   GoogleAuthResponse,
   GoogleCompleteSignupPayload,
   Interest,
+  LinkedRolePayload,
   LoginPayload,
   LoginResponse,
   MessageResponse,
@@ -18,6 +20,7 @@ import type {
   ResendVerificationPayload,
   ResetPasswordPayload,
   SetPasswordPayload,
+  SocialCompleteSignupPayload,
   TaskerRegisterPayload,
   UpdateInterestsResponse,
   UpdateProfilePayload,
@@ -210,6 +213,26 @@ export function logout() {
   return api.post<MessageResponse>(`${BASE}/logout`);
 }
 
+export function appleAuth(payload: AppleAuthPayload) {
+  return api.post<GoogleAuthResponse>(`${BASE}/apple`, payload, { auth: false });
+}
+
+export function completeSocialSignup(payload: SocialCompleteSignupPayload) {
+  return api.post<GoogleAuthResponse>(`${BASE}/social/complete-signup`, payload, { auth: false });
+}
+
+export function getConnectedProviders() {
+  return api.get<{ status: string; providers: Array<'local' | 'google' | 'apple'>; availableRoles: AccountType[] }>(`${BASE}/providers`);
+}
+
+export function linkGoogleProvider(idToken: string) {
+  return api.post<{ status: string; message: string; providers: string[] }>(`${BASE}/providers/google/link`, { idToken });
+}
+
+export function linkAppleProvider(payload: Omit<AppleAuthPayload, 'user_type'>) {
+  return api.post<{ status: string; message: string; providers: string[] }>(`${BASE}/providers/apple/link`, payload);
+}
+
 export interface SwitchModeResponse {
   status: string;
   message: string;
@@ -220,6 +243,14 @@ export interface SwitchModeResponse {
 
 export function switchAccountMode() {
   return api.post<SwitchModeResponse>(`${BASE}/switch-mode`, {});
+}
+
+export function linkAccountAndSwitch(email: string, password: string) {
+  return api.post<SwitchModeResponse>(`${BASE}/link-account`, { email, password });
+}
+
+export function createLinkedRole(payload: LinkedRolePayload) {
+  return api.post<SwitchModeResponse>(`${BASE}/roles`, payload);
 }
 
 export interface DeviceSession {
@@ -253,6 +284,8 @@ export interface DeleteAccountPayload {
   confirmation: 'DELETE';
   password?: string;
   idToken?: string;
+  appleIdentityToken?: string;
+  appleNonce?: string;
 }
 
 export function deleteAccount(payload: DeleteAccountPayload) {

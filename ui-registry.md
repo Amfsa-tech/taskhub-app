@@ -72,3 +72,47 @@ Bottom-sheet modals are rendered using the React Native native `<Modal>` compone
 - Backend blocker details remain visible in an amber 16px card so users can resolve each item without losing their entered confirmation state.
 - Reauthentication accepts a password or launches fresh Google sign-in for Google-only accounts. The submit action stays pending until the complete linked identity deletion finishes.
 
+### Identity and Provider Settings
+
+Files: `app/connected-accounts.tsx`, `app/link-role-account.tsx`
+Last updated: 2026-09-18
+
+| Property | Standard |
+| --- | --- |
+| Background | `#f9f9fb` canvas and `#ffffff` cards |
+| Border | `1px #e0e0ea` for identity cards and inputs |
+| Border radius | `16px` cards, `12px` actions, `8px` inputs and icon tiles |
+| Text, primary | Geist 600 headings with `#111122` |
+| Text, secondary | Geist 400 descriptions with `#5a5a70` |
+| Spacing | `16px` screen gutter, card padding, and major vertical gaps |
+| Interactive state | Pressed opacity `0.9`, disabled opacity `0.5` |
+| Accent usage | `#6c3bff` for Taskhub actions, `#0d6639` for connected status |
+
+**Pattern notes:**
+
+- Provider connections appear in one bordered settings card with 32px neutral icon tiles and subtle dividers.
+- Apple authentication always uses the official native Apple button. Custom buttons are not substituted.
+- Identity-linking screens state the verification rule before presenting credentials and explain that email matching alone is insufficient.
+
+### Tasker Directory
+
+File: `app/taskers.tsx`
+Last updated: 2026-09-18
+
+| Property | Standard |
+| --- | --- |
+| Background | `#f9f9fb` canvas, `#ffffff` cards, `#f2f2f7` search field |
+| Border | `1px #e0e0ea` on tasker cards and unselected filters |
+| Border radius | `16px` cards, `12px` filter actions, `8px` search and compact badges |
+| Text, primary | Geist 600 headings and names with `#111122` |
+| Text, secondary | Geist 400 descriptions and metadata with `#5a5a70` |
+| Spacing | `16px` screen gutter and card padding, `12px` card content gaps |
+| Interactive state | Pressed opacity `0.9`; selected filters use brand surface and border |
+| Accent usage | `#6c3bff` for filters and actions, amber for ratings |
+
+**Pattern notes:**
+
+- Browse directories use a `FlatList` with search and filter controls in the list header.
+- Data-backed directories always define loading, error, empty, content, cached refresh-error, and pull-to-refresh states.
+- Tasker cards lead to the public profile and show only server-provided ratings, completed-task counts, location, and distance.
+
