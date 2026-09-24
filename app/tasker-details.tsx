@@ -5,6 +5,7 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -261,16 +262,24 @@ export default function TaskerDetailsScreen() {
         {/* Footer */}
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
           {requiresConsent ? (
-            <Pressable
-              style={styles.consent}
-              onPress={() => setAgreed((value) => !value)}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: agreed }}>
-              <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
-                {agreed ? <Check size={14} color="#ffffff" /> : null}
-              </View>
-              <Text style={styles.consentText}>I agree to the Taskhub Terms of Service, User Agreement, and Privacy Policy.</Text>
-            </Pressable>
+            <View style={styles.consent}>
+              <Pressable
+                hitSlop={8}
+                onPress={() => setAgreed((value) => !value)}
+                accessibilityRole="checkbox"
+                accessibilityLabel="Agree to the legal terms"
+                accessibilityState={{ checked: agreed }}>
+                <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
+                  {agreed ? <Check size={14} color="#ffffff" /> : null}
+                </View>
+              </Pressable>
+              <Text style={styles.consentText}>
+                I agree to the{' '}
+                <Text style={styles.consentLink} onPress={() => void Linking.openURL('https://www.ngtaskhub.com/terms')}>Taskhub Terms of Service</Text>,{' '}
+                <Text style={styles.consentLink} onPress={() => void Linking.openURL('https://www.ngtaskhub.com/legal')}>User Agreement</Text>, and{' '}
+                <Text style={styles.consentLink} onPress={() => void Linking.openURL('https://www.ngtaskhub.com/privacy')}>Privacy Policy</Text>.
+              </Text>
+            </View>
           ) : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <Pressable
@@ -416,6 +425,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 19,
     color: COLORS.iconSecondary,
+  },
+  consentLink: {
+    fontFamily: 'Geist_600SemiBold',
+    color: COLORS.primary,
+    textDecorationLine: 'underline',
   },
   buttonLabel: {
     fontFamily: 'Geist_500Medium',

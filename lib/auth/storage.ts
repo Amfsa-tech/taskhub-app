@@ -9,11 +9,13 @@ import * as SecureStore from 'expo-secure-store';
 import type { AccountType, AuthUser } from './types';
 
 const TOKEN_KEY = 'taskhub.auth.token';
+const REFRESH_TOKEN_KEY = 'taskhub.auth.refresh-token';
 const TYPE_KEY = 'taskhub.auth.type';
 const USER_KEY = 'taskhub.auth.user';
 
 export interface StoredSession {
   token: string;
+  refreshToken?: string | null;
   accountType: AccountType;
   user: AuthUser | null;
 }
@@ -35,6 +37,9 @@ function minimalUser(user: AuthUser): Partial<AuthUser> {
 export async function saveSession(session: StoredSession): Promise<void> {
   await Promise.all([
     SecureStore.setItemAsync(TOKEN_KEY, session.token),
+    session.refreshToken
+      ? SecureStore.setItemAsync(REFRESH_TOKEN_KEY, session.refreshToken)
+      : SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY),
     SecureStore.setItemAsync(TYPE_KEY, session.accountType),
     session.user
       ? SecureStore.setItemAsync(USER_KEY, JSON.stringify(minimalUser(session.user)))
@@ -51,9 +56,23 @@ export async function saveToken(token: string): Promise<void> {
   await SecureStore.setItemAsync(TOKEN_KEY, token);
 }
 
+export async function saveTokens(token: string, refreshToken?: string): Promise<void> {
+  await Promise.all([
+    SecureStore.setItemAsync(TOKEN_KEY, token),
+    refreshToken
+      ? SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken)
+      : Promise.resolve(),
+  ]);
+}
+
+export async function loadRefreshToken(): Promise<string | null> {
+  return SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+}
+
 export async function loadSession(): Promise<StoredSession | null> {
-  const [token, accountType, userJson] = await Promise.all([
+  const [token, refreshToken, accountType, userJson] = await Promise.all([
     SecureStore.getItemAsync(TOKEN_KEY),
+    SecureStore.getItemAsync(REFRESH_TOKEN_KEY),
     SecureStore.getItemAsync(TYPE_KEY),
     SecureStore.getItemAsync(USER_KEY),
   ]);
@@ -69,12 +88,13 @@ export async function loadSession(): Promise<StoredSession | null> {
     }
   }
 
-  return { token, accountType: accountType as AccountType, user };
+  return { token, refreshToken, accountType: accountType as AccountType, user };
 }
 
 export async function clearSession(): Promise<void> {
   await Promise.all([
     SecureStore.deleteItemAsync(TOKEN_KEY),
+    SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY),
     SecureStore.deleteItemAsync(TYPE_KEY),
     SecureStore.deleteItemAsync(USER_KEY),
   ]);

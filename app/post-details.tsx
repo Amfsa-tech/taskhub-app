@@ -32,6 +32,10 @@ export default function PostDetailsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { draft, patch } = usePostTask();
+  const suggestedTitle =
+    draft.subCategories.map((service) => service.displayName).join(' and ') ||
+    draft.mainCategory?.displayName ||
+    'Describe the task';
 
   const canContinue =
     draft.title.trim().length > 0 &&
@@ -70,7 +74,7 @@ export default function PostDetailsScreen() {
               <Text style={styles.label}>Title</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Printing & Photocopy, Assignment"
+                placeholder={suggestedTitle}
                 placeholderTextColor={COLORS.placeholder}
                 value={draft.title}
                 onChangeText={(title) => patch({ title })}
@@ -96,9 +100,12 @@ export default function PostDetailsScreen() {
                 placeholder="Unilorin , First Gate"
                 placeholderTextColor={COLORS.placeholder}
                 value={draft.location}
-                onChangeText={(location) => patch({ location })}
+                onChangeText={(location) => patch({ location, locationCoordinates: null })}
               />
-              <Pressable hitSlop={6} onPress={() => { }}>
+              <Pressable
+                hitSlop={6}
+                accessibilityRole="button"
+                onPress={() => router.push({ pathname: '/location-map', params: { forTask: 'true' } })}>
                 <Text style={styles.useMap}>Use Map</Text>
               </Pressable>
             </View>

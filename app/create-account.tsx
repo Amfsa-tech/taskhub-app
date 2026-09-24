@@ -5,6 +5,7 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -249,22 +250,24 @@ export default function CreateAccountScreen() {
 
         {/* Footer */}
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-          <Pressable
-            style={styles.consent}
-            hitSlop={4}
-            onPress={() => setAgreed((prev) => !prev)}
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: agreed }}>
-            <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
-              {agreed ? <Check size={14} color={COLORS.onBrand} /> : null}
-            </View>
+          <View style={styles.consent}>
+            <Pressable
+              hitSlop={8}
+              onPress={() => setAgreed((prev) => !prev)}
+              accessibilityRole="checkbox"
+              accessibilityLabel="Agree to the legal terms"
+              accessibilityState={{ checked: agreed }}>
+              <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
+                {agreed ? <Check size={14} color={COLORS.onBrand} /> : null}
+              </View>
+            </Pressable>
             <Text style={styles.consentText}>
               Yes, I understand and agree to the{' '}
-              <Text style={styles.consentLink}>Taskhub Terms of Service</Text> including the{' '}
-              <Text style={styles.consentLink}>User Agreement</Text> and{' '}
-              <Text style={styles.consentLink}>Privacy Policy.</Text>
+              <Text style={styles.consentLink} onPress={() => void Linking.openURL('https://www.ngtaskhub.com/terms')}>Taskhub Terms of Service</Text> including the{' '}
+              <Text style={styles.consentLink} onPress={() => void Linking.openURL('https://www.ngtaskhub.com/legal')}>User Agreement</Text> and{' '}
+              <Text style={styles.consentLink} onPress={() => void Linking.openURL('https://www.ngtaskhub.com/privacy')}>Privacy Policy.</Text>
             </Text>
-          </Pressable>
+          </View>
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <Pressable

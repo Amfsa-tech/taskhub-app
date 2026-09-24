@@ -27,7 +27,7 @@ const COLORS = {
 export default function PostServiceScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { draft, toggleSubCategory } = usePostTask();
+  const { draft, patch, toggleSubCategory } = usePostTask();
   const { data, isLoading, isError, refetch, isRefetching } = useCategories();
 
   const main = draft.mainCategory;
@@ -100,7 +100,12 @@ export default function PostServiceScreen() {
         <PrimaryButton
           label={count > 0 ? `Continue with ${count} selected` : 'Continue'}
           disabled={count === 0}
-          onPress={() => router.push('/post-details')}
+          onPress={() => {
+            if (!draft.title.trim()) {
+              patch({ title: draft.subCategories.map((service) => service.displayName).join(' and ') });
+            }
+            router.push('/post-details');
+          }}
         />
       </View>
     </View>

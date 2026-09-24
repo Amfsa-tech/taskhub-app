@@ -10,6 +10,7 @@ import { ArrowLeft } from '@/components/icons/arrow-left';
 import { MagnifyingGlass } from '@/components/icons/magnifying-glass';
 import { Package } from '@/components/icons/package';
 import { useLocation } from '@/context/LocationContext';
+import { usePostTask } from '@/context/PostTaskContext';
 import { reverseGeocode as resolveCoordinates } from '@/lib/location/geocoding';
 
 const COLORS = {
@@ -179,10 +180,22 @@ export default function LocationMapScreen() {
     }
   };
 
-  const { fromModal } = useLocalSearchParams<{ fromModal?: string }>();
+  const { fromModal, forTask } = useLocalSearchParams<{ fromModal?: string; forTask?: string }>();
   const { setSelectedLocation } = useLocation();
+  const { patch: patchTask } = usePostTask();
 
   const confirmLocation = async () => {
+    if (forTask === 'true') {
+      patchTask({
+        location: address,
+        locationCoordinates: {
+          latitude: region.latitude,
+          longitude: region.longitude,
+        },
+      });
+      router.back();
+      return;
+    }
     if (fromModal === 'true') {
       await setSelectedLocation(address);
       router.dismissAll(); // close the modal stack

@@ -238,6 +238,25 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
+      {user?.isEmailVerified === false ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Verify your email address"
+          style={({ pressed }) => [styles.emailBanner, pressed && styles.emailBannerPressed]}
+          onPress={() =>
+            router.push({
+              pathname: '/otp',
+              params: { email: user.emailAddress, type: accountType ?? 'user' },
+            })
+          }>
+          <View style={styles.emailBannerCopy}>
+            <Text style={styles.emailBannerTitle}>Verify your email</Text>
+            <Text style={styles.emailBannerText}>Verify now to post, accept, and pay for tasks.</Text>
+          </View>
+          <Text style={styles.emailBannerAction}>Verify</Text>
+        </Pressable>
+      ) : null}
+
       {isTasker ? (
         <TaskerHomeView refreshing={refreshing} onRefresh={onRefresh} insets={insets} user={user} router={router} />
       ) : (
@@ -385,6 +404,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 24,
     gap: 24,
+  },
+  emailBanner: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e4d6ff',
+    backgroundColor: COLORS.brandSubtle,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  emailBannerPressed: {
+    opacity: 0.9,
+  },
+  emailBannerCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  emailBannerTitle: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 15,
+    color: COLORS.textPrimary,
+  },
+  emailBannerText: {
+    fontFamily: 'Geist_400Regular',
+    fontSize: 13,
+    lineHeight: 18,
+    color: COLORS.textSecondary,
+  },
+  emailBannerAction: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 15,
+    color: COLORS.brand,
   },
   // Verification ring — tasker "Complete Verification & Profile" card only
   ring: {

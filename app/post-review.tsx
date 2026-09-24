@@ -46,6 +46,7 @@ export default function PostReviewScreen() {
           mainCategory: draft.mainCategory!._id,
           categories: draft.subCategories.map((s) => s._id),
           budget: budgetNum,
+          ...(draft.locationCoordinates ? { location: draft.locationCoordinates } : {}),
         },
         draft.images,
       ),

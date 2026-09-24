@@ -35,11 +35,11 @@ import type {
 const BASE = '/api/auth';
 
 export function loginUser(payload: LoginPayload) {
-  return api.post<LoginResponse>(`${BASE}/user-login`, payload, { auth: false });
+  return api.post<LoginResponse>(`${BASE}/user-login`, payload, { auth: false, timeoutMs: 20_000 });
 }
 
 export function loginTasker(payload: LoginPayload) {
-  return api.post<LoginResponse>(`${BASE}/tasker-login`, payload, { auth: false });
+  return api.post<LoginResponse>(`${BASE}/tasker-login`, payload, { auth: false, timeoutMs: 20_000 });
 }
 
 export function login(type: AccountType, payload: LoginPayload) {
@@ -47,11 +47,14 @@ export function login(type: AccountType, payload: LoginPayload) {
 }
 
 /**
- * Sliding renewal: trade a still-valid token for a fresh 24h one. Called on
- * cold start so sessions only expire after a full day of inactivity.
+ * Rotate the refresh credential and obtain a short-lived access token.
  */
-export function refreshSessionToken() {
-  return api.post<{ status: string; token: string }>(`${BASE}/refresh`);
+export function refreshSessionToken(refreshToken: string) {
+  return api.post<{ status: string; token: string; refreshToken?: string; user_type: AccountType }>(
+    `${BASE}/refresh`,
+    { refreshToken },
+    { auth: false, skipAuthRefresh: true, timeoutMs: 20_000 },
+  );
 }
 
 export function registerUser(payload: UserRegisterPayload) {
@@ -80,7 +83,7 @@ export function resetPassword(payload: ResetPasswordPayload) {
 
 /** Phase 1 — verify a Google ID token and sign in / link an existing account. */
 export function googleAuth(payload: GoogleAuthPayload) {
-  return api.post<GoogleAuthResponse>(`${BASE}/google`, payload, { auth: false });
+  return api.post<GoogleAuthResponse>(`${BASE}/google`, payload, { auth: false, timeoutMs: 20_000 });
 }
 
 /** Phase 2 — create a brand-new account after collecting the completion fields. */
@@ -91,7 +94,7 @@ export function googleCompleteSignup(payload: GoogleCompleteSignupPayload) {
 /** Fetch the authenticated profile. Requires a valid bearer token. */
 export function getProfile(type: AccountType) {
   const path = type === 'tasker' ? `${BASE}/tasker` : `${BASE}/user`;
-  return api.get<ProfileResponse>(path);
+  return api.get<ProfileResponse>(path, { timeoutMs: 20_000 });
 }
 
 /**
@@ -214,11 +217,11 @@ export function logout() {
 }
 
 export function appleAuth(payload: AppleAuthPayload) {
-  return api.post<GoogleAuthResponse>(`${BASE}/apple`, payload, { auth: false });
+  return api.post<GoogleAuthResponse>(`${BASE}/apple`, payload, { auth: false, timeoutMs: 20_000 });
 }
 
 export function completeSocialSignup(payload: SocialCompleteSignupPayload) {
-  return api.post<GoogleAuthResponse>(`${BASE}/social/complete-signup`, payload, { auth: false });
+  return api.post<GoogleAuthResponse>(`${BASE}/social/complete-signup`, payload, { auth: false, timeoutMs: 20_000 });
 }
 
 export function getConnectedProviders() {
@@ -237,6 +240,7 @@ export interface SwitchModeResponse {
   status: string;
   message: string;
   token: string;
+  refreshToken?: string;
   user_type: AccountType;
   expiresIn?: string;
 }

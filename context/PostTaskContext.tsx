@@ -14,7 +14,8 @@ export interface PostTaskDraft {
   title: string;
   description: string;
   budget: string; // raw text input
-  location: string; // display only for now; the task uses the profile location
+  location: string;
+  locationCoordinates: { latitude: number; longitude: number } | null;
   images: PickedImage[];
 }
 
@@ -25,6 +26,7 @@ const EMPTY: PostTaskDraft = {
   description: '',
   budget: '',
   location: '',
+  locationCoordinates: null,
   images: [],
 };
 

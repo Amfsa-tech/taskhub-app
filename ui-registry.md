@@ -116,3 +116,24 @@ Last updated: 2026-09-18
 - Data-backed directories always define loading, error, empty, content, cached refresh-error, and pull-to-refresh states.
 - Tasker cards lead to the public profile and show only server-provided ratings, completed-task counts, location, and distance.
 
+### Email Verification Banner
+
+File: `app/(main)/home.tsx`
+Last updated: 2026-09-24
+
+| Property | Standard |
+| --- | --- |
+| Background | `#f3eeff` brand-subtle surface |
+| Border | `1px #e4d6ff` |
+| Border radius | `16px` |
+| Text, primary | Geist 600, 15px, `#111122` |
+| Text, secondary | Geist 400, 13px, `#5a5a70` |
+| Spacing | `16px` padding, `12px` content gap and outer top margin |
+| Interactive state | Pressed opacity `0.9` |
+| Accent usage | `#6c3bff` for the verification action |
+
+**Pattern notes:**
+
+- Account-state banners use the standard card radius and screen gutter.
+- Keep the consequence summary to one short line and pair it with a single explicit action.
+

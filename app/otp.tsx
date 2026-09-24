@@ -1,10 +1,9 @@
 import { useMutation } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -49,10 +48,18 @@ export default function OtpScreen() {
     type?: string;
   }>();
   const accountType: AccountType = type === 'tasker' ? 'tasker' : 'user';
-  const { signIn } = useAuth();
+  const { isAuthenticated, refreshProfile, signIn } = useAuth();
   const inputRef = useRef<TextInput>(null);
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [resendSeconds, setResendSeconds] = useState(0);
+
+  useEffect(() => {
+    if (resendSeconds <= 0) return;
+    const timer = setInterval(() => setResendSeconds((seconds) => Math.max(0, seconds - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [resendSeconds]);
 
   const focusInput = () => inputRef.current?.focus();
 
@@ -66,19 +73,25 @@ export default function OtpScreen() {
     mutationFn: async () => {
       if (!email) throw new Error('Missing email address. Please start again.');
       await verifyEmail({ code, emailAddress: email, type: accountType });
+      if (isAuthenticated) {
+        await refreshProfile();
+        return 'existing-session' as const;
+      }
       // When we arrived from sign-up we have the password, so log in
       // automatically. When we arrived from an unverified login we don't —
       // send the user back to log in with their now-verified account.
       if (password) {
         await signIn(accountType, { emailAddress: email, password });
-        return true;
+        return 'new-session' as const;
       }
-      return false;
+      return 'login-required' as const;
     },
-    onSuccess: (loggedIn) => {
+    onSuccess: (result) => {
       // purpose-selection collects *user* interests; a fresh tasker goes
       // straight home, where the empty feed routes them to service selection.
-      if (!loggedIn) {
+      if (result === 'existing-session') {
+        router.replace('/home');
+      } else if (result === 'login-required') {
         router.replace({ pathname: '/login-form', params: { type: accountType } });
       } else {
         router.replace(accountType === 'tasker' ? '/home' : '/purpose-selection');
@@ -96,7 +109,8 @@ export default function OtpScreen() {
     },
     onSuccess: () => {
       setCode('');
-      Alert.alert('Code sent', 'We sent a new verification code to your email.');
+      setNotice('A new code was sent. Check your spam or junk folder if it does not arrive.');
+      setResendSeconds(60);
     },
     onError: (err) => {
       setError(err instanceof Error ? err.message : 'Could not resend the code.');
@@ -105,6 +119,7 @@ export default function OtpScreen() {
 
   const verify = () => {
     setError(null);
+    setNotice(null);
     if (code.length < CODE_LENGTH) {
       setError(`Enter the ${CODE_LENGTH}-digit code.`);
       return;
@@ -164,6 +179,7 @@ export default function OtpScreen() {
         </Pressable>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
+        {notice ? <Text style={styles.notice}>{notice}</Text> : null}
 
         {/* Buttons */}
         <View style={styles.buttons}>
@@ -184,12 +200,18 @@ export default function OtpScreen() {
 
           <Pressable
             hitSlop={8}
-            onPress={() => resendMutation.mutate()}
-            disabled={resendMutation.isPending}
+            onPress={() => {
+              setError(null);
+              setNotice(null);
+              resendMutation.mutate();
+            }}
+            disabled={resendMutation.isPending || resendSeconds > 0}
             style={styles.resendRow}>
             <Text style={styles.resendMuted}>
               {resendMutation.isPending ? (
                 'Sending…'
+              ) : resendSeconds > 0 ? (
+                `Resend in ${resendSeconds}s`
               ) : (
                 <>
                   Didn’t receive a code? <Text style={styles.resendLink}>Resend</Text>
@@ -308,6 +330,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     letterSpacing: -0.24,
     color: '#dc2626',
+  },
+  notice: {
+    marginTop: 16,
+    fontFamily: 'Geist_500Medium',
+    fontSize: 15,
+    lineHeight: 20,
+    color: '#0d6639',
   },
   resendRow: {
     height: 48,

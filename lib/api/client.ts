@@ -13,6 +13,8 @@ import type { ApiErrorBody } from './types';
 // Module-level token, kept in sync by the auth layer. Requests with
 // `auth: true` (the default) attach it automatically.
 let authToken: string | null = null;
+let authRefreshHandler: (() => Promise<string | null>) | null = null;
+let refreshPromise: Promise<string | null> | null = null;
 
 export function setApiToken(token: string | null): void {
   authToken = token;
@@ -20,6 +22,10 @@ export function setApiToken(token: string | null): void {
 
 export function getApiToken(): string | null {
   return authToken;
+}
+
+export function setAuthRefreshHandler(handler: (() => Promise<string | null>) | null): void {
+  authRefreshHandler = handler;
 }
 
 export class ApiError extends Error {
@@ -84,13 +90,26 @@ export interface RequestOptions {
   headers?: Record<string, string>;
   /** Abort signal for cancellation (e.g. from React Query). */
   signal?: AbortSignal;
+  /** Request deadline. JSON requests default to 45s; uploads default to 120s. */
+  timeoutMs?: number;
+  /** Internal guard which prevents an auth refresh request from refreshing itself. */
+  skipAuthRefresh?: boolean;
 }
 
 export async function apiRequest<T = unknown>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
-  const { method = 'GET', body, auth = true, token, headers = {}, signal } = options;
+  const {
+    method = 'GET',
+    body,
+    auth = true,
+    token,
+    headers = {},
+    signal,
+    timeoutMs,
+    skipAuthRefresh = false,
+  } = options;
 
   const url = path.startsWith('http')
     ? path
@@ -100,7 +119,11 @@ export async function apiRequest<T = unknown>(
   // multipart/form-data — let fetch set the Content-Type + boundary itself.
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
 
-  const finalHeaders: Record<string, string> = { Accept: 'application/json', ...headers };
+  const finalHeaders: Record<string, string> = {
+    Accept: 'application/json',
+    'X-Client-Platform': 'mobile',
+    ...headers,
+  };
   if (body !== undefined && !isFormData) {
     finalHeaders['Content-Type'] = 'application/json';
   }
@@ -111,19 +134,52 @@ export async function apiRequest<T = unknown>(
   }
 
   let response: Response;
+  const controller = new AbortController();
+  const deadline = timeoutMs ?? (isFormData ? 120_000 : 45_000);
+  let timedOut = false;
+  const abortFromCaller = () => controller.abort();
+  signal?.addEventListener('abort', abortFromCaller, { once: true });
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, deadline);
   try {
     response = await fetch(url, {
       method,
       headers: finalHeaders,
       body: body !== undefined ? (isFormData ? (body as FormData) : JSON.stringify(body)) : undefined,
-      signal,
+      signal: controller.signal,
     });
   } catch (err) {
+    if (timedOut) {
+      throw new ApiError('The request took too long. Please try again.', 0, {
+        code: 'request_timeout',
+      });
+    }
     throw new ApiError(
       'Network request failed. Check your connection and try again.',
       0,
       err,
     );
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', abortFromCaller);
+  }
+
+  if (response.status === 401 && auth && !skipAuthRefresh && authRefreshHandler) {
+    if (!refreshPromise) {
+      refreshPromise = authRefreshHandler().finally(() => {
+        refreshPromise = null;
+      });
+    }
+    const refreshedToken = await refreshPromise;
+    if (refreshedToken) {
+      return apiRequest<T>(path, {
+        ...options,
+        token: refreshedToken,
+        skipAuthRefresh: true,
+      });
+    }
   }
 
   // Parse body defensively — some endpoints may return empty bodies.

@@ -37,12 +37,13 @@ export interface AuthUser {
 /**
  * `/user-login` and `/tasker-login` return only the token plus metadata —
  * NOT the user object. The full profile is fetched separately via `getProfile`.
- * Note: login succeeds even when the email isn't verified; check
- * `isEmailVerified` and route to the OTP screen when it's false.
+ * Note: login succeeds even when the email isn't verified. The authenticated
+ * app shows a verification banner while the server restricts sensitive actions.
  */
 export interface LoginResponse {
   status: string;
   token: string;
+  refreshToken?: string;
   user_type: AccountType;
   isEmailVerified: boolean;
   expiresIn: string;
@@ -133,6 +134,7 @@ export interface GoogleProfile {
 export interface GoogleAuthResponse {
   status: string;
   token: string;
+  refreshToken?: string;
   user_type: AccountType;
   isEmailVerified: boolean;
   expiresIn: string;

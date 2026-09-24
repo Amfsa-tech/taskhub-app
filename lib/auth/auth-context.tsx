@@ -18,7 +18,7 @@ import {
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { Platform } from 'react-native';
 
-import { ApiError, setApiToken } from '@/lib/api/client';
+import { ApiError, setApiToken, setAuthRefreshHandler } from '@/lib/api/client';
 import { watchPushSubscriptionId } from '@/lib/push';
 import { queryClient } from '@/lib/query-client';
 import {
@@ -40,9 +40,10 @@ import { getAppleCredential } from './apple';
 import { getGoogleIdToken } from './google';
 import {
   clearSession,
+  loadRefreshToken,
   loadSession,
   saveSession,
-  saveToken,
+  saveTokens,
   saveUser,
 } from './storage';
 import type { AccountType, AppleProfile, AuthUser, GoogleCompleteSignupPayload, GoogleProfile, LinkedRolePayload, LoginPayload, SocialCompleteSignupPayload } from './types';
@@ -143,6 +144,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const renewAccessToken = useCallback(async (): Promise<string | null> => {
+    const storedRefreshToken = await loadRefreshToken();
+    if (!storedRefreshToken) return null;
+    try {
+      const refreshed = await refreshSessionToken(storedRefreshToken);
+      setApiToken(refreshed.token);
+      setToken(refreshed.token);
+      await saveTokens(refreshed.token, refreshed.refreshToken);
+      return refreshed.token;
+    } catch (error) {
+      if (error instanceof ApiError && error.isUnauthorized) {
+        await clearSession();
+        setApiToken(null);
+        setToken(null);
+        setAccountType(null);
+        setUser(null);
+        queryClient.removeQueries();
+        return null;
+      }
+      throw error;
+    }
+  }, []);
+
+  useEffect(() => {
+    setAuthRefreshHandler(renewAccessToken);
+    return () => setAuthRefreshHandler(null);
+  }, [renewAccessToken]);
+
   // Bootstrap persisted session once on launch.
   useEffect(() => {
     let cancelled = false;
@@ -171,21 +200,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        // Sliding renewal: trade the restored token for a fresh 24h one so
-        // active users never hit the hard expiry mid-session. Non-blocking —
-        // if it fails the current token keeps working until it expires. Runs
-        // after the profile refresh so its 401-clears-session path (above)
-        // still compares against the original token.
-        try {
-          const { token: freshToken } = await refreshSessionToken();
-          if (!cancelled && tokenRef.current === session.token && freshToken) {
-            setApiToken(freshToken);
-            setToken(freshToken);
-            await saveToken(freshToken);
-          }
-        } catch {
-          // Ignore: expired/invalid tokens were already handled above.
-        }
       } finally {
         if (!cancelled) setIsBootstrapping(false);
       }
@@ -203,21 +217,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await login(type, payload);
       const accountType = res.user_type ?? type;
 
-      // Login succeeds even for unverified accounts. Don't establish a session;
-      // surface a verification error so the screen can route to the OTP flow.
-      const isDev = payload.emailAddress.toLowerCase().startsWith('dev.');
-      if (!res.isEmailVerified && !isDev) {
-        setApiToken(null);
-        throw new ApiError('Please verify your email to continue.', 403, {
-          emailVerificationRequired: true,
-        });
-      }
-
       setApiToken(res.token);
-      const { user } = await getProfile(accountType);
-      applySession(accountType, res.token, user);
-      await saveSession({ token: res.token, accountType, user });
-      return user;
+      try {
+        const { user } = await getProfile(accountType);
+        applySession(accountType, res.token, user);
+        await saveSession({
+          token: res.token,
+          refreshToken: res.refreshToken,
+          accountType,
+          user,
+        });
+        return user;
+      } catch (error) {
+        setApiToken(null);
+        throw error;
+      }
     },
     [applySession],
   );
@@ -233,7 +247,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setApiToken(res.token);
         const { user } = await getProfile(nextType);
         applySession(nextType, res.token, user);
-        await saveSession({ token: res.token, accountType: nextType, user });
+        await saveSession({ token: res.token, refreshToken: res.refreshToken, accountType: nextType, user });
         return { kind: 'signed-in', user, accountType: nextType, roleFallback: Boolean(res.roleFallback) };
       } catch (err) {
         // 404 + `account_not_found` means there's no account yet — hand the
@@ -259,7 +273,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setApiToken(res.token);
         const { user } = await getProfile(nextType);
         applySession(nextType, res.token, user);
-        await saveSession({ token: res.token, accountType: nextType, user });
+        await saveSession({ token: res.token, refreshToken: res.refreshToken, accountType: nextType, user });
         return { kind: 'signed-in', user, accountType: nextType, roleFallback: Boolean(res.roleFallback) };
       } catch (err) {
         if (err instanceof ApiError && err.status === 404) {
@@ -281,7 +295,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setApiToken(res.token);
       const { user } = await getProfile(nextType);
       applySession(nextType, res.token, user);
-      await saveSession({ token: res.token, accountType: nextType, user });
+      await saveSession({ token: res.token, refreshToken: res.refreshToken, accountType: nextType, user });
       return user;
     },
     [applySession],
@@ -294,7 +308,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setApiToken(res.token);
       const { user } = await getProfile(nextType);
       applySession(nextType, res.token, user);
-      await saveSession({ token: res.token, accountType: nextType, user });
+      await saveSession({ token: res.token, refreshToken: res.refreshToken, accountType: nextType, user });
       return user;
     },
     [applySession],
@@ -309,8 +323,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
-    // Best-effort server logout; the token never expires server-side, so the
-    // important part is clearing it locally.
+    // Best-effort server logout. Local credentials are cleared regardless.
     try {
       // Detach this device from push first, while the token still works —
       // otherwise notifications keep arriving for the signed-out account.
@@ -345,7 +358,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setApiToken(res.token);
     const { user: nextUser } = await getProfile(res.user_type);
     applySession(res.user_type, res.token, nextUser);
-    await saveSession({ token: res.token, accountType: res.user_type, user: nextUser });
+    await saveSession({ token: res.token, refreshToken: res.refreshToken, accountType: res.user_type, user: nextUser });
     queryClient.removeQueries();
     return nextUser;
   }, [applySession]);
@@ -355,7 +368,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setApiToken(res.token);
     const { user: nextUser } = await getProfile(res.user_type);
     applySession(res.user_type, res.token, nextUser);
-    await saveSession({ token: res.token, accountType: res.user_type, user: nextUser });
+    await saveSession({ token: res.token, refreshToken: res.refreshToken, accountType: res.user_type, user: nextUser });
     queryClient.removeQueries();
     return nextUser;
   }, [applySession]);
@@ -365,7 +378,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setApiToken(res.token);
     const { user: nextUser } = await getProfile(res.user_type);
     applySession(res.user_type, res.token, nextUser);
-    await saveSession({ token: res.token, accountType: res.user_type, user: nextUser });
+    await saveSession({ token: res.token, refreshToken: res.refreshToken, accountType: res.user_type, user: nextUser });
     queryClient.removeQueries();
     return nextUser;
   }, [applySession]);
