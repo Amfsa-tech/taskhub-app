@@ -55,6 +55,7 @@ export default function PurposeScreen() {
   const [role, setRole] = useState<Role | null>(null);
 
   const handleContinue = () => {
+    if (!role) return;
     // "Earn" signs up as a tasker; "hire" as a user. The choice rides along
     // to login/create-account, which pick the matching backend endpoints.
     router.push({
@@ -108,7 +109,13 @@ export default function PurposeScreen() {
       {/* Footer */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
         <Pressable
-          style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+          style={({ pressed }) => [
+            styles.button,
+            !role && styles.buttonDisabled,
+            pressed && role && styles.buttonPressed,
+          ]}
+          disabled={!role}
+          accessibilityState={{ disabled: !role }}
           onPress={handleContinue}>
           <Text style={styles.buttonLabel}>Continue</Text>
           <ArrowRight size={18} color={COLORS.onBrand} />
