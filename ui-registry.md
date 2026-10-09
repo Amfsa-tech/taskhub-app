@@ -97,7 +97,7 @@ Last updated: 2026-09-18
 ### Tasker Directory
 
 File: `app/taskers.tsx`
-Last updated: 2026-09-18
+Last updated: 2026-10-04
 
 | Property | Standard |
 | --- | --- |
@@ -115,6 +115,28 @@ Last updated: 2026-09-18
 - Browse directories use a `FlatList` with search and filter controls in the list header.
 - Data-backed directories always define loading, error, empty, content, cached refresh-error, and pull-to-refresh states.
 - Tasker cards lead to the public profile and show only server-provided ratings, completed-task counts, location, and distance.
+- Directory search uses the backend query before local category/sort filtering; the home carousel remains limited to six.
+
+### Transaction Receipt
+
+File: `app/receipt.tsx`
+Last updated: 2026-10-04
+
+| Property | Standard |
+| --- | --- |
+| Background | `#f9f9fb` canvas, `#ffffff` details card |
+| Border | No card border; use spacing between rows |
+| Border radius | `16px` card and status banner |
+| Text, primary | Geist 700 amount with `#111122`, Geist 500 values |
+| Text, secondary | Geist 400 labels and dates with `#5a5a70` |
+| Spacing | `16px` screen gutter, card padding, and row gap |
+| Interactive state | Copy reference button confirms copied state |
+| Accent usage | Green for verified receipt banner; purple for actions |
+
+**Pattern notes:**
+
+- Receipt rows appear only when the underlying transaction contains applicable data; task and counterparty details are not fabricated.
+- Transaction status comes from the backend receipt, not from the payment purpose. Only successful receipts show the verified badge; pending and failed statuses use warning and error colors.
 
 ### Email Verification Banner
 
@@ -136,4 +158,198 @@ Last updated: 2026-09-24
 
 - Account-state banners use the standard card radius and screen gutter.
 - Keep the consequence summary to one short line and pair it with a single explicit action.
+
+### Required Location and University Inputs
+
+Files: `app/location-confirm.tsx`, `app/location-university.tsx`, `app/post-details.tsx`
+Last updated: 2026-09-27
+
+| Property | Standard |
+| --- | --- |
+| Background | `#f9f9fb` canvas and `#ffffff` selectable surfaces |
+| Border | `1px #e0e0ea` on form inputs and selected rows |
+| Border radius | `8px` inputs and rows, `12px` primary action |
+| Text, primary | Geist 500 or 600 with `#111122` |
+| Text, secondary | Geist 400 or 500 with `#5a5a70` |
+| Spacing | `16px` screen gutter and footer padding, `8px` compact gaps |
+| Interactive state | Pressed opacity `0.9`, unavailable actions visually disabled |
+| Accent usage | `#6c3bff` for map, selection, retry, and primary actions |
+
+**Pattern notes:**
+
+- Required onboarding values remain on screen when persistence fails and show a retryable error.
+- Campus task posting shows the chosen university as a form row and returns to the same draft after editing it.
+- Location-dependent actions require numeric coordinates. A display address alone is never presented as a successfully saved service location.
+
+### Recoverable Wallet Funding
+
+File: `app/wallet.tsx`
+Last updated: 2026-09-28
+
+| Property | Standard |
+| --- | --- |
+| Background | `#fff8e6` for a pending payment recovery card |
+| Border | `1px #f3c969` |
+| Border radius | `16px` card, `12px` actions |
+| Text, primary | Geist 600, 17px, `#111122` |
+| Text, secondary | Geist 400, 14px, `#5a5a70` |
+| Spacing | `16px` card padding, `10px` content gap |
+| Interactive state | Pressed opacity `0.9`, pending opacity `0.5` |
+| Accent usage | `#6c3bff` for resume and status actions |
+
+**Pattern notes:**
+
+- Hosted financial flows must remain recoverable after backgrounding or process loss.
+- Pending cards pair one primary resume action with one outlined server-status action.
+- Payment success is server-authoritative and must invalidate wallet queries before presenting completion.
+
+### Precise Location Selector
+
+File: `app/location-map.tsx`
+Last updated: 2026-09-28
+
+| Property | Standard |
+| --- | --- |
+| Background | `#f9f9fb` canvas, `#ffffff` search and result surfaces |
+| Border | `1px #e0e0ea`, brand border on the selected result |
+| Border radius | `16px` selection card, `12px` inputs and actions |
+| Text, primary | Geist 600 or 700 with `#111122` |
+| Text, secondary | Geist 400 with `#5a5a70` |
+| Spacing | `16px` screen gutter and content gaps |
+| Interactive state | Pressed opacity `0.9`, disabled opacity `0.5` |
+| Accent usage | `#6c3bff` and `#f3eeff` for location actions and selection |
+
+**Pattern notes:**
+
+- Location selection must return both a display address and finite coordinates.
+- Address search and current GPS are equal recovery paths. Neither depends on a native map SDK.
+- Search, permission, network, empty, selected, and pending states remain visible and actionable.
+
+### Nearby Task Directory
+
+File: `app/tasks-near-you.tsx`
+Last updated: 2026-09-28
+
+| Property | Standard |
+| --- | --- |
+| Background | `#f9f9fb` canvas and `#ffffff` task cards |
+| Border | `1px #e0e0ea` |
+| Border radius | `16px` cards, `12px` actions, `8px` compact badges |
+| Text, primary | Geist 600 or 700 with `#111122` |
+| Text, secondary | Geist 400 with `#5a5a70` |
+| Spacing | `16px` screen gutter and card padding, `12px` list gap |
+| Interactive state | Pressed opacity `0.9`, pull to refresh, paginated loading |
+| Accent usage | `#6c3bff` and `#f3eeff` for mode badges and actions |
+
+**Pattern notes:**
+
+- Location-aware directories use the tasker feed as the only source of truth.
+- Loading, error, empty, content, refresh, and next-page states are all explicit.
+- Task cards display only server-provided price, location, time, application mode, and bid state.
+
+### Identity Verification Status
+
+File: `app/nin-verification.tsx`
+Last updated: 2026-10-04
+
+| Property | Standard |
+| --- | --- |
+| Background | `#f9f9fb` canvas, `#ffffff` status card |
+| Border | `1px #e2e2ec` card, brand border on secondary action |
+| Border radius | `16px` card, `12px` actions |
+| Text, primary | Geist 600 or 700 with `#111122` |
+| Text, secondary | Geist 400 with `#5a5a70` |
+| Spacing | `16px` screen gutter and card padding, `24px` section gap |
+| Interactive state | Pressed opacity `0.9`; pending action disabled |
+| Accent usage | `#6c3bff` actions, `#b45309` review state, `#12b76a` verified state |
+
+**Pattern notes:**
+
+- `under_review` alone locks identity resubmission. `in_progress` and `not_started` offer a Complete Profile action that resumes the provider session.
+- Loading and failed status checks have explicit states; a stale profile badge never creates a review lock.
+- Returning from the hosted browser refreshes verification status before the user decides what to do next.
+
+### Conversation Inbox Search
+
+File: `app/(main)/messages.tsx`
+Last updated: 2026-10-04
+
+| Property | Standard |
+| --- | --- |
+| Background | `#f9f9fb` canvas, `#ffffff` header, `#f2f2f7` search field |
+| Border | None on search field |
+| Border radius | `8px` search field |
+| Text, primary | Geist 500 with `#111122` |
+| Text, secondary | Geist 500 with `#a0a0ba` placeholder |
+| Spacing | `16px` header gutter, `10px` search-field gap, `24px` list gap |
+| Interactive state | Clear action in `#6c3bff`; query is debounced |
+| Accent usage | `#6c3bff` for clear and loading controls |
+
+**Pattern notes:**
+
+- Search is server-side so results include conversations beyond the first page.
+- Keep loading, network error, no conversations, and no matching conversations as distinct states.
+- Use a virtualized list for paginated inbox results; SDK 54 does not have the Expo UI universal list layer.
+
+### Task Posting Taxonomy Search
+
+Files: `app/post-category.tsx`, `app/post-service.tsx`
+Last updated: 2026-10-04
+
+| Property | Standard |
+| --- | --- |
+| Background | `#f9f9fb` canvas, `#f2f2f7` search field |
+| Border | None on search field |
+| Border radius | `8px` search field and service rows |
+| Text, primary | Geist 500 with `#111122` |
+| Text, secondary | Geist 500 with `#a0a0ba` placeholder |
+| Spacing | `16px` screen gutter, `10px` search-field gap, `24px` below search |
+| Interactive state | Clear action in `#6c3bff`; selected services retain their state while filtering |
+| Accent usage | `#6c3bff` on clear and selected service states |
+
+**Pattern notes:**
+
+- Category search covers main category and child service names; service search covers the complete fetched category list.
+- Zero catalog items and zero search matches have different messages.
+- Filtering never clears selected services from the draft.
+
+### Typed Location Entry
+
+File: `app/location-permission.tsx`
+Last updated: 2026-10-07
+
+| Property | Standard |
+| --- | --- |
+| Background | `#f9f9fb` canvas, `#ffffff` inputs |
+| Text, primary | Geist 700 with `#111122` |
+| Text, secondary | `#5a5a70` |
+| Spacing | `20px` screen gutter, `10px` form gap |
+| Interactive state | Continue validates address, city, and state, then saves all three |
+| Accent usage | PrimaryButton purple action |
+
+**Pattern notes:**
+
+- Do not ask for device location permission or use geocoding. The user types an address, city, and state.
+- Keep the primary action inside the scrollable form so it remains reachable with the keyboard open.
+- The same three fields are used by post-task and edit-profile screens.
+
+### Signup Date-of-Birth Input
+
+Files: `app/create-account.tsx`, `app/google-complete-signup.tsx`, `app/tasker-details.tsx`
+Last updated: 2026-10-04
+
+| Property | Standard |
+| --- | --- |
+| Background | `#ffffff` input on `#f9f9fb` canvas |
+| Border | `1px` solid `#e0e0ea` |
+| Border radius | `8px` |
+| Text, primary | Geist 500, `17px`, `#111122` |
+| Text, placeholder | `#a0a0ba` |
+| Spacing | `16px` input horizontal padding; `16px` between fields |
+| Error | Existing red signup error below the form |
+
+**Pattern notes:**
+
+- Keep DOB formatting (`YYYY-MM-DD`) and 18+ validation identical for user, social, and tasker signup.
+- Reuse the existing signup field treatment; SDK 54 does not provide the Expo UI universal form controls.
 

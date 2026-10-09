@@ -71,12 +71,12 @@ export function registerDiditSession(sessionId: string) {
  * 503 means Didit isn't configured on the server; 409 means already verified.
  */
 export function createDiditKycSession() {
-  return api.post<{ success: boolean; data: { sessionId: string; url: string } }>(
+  return api.post<{ success: boolean; data: { sessionId?: string; url?: string; status?: string; resumed?: boolean } }>(
     '/api/v1/kyc/create-session',
   );
 }
 
-export type KycRecordStatus = 'pending' | 'approved' | 'rejected' | 'Not Started';
+export type KycRecordStatus = 'not_started' | 'in_progress' | 'under_review' | 'approved' | 'rejected';
 
 /**
  * Detail of the latest **Didit** KYC record.
@@ -92,6 +92,8 @@ export interface KycStatusResponse {
   data: {
     status: KycRecordStatus;
     isVerified: boolean;
+    sessionUrl?: string | null;
+    sessionId?: string | null;
     maskedNin?: string;
     verifiedAt?: string;
     rejectionReasons?: string[];

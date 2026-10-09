@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import FlagWhite from '@/assets/icons/flag-white.svg';
 import Headset from '@/assets/icons/headset.svg';
@@ -21,7 +22,6 @@ import RadioOn from '@/assets/icons/radio-on.svg';
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
 import { buildIssueReportMessage, submitSupportRequest } from '@/lib/api/support';
-import { useAuth } from '@/lib/auth/auth-context';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -50,19 +50,15 @@ export default function ReportIssueScreen() {
     taskId?: string;
     taskTitle?: string;
   }>();
-  const { user } = useAuth();
   const [selected, setSelected] = useState(ISSUES[0]);
   const [details, setDetails] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const reporterName = user?.fullName?.trim() || user?.firstName?.trim() || '';
-  const reporterEmail = user?.emailAddress?.trim() || '';
-
   const send = useMutation({
     mutationFn: () =>
       submitSupportRequest({
-        name: reporterName,
-        email: reporterEmail,
+        category: selected,
+        subject: taskTitle ? `Issue with ${taskTitle}` : selected,
         message: buildIssueReportMessage({
           issue: selected,
           details,
@@ -79,13 +75,6 @@ export default function ReportIssueScreen() {
 
   const submit = () => {
     setError(null);
-
-    // The endpoint requires a name and a valid email, and takes them from the
-    // body rather than the token — so a session without them can't report.
-    if (!reporterName || !reporterEmail) {
-      setError('We couldn’t read your account details. Please sign in again and retry.');
-      return;
-    }
 
     send.mutate();
   };
@@ -106,7 +95,7 @@ export default function ReportIssueScreen() {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
+        <KeyboardAwareScrollView
           style={styles.flex}
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
@@ -160,7 +149,7 @@ export default function ReportIssueScreen() {
           ) : null}
 
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
         {/* Footer */}
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>

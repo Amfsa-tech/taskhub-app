@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { ScreenHeader } from '@/components/taskhub/screen-header';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -37,7 +38,7 @@ export default function LinkRoleAccountScreen() {
     <KeyboardAvoidingView style={[styles.container, { paddingBottom: insets.bottom }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <StatusBar style="dark" />
       <ScreenHeader title={`Link ${target} account`} />
-      <View style={styles.content}>
+      <KeyboardAwareScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.description}>Sign in to your existing {target} profile. Taskhub will verify both profiles, join them under one identity, and switch to it.</Text>
         <View style={styles.card}>
           <View style={styles.field}>
@@ -54,7 +55,7 @@ export default function LinkRoleAccountScreen() {
           {mutation.isPending ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.buttonText}>Verify, link and switch</Text>}
         </Pressable>
         <Text style={styles.note}>For security, email matching alone never links profiles. Social-only profiles already using the same connected Google or Apple identity are linked automatically by provider identity.</Text>
-      </View>
+      </KeyboardAwareScrollView>
     </KeyboardAvoidingView>
   );
 }

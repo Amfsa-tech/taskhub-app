@@ -1,4 +1,5 @@
 import { useMutation } from '@tanstack/react-query';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
@@ -20,6 +21,7 @@ import { ArrowLeft } from '@/components/icons/arrow-left';
 import { ArrowRight } from '@/components/icons/arrow-right';
 import { Check } from '@/components/icons/check';
 import { Headset } from '@/components/icons/headset';
+import { signupAgeError } from '@/lib/auth/age';
 import { registerTasker } from '@/lib/auth/auth-api';
 import { useAuth } from '@/lib/auth/auth-context';
 import { clearPendingAppleSignup, getPendingAppleSignup } from '@/lib/auth/apple';
@@ -36,17 +38,6 @@ const COLORS = {
   iconSecondary: '#78788c',
   onBrand: '#ffffff',
 };
-
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
-function ageOf(isoDate: string): number {
-  const dob = new Date(isoDate);
-  const now = new Date();
-  let age = now.getFullYear() - dob.getFullYear();
-  const monthDiff = now.getMonth() - dob.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < dob.getDate())) age -= 1;
-  return age;
-}
 
 type FieldProps = {
   label: string;
@@ -104,6 +95,7 @@ export default function TaskerDetailsScreen() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [residentState, setResidentState] = useState('');
+  const [city, setCity] = useState('');
   const [originState, setOriginState] = useState('');
   const [address, setAddress] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -121,6 +113,7 @@ export default function TaskerDetailsScreen() {
         phoneNumber: phoneNumber.trim(),
         dateOfBirth: dateOfBirth.trim(),
         residentState: residentState.trim(),
+        city: city.trim(),
         originState: originState.trim(),
         address: address.trim(),
       };
@@ -170,18 +163,16 @@ export default function TaskerDetailsScreen() {
       !phoneNumber.trim() ||
       !dateOfBirth.trim() ||
       !residentState.trim() ||
+      !city.trim() ||
       !originState.trim() ||
       !address.trim()
     ) {
       setError('Please fill in every field.');
       return;
     }
-    if (!DATE_PATTERN.test(dateOfBirth.trim()) || Number.isNaN(Date.parse(dateOfBirth.trim()))) {
-      setError('Enter your date of birth as YYYY-MM-DD, e.g 2002-04-15.');
-      return;
-    }
-    if (ageOf(dateOfBirth.trim()) < 16) {
-      setError('You must be at least 16 years old to register on TaskHub.');
+    const ageError = signupAgeError(dateOfBirth);
+    if (ageError) {
+      setError(ageError);
       return;
     }
     registerMutation.mutate();
@@ -195,7 +186,7 @@ export default function TaskerDetailsScreen() {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
+        <KeyboardAwareScrollView
           style={styles.flex}
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
@@ -244,6 +235,7 @@ export default function TaskerDetailsScreen() {
               value={residentState}
               onChangeText={setResidentState}
             />
+            <Field label="City" placeholder="e.g Ikeja" value={city} onChangeText={setCity} />
             <Field
               label="State of origin"
               placeholder="e.g Oyo"
@@ -257,7 +249,7 @@ export default function TaskerDetailsScreen() {
               onChangeText={setAddress}
             />
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
         {/* Footer */}
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>

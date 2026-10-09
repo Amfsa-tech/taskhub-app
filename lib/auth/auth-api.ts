@@ -236,13 +236,30 @@ export function linkAppleProvider(payload: Omit<AppleAuthPayload, 'user_type'>) 
   return api.post<{ status: string; message: string; providers: string[] }>(`${BASE}/providers/apple/link`, payload);
 }
 
-export interface SwitchModeResponse {
+export interface RoleSessionResponse {
   status: string;
   message: string;
   token: string;
   refreshToken?: string;
   user_type: AccountType;
+  role?: AccountType;
+  accountId?: string;
   expiresIn?: string;
+}
+
+export interface SwitchModeResponse {
+  status: string;
+  message: string;
+  token?: string;
+  refreshToken?: string;
+  user_type?: AccountType;
+  role?: AccountType;
+  accountId?: string;
+  expiresIn?: string;
+  code?: string;
+  onboarding_required?: boolean;
+  onboardingRequired?: boolean;
+  missingFields?: string[];
 }
 
 export function switchAccountMode() {
@@ -250,11 +267,11 @@ export function switchAccountMode() {
 }
 
 export function linkAccountAndSwitch(email: string, password: string) {
-  return api.post<SwitchModeResponse>(`${BASE}/link-account`, { email, password });
+  return api.post<RoleSessionResponse>(`${BASE}/link-account`, { email, password });
 }
 
 export function createLinkedRole(payload: LinkedRolePayload) {
-  return api.post<SwitchModeResponse>(`${BASE}/roles`, payload);
+  return api.post<RoleSessionResponse>(`${BASE}/roles`, payload);
 }
 
 export interface DeviceSession {

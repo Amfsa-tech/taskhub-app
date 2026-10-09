@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { AppState } from 'react-native';
 
 /**
  * OneSignal wiring. The backend's whole send pipeline (new tasks, bids, chat,
@@ -78,17 +79,29 @@ export function watchPushSubscriptionId(onReady: (id: string) => void): () => vo
 
   let stopped = false;
 
-  OneSignal.User.pushSubscription.getIdAsync().then((id) => {
-    if (!stopped && id) onReady(id);
-  });
+  const syncCurrentId = () => {
+    OneSignal.User.pushSubscription.getIdAsync()
+      .then((id) => {
+        if (!stopped && id) onReady(id);
+      })
+      .catch(() => {
+        // Registration is best effort. Foregrounding the app retries it.
+      });
+  };
+
+  syncCurrentId();
 
   const listener = (event: { current: { id?: string | null } }) => {
     if (!stopped && event.current.id) onReady(event.current.id);
   };
   OneSignal.User.pushSubscription.addEventListener('change', listener);
+  const appStateSubscription = AppState.addEventListener('change', (state) => {
+    if (state === 'active') syncCurrentId();
+  });
 
   return () => {
     stopped = true;
     OneSignal.User.pushSubscription.removeEventListener('change', listener);
+    appStateSubscription.remove();
   };
 }

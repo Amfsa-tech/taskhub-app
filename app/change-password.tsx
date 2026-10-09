@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { ApiError } from '@/lib/api/client';
 import { changePassword, setPassword } from '@/lib/auth/auth-api';
@@ -127,7 +128,7 @@ export default function ChangePasswordScreen() {
           <View style={styles.placeholderButton} />
         </View>
 
-        <ScrollView
+        <KeyboardAwareScrollView
           style={styles.flex}
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
@@ -155,7 +156,7 @@ export default function ChangePasswordScreen() {
 
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
         {/* Footer actions */}
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>

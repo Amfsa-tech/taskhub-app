@@ -80,9 +80,7 @@ export interface LoginPayload {
 }
 
 /**
- * User signup. The backend only requires `fullName`, `emailAddress`, and
- * `password` — phone, DOB, country, state, and address are collected later
- * (profile / KYC), so they're optional here.
+ * User signup requires a DOB so the 18+ Terms can be enforced by the backend.
  */
 export interface UserRegisterPayload {
   fullName: string;
@@ -92,7 +90,8 @@ export interface UserRegisterPayload {
   country?: string;
   residentState?: string;
   address?: string;
-  dateOfBirth?: string; // ISO date (YYYY-MM-DD)
+  city?: string;
+  dateOfBirth: string; // ISO date (YYYY-MM-DD)
   originState?: string;
 }
 
@@ -105,6 +104,7 @@ export interface TaskerRegisterPayload {
   password: string;
   country: string;
   residentState: string;
+  city: string;
   originState: string;
   address: string;
   dateOfBirth: string;
@@ -169,6 +169,7 @@ export interface SocialCompleteSignupPayload {
   country?: string;
   phoneNumber?: string;
   residentState?: string;
+  city?: string;
   address?: string;
   dateOfBirth?: string;
   firstName?: string;
@@ -179,9 +180,8 @@ export interface SocialCompleteSignupPayload {
 export type LinkedRolePayload = Omit<SocialCompleteSignupPayload, 'signupToken'>;
 
 /**
- * Phase 2 — finish creating a brand-new Google account. After the backend
- * relaxation a `user` only needs `fullName` (+ `country`); the remaining fields
- * stay optional and are collected later during onboarding / profile.
+ * Phase 2 — finish creating a brand-new Google account. New users must supply
+ * a DOB for the backend's 18+ check; some other profile fields remain optional.
  */
 export interface GoogleCompleteSignupPayload {
   idToken: string;
@@ -211,6 +211,7 @@ export interface UpdateProfilePayload {
   address?: string;
   country?: string;
   residentState?: string;
+  city?: string;
   /** Accepts a University id or name; the backend resolves it to an id. */
   university?: string;
 }

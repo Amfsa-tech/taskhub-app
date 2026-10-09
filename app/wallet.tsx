@@ -1,9 +1,10 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, AppState, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FundWalletModal } from '@/components/taskhub/fund-wallet-modal';
@@ -29,7 +30,18 @@ const COLORS = {
   credit: '#15803d',
   error: '#dc2626',
   pending: '#b45309',
+  pendingSurface: '#fff8e6',
+  pendingBorder: '#f3c969',
 };
+
+type PendingFunding = {
+  reference: string;
+  authorizationUrl: string;
+  amount: number;
+  initiatedAt: string;
+};
+
+const PENDING_FUNDING_KEY = '@taskhub/pending-wallet-funding';
 
 function statusNote(tx: WalletTransaction): string {
   if (tx.status === 'success') return '';
@@ -61,7 +73,7 @@ export default function WalletScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { accountType } = useAuth();
+  const { accountType, user } = useAuth();
   const isTasker = accountType === 'tasker';
 
   /*
@@ -80,6 +92,10 @@ export default function WalletScreen() {
 
   const [fundOpen, setFundOpen] = useState(false);
   const [funding, setFunding] = useState(false);
+  const [pendingFunding, setPendingFunding] = useState<PendingFunding | null>(null);
+  const [checkingFunding, setCheckingFunding] = useState(false);
+  const checkingRef = useRef(false);
+  const pendingKey = user?._id ? `${PENDING_FUNDING_KEY}:${user._id}` : null;
 
   const transactions = txQ.data?.transactions ?? [];
 
@@ -93,41 +109,105 @@ export default function WalletScreen() {
     : (userBalanceQ.data?.data?.totalInEscrow ?? 0);
   const secondaryLabel = isTasker ? 'pending withdrawal' : 'held in escrow';
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!pendingKey || isTasker) {
+      setPendingFunding(null);
+      return;
+    }
+
+    AsyncStorage.getItem(pendingKey)
+      .then((stored) => {
+        if (!cancelled && stored) setPendingFunding(JSON.parse(stored) as PendingFunding);
+      })
+      .catch(() => {
+        // A storage failure must not make the wallet unusable.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isTasker, pendingKey]);
+
+  const checkFundingStatus = useCallback(
+    async (payment: PendingFunding, notify = true) => {
+      if (checkingRef.current || !pendingKey) return;
+      checkingRef.current = true;
+      setCheckingFunding(true);
+      try {
+        const result = await verifyFunding(payment.reference);
+        const status = result.data.transactionStatus;
+        await queryClient.invalidateQueries({ queryKey: ['wallet'] });
+
+        if (status === 'success' || status === 'failed') {
+          await AsyncStorage.removeItem(pendingKey);
+          setPendingFunding(null);
+        }
+
+        if (notify) {
+          if (status === 'success') {
+            Alert.alert('Wallet funded', `${formatNaira(payment.amount)} was added to your wallet.`);
+          } else if (status === 'failed') {
+            Alert.alert('Payment not completed', 'Flutterwave reported that this payment did not go through.');
+          } else {
+            Alert.alert(
+              'Payment still pending',
+              'If you used bank transfer, return to Flutterwave and tap I have paid after completing the transfer.',
+            );
+          }
+        }
+      } catch (error) {
+        if (notify) {
+          Alert.alert(
+            'Could not check payment',
+            error instanceof Error ? error.message : 'Please check your connection and try again.',
+          );
+        }
+      } finally {
+        checkingRef.current = false;
+        setCheckingFunding(false);
+      }
+    },
+    [pendingKey, queryClient],
+  );
+
+  useEffect(() => {
+    if (!pendingFunding) return;
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void checkFundingStatus(pendingFunding, false);
+    });
+    return () => subscription.remove();
+  }, [checkFundingStatus, pendingFunding]);
+
+  const openFundingCheckout = useCallback(async (payment: PendingFunding) => {
+    await WebBrowser.openBrowserAsync(payment.authorizationUrl, {
+      createTask: true,
+      showInRecents: true,
+      showTitle: true,
+    });
+
+    // Android resolves as soon as the custom tab opens. iOS resolves after it
+    // closes, so only the iOS branch can safely verify at this point.
+    if (Platform.OS === 'ios') await checkFundingStatus(payment, true);
+  }, [checkFundingStatus]);
+
   const startFunding = async (amount: number) => {
     setFunding(true);
     try {
       const init = await initializeFunding(amount);
       const { authorizationUrl, reference } = init.data;
+      const payment: PendingFunding = {
+        authorizationUrl,
+        reference,
+        amount,
+        initiatedAt: new Date().toISOString(),
+      };
 
-      // Open the hosted checkout; the promise resolves when it's dismissed.
-      await WebBrowser.openBrowserAsync(authorizationUrl);
-
-      // Confirm after the checkout closes — a webhook may already have credited.
-      let status: 'success' | 'pending' | 'failed' = 'pending';
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        try {
-          const v = await verifyFunding(reference);
-          status = v.data.transactionStatus;
-        } catch {
-          // transient — retry
-        }
-        if (status !== 'pending') break;
-        await new Promise((resolve) => setTimeout(resolve, 2500));
-      }
-
-      await queryClient.invalidateQueries({ queryKey: ['wallet'] });
+      if (!pendingKey) throw new Error('Your session is not ready. Please sign in again.');
+      await AsyncStorage.setItem(pendingKey, JSON.stringify(payment));
+      setPendingFunding(payment);
       setFundOpen(false);
-
-      if (status === 'success') {
-        Alert.alert('Wallet funded', `${formatNaira(amount)} was added to your wallet.`);
-      } else if (status === 'pending') {
-        Alert.alert(
-          'Payment processing',
-          'We’re confirming your payment. Your balance will update shortly.',
-        );
-      } else {
-        Alert.alert('Payment not completed', 'The payment was cancelled or did not go through.');
-      }
+      await openFundingCheckout(payment);
     } catch (err) {
       Alert.alert('Funding failed', err instanceof Error ? err.message : 'Please try again.');
     } finally {
@@ -182,6 +262,37 @@ export default function WalletScreen() {
             <Text style={styles.stellarLinkText}>Stellar deposit details</Text>
           </Pressable>
         </View>
+
+        {!isTasker && pendingFunding ? (
+          <View style={styles.pendingCard}>
+            <Text style={styles.pendingTitle}>Payment awaiting confirmation</Text>
+            <Text style={styles.pendingCopy}>
+              Your {formatNaira(pendingFunding.amount)} Flutterwave checkout is saved. You can switch
+              to your bank app, then reopen the same checkout to tap I have paid.
+            </Text>
+            <View style={styles.pendingActions}>
+              <Pressable
+                style={({ pressed }) => [styles.pendingPrimary, pressed && styles.pressed]}
+                onPress={() => openFundingCheckout(pendingFunding)}>
+                <Text style={styles.pendingPrimaryLabel}>Return to payment</Text>
+              </Pressable>
+              <Pressable
+                disabled={checkingFunding}
+                style={({ pressed }) => [
+                  styles.pendingSecondary,
+                  pressed && styles.pressed,
+                  checkingFunding && styles.disabled,
+                ]}
+                onPress={() => checkFundingStatus(pendingFunding, true)}>
+                {checkingFunding ? (
+                  <ActivityIndicator size="small" color={COLORS.brand} />
+                ) : (
+                  <Text style={styles.pendingSecondaryLabel}>Check payment status</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
 
         {/* Transactions */}
         <Text style={styles.sectionTitle}>{isTasker ? 'Earnings' : 'Transactions'}</Text>
@@ -273,6 +384,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pressed: { opacity: 0.9 },
+  disabled: { opacity: 0.5 },
   fundLabel: {
     fontFamily: 'Geist_600SemiBold',
     fontSize: 16,
@@ -281,6 +393,51 @@ const styles = StyleSheet.create({
   },
   stellarLink: { minHeight: 40, alignItems: 'center', justifyContent: 'center' },
   stellarLinkText: { fontFamily: 'Geist_600SemiBold', fontSize: 14, color: COLORS.onBrand, textDecorationLine: 'underline' },
+  pendingCard: {
+    backgroundColor: COLORS.pendingSurface,
+    borderWidth: 1,
+    borderColor: COLORS.pendingBorder,
+    borderRadius: 16,
+    padding: 16,
+    gap: 10,
+  },
+  pendingTitle: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 17,
+    color: COLORS.textPrimary,
+  },
+  pendingCopy: {
+    fontFamily: 'Geist_400Regular',
+    fontSize: 14,
+    lineHeight: 20,
+    color: COLORS.textSecondary,
+  },
+  pendingActions: { gap: 8 },
+  pendingPrimary: {
+    minHeight: 46,
+    borderRadius: 12,
+    backgroundColor: COLORS.brand,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pendingPrimaryLabel: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 15,
+    color: COLORS.onBrand,
+  },
+  pendingSecondary: {
+    minHeight: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: COLORS.brand,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pendingSecondaryLabel: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 15,
+    color: COLORS.brand,
+  },
   sectionTitle: {
     fontFamily: 'Geist_600SemiBold',
     fontSize: 20,

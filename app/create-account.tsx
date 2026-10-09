@@ -15,6 +15,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { ArrowLeft } from '@/components/icons/arrow-left';
 import { ArrowRight } from '@/components/icons/arrow-right';
@@ -22,6 +23,7 @@ import { CaretDown } from '@/components/icons/caret-down';
 import { Check } from '@/components/icons/check';
 import { Eye } from '@/components/icons/eye';
 import { Headset } from '@/components/icons/headset';
+import { signupAgeError } from '@/lib/auth/age';
 import { registerUser } from '@/lib/auth/auth-api';
 import { useAuth } from '@/lib/auth/auth-context';
 import { useSelectedCountry } from '@/lib/onboarding/country';
@@ -44,7 +46,7 @@ type FieldProps = {
   value: string;
   onChangeText: (text: string) => void;
   secureTextEntry?: boolean;
-  keyboardType?: 'default' | 'email-address';
+  keyboardType?: 'default' | 'email-address' | 'numbers-and-punctuation';
   autoCapitalize?: 'none' | 'words';
 };
 
@@ -106,6 +108,7 @@ export default function CreateAccountScreen() {
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [agreed, setAgreed] = useState(false);
   const country = useSelectedCountry();
   const [error, setError] = useState<string | null>(null);
@@ -118,6 +121,7 @@ export default function CreateAccountScreen() {
         emailAddress: email.trim().toLowerCase(),
         password,
         country,
+        dateOfBirth: dateOfBirth.trim(),
       }),
     onSuccess: () => {
       if (isLinkedRoleCreation) {
@@ -144,6 +148,13 @@ export default function CreateAccountScreen() {
     if (!isLinkedRoleCreation && password.length < 6) {
       setError('Password must be at least 6 characters.');
       return;
+    }
+    if (!isTasker && !isLinkedRoleCreation) {
+      const ageError = signupAgeError(dateOfBirth);
+      if (ageError) {
+        setError(ageError);
+        return;
+      }
     }
     if (!agreed) {
       setError('Please agree to the Terms of Service to continue.');
@@ -175,7 +186,7 @@ export default function CreateAccountScreen() {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
+        <KeyboardAwareScrollView
           style={styles.flex}
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
@@ -234,6 +245,15 @@ export default function CreateAccountScreen() {
                 <Field label="Password" placeholder="Enter password" value={password} onChangeText={setPassword} secureTextEntry />
               </>
             ) : null}
+            {!isTasker && !isLinkedRoleCreation ? (
+              <Field
+                label="Date of birth"
+                placeholder="YYYY-MM-DD"
+                value={dateOfBirth}
+                onChangeText={setDateOfBirth}
+                keyboardType="numbers-and-punctuation"
+              />
+            ) : null}
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>Country</Text>
               <Pressable
@@ -246,7 +266,7 @@ export default function CreateAccountScreen() {
               </Pressable>
             </View>
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
         {/* Footer */}
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>

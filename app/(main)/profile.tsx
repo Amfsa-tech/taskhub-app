@@ -240,7 +240,45 @@ export default function ProfileScreen() {
 
   const switchMutation = useMutation({
     mutationFn: switchMode,
-    onSuccess: () => router.replace('/(main)/home'),
+    onSuccess: (outcome) => {
+      if (outcome.kind === 'onboarding-required') {
+        const missing = new Set(outcome.missingFields.map((field) => field.toLowerCase()));
+        const needsServices = [
+          'skills',
+          'services',
+          'categories',
+          'maincategories',
+          'subcategories',
+        ].some((field) => missing.has(field));
+        const needsLocation = missing.has('location');
+
+        if (outcome.accountType === 'tasker') {
+          if (needsLocation && !needsServices) {
+            router.replace({ pathname: '/location-permission', params: { onboarding: 'tasker' } });
+          } else {
+            router.replace({
+              pathname: '/tasker-services',
+              params: {
+                onboarding: 'tasker',
+                missingFields: outcome.missingFields.join(','),
+              },
+            });
+          }
+          return;
+        }
+
+        router.replace('/purpose-selection');
+        return;
+      }
+
+      if (outcome.profileUnavailable) {
+        Alert.alert(
+          'Role switched',
+          'Your role was switched securely. Some profile details may take a moment to refresh.',
+        );
+      }
+      router.replace('/(main)/home');
+    },
     onError: (error) => {
       if (error instanceof ApiError && error.status === 404) {
         const toTasker = accountType === 'user';
@@ -491,10 +529,10 @@ export default function ProfileScreen() {
         {accountType === 'tasker' && (
           <View style={styles.taskerStatCards}>
             {[
-              { value: performanceQ.isLoading ? '…' : String(performance?.kpis.averageRating ?? 0), label: 'Rating' },
-              { value: performanceQ.isLoading ? '…' : `${performance?.kpis.acceptanceRate ?? 0}%`, label: 'Accept' },
-              { value: performanceQ.isLoading ? '…' : String(performance?.kpis.jobsCompleted ?? 0), label: 'Complete' },
-              { value: performanceQ.isLoading ? '…' : String(performance?.kpis.repeatUsers ?? 0), label: 'Repeat' },
+              { value: performanceQ.isLoading ? '…' : performanceQ.isError ? 'Unavailable' : (performance?.kpis.averageRating ?? 0) > 0 ? performance!.kpis.averageRating.toFixed(1) : 'New', label: 'Rating' },
+              { value: performanceQ.isLoading ? '…' : performanceQ.isError ? 'Unavailable' : (performance?.kpis.bidsPlaced ?? 0) > 0 ? `${performance!.kpis.acceptanceRate}%` : '—', label: 'Accept' },
+              { value: performanceQ.isLoading ? '…' : performanceQ.isError ? 'Unavailable' : String(performance?.kpis.jobsCompleted ?? 0), label: 'Complete' },
+              { value: performanceQ.isLoading ? '…' : performanceQ.isError ? 'Unavailable' : String(performance?.kpis.repeatUsers ?? 0), label: 'Repeat' },
             ].map((s) => (
               <View key={s.label} style={styles.taskerStatCard}>
                 <Text style={styles.taskerStatValue}>{s.value}</Text>

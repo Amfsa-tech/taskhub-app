@@ -22,7 +22,7 @@ export function ActiveTasks({ onTaskPress }: { onTaskPress?: (taskId: string) =>
     <View style={styles.section}>
       <View style={styles.header}>
         <Text style={styles.sectionTitle}>Your Active Tasks</Text>
-        <Pressable hitSlop={8} onPress={() => router.push('/(main)/tasks')}>
+        <Pressable hitSlop={8} onPress={() => router.navigate('/(main)/tasks')}>
           <Text style={styles.viewAll}>View all</Text>
         </Pressable>
       </View>

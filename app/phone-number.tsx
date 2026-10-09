@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useMutation } from '@tanstack/react-query';
 
 import { ScreenHeader } from '@/components/taskhub/screen-header';
@@ -71,7 +72,7 @@ export default function PhoneNumberScreen() {
       <StatusBar style="dark" />
       <ScreenHeader title="Phone Number" />
 
-      <ScrollView
+        <KeyboardAwareScrollView
         style={styles.flex}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 20 }]}
         keyboardShouldPersistTaps="handled"
@@ -137,7 +138,7 @@ export default function PhoneNumberScreen() {
             <Text style={styles.actionBtnText}>Change Phone Number</Text>
           </Pressable>
         )}
-      </ScrollView>
+        </KeyboardAwareScrollView>
     </KeyboardAvoidingView>
   );
 }

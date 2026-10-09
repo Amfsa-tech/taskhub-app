@@ -14,7 +14,8 @@
       "bundleIdentifier": "com.amfsatech.taskhub",
       "buildNumber": "1",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "Taskhub Connect uses your location while you use the app to suggest nearby taskers and help you set a task location. For example, we can show taskers near your current area."
       }
     },
     "android": {
@@ -43,6 +44,12 @@
         }
       ],
       "expo-router",
+      [
+        "expo-web-browser",
+        {
+          "experimentalLauncherActivity": true
+        }
+      ],
       [
         "expo-splash-screen",
         {

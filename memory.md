@@ -1,62 +1,42 @@
-# Memory — Taskhub Identity, Navigation, and App Store Handoff
+# Memory — TaskHub Sign-In Audit and Release Context
 
-Last updated: 2026-09-18 13:31 +01:00
+Last updated: 2026-10-08
 
 ## What was built
 
-- Implemented a canonical `AuthIdentity` layer in `C:\Users\JESSE\Documents\Github Repo\task-hub-backend` so one identity owns linked User and Tasker roles and can use local, Google, and Apple authentication.
-- Added secure native Sign in with Apple, including nonce and state validation, authorization-code exchange, encrypted refresh-token storage, token revocation, connected-provider management, and Apple server-to-server notifications.
-- Hardened Google sign-in and account selection. Social accounts are linked only by verified provider subject or explicit credential proof, never by email alone.
-- Updated role creation, explicit role linking, role switching, session clearing, and full identity deletion so both linked roles and associated personal data are handled together.
-- Added backend identity migration, Apple configuration validation, rollout documentation, and tests.
-- Added mobile Connected Accounts and Link Existing Role screens, Apple and Google login/signup flows, fresh social reauthentication for deletion, and linked-role creation.
-- Fixed onboarding double navigation by making completion single-fire and replacing the onboarding route with `/purpose`.
-- Created `app/taskers.tsx`, a native Browse Taskers directory modeled on the web version, with live data, search, category filters, nearest/top-rated/popular sorting, tasker profile navigation, pull-to-refresh, and complete loading/error/empty/content states. Home “See all” now opens it.
-- Created corrected 13-inch iPad screenshots in `C:\Users\JESSE\Downloads\Taskhub mobile app (6)\ios\ipad-13-inch-no-alpha`. All six are opaque RGB PNGs at 2064 by 2752 pixels. The original RGBA files remain untouched.
+- No code was changed during the 2026-10-08 sign-in audit.
+- Earlier, the backend and web repositories gained a blog CMS: public `/blog` pages, an admin Markdown editor, media upload/embedding, private draft autosave, direct publishing, and a writer role limited to its own articles. This has not been deployed or tested end-to-end against live services.
+- Earlier mobile, web, and backend changes enforce 18+ signup and improve manual location entry and iOS permission wording. Preserve the substantial pre-existing uncommitted changes in all repositories.
 
 ## Decisions made
 
-- The store name is Taskhub Connect.
-- The iOS bundle identifier is `com.amfsatech.taskhub`; the Android package is `com.taskhub.connect`.
-- One canonical identity owns both roles. Matching email addresses alone are never sufficient to merge or link accounts.
-- Apple refresh tokens remain backend-only and encrypted. Apple-specific personal metadata is erased when authorization is revoked.
-- Permanent deletion covers every linked role. Required de-identified financial records may be retained, while personal data, sessions, KYC records, payout details, conversations, and uploaded media are removed or anonymized according to the deletion service.
-- Store-facing copy must never use an em dash.
-- Production database migration and deployment must be deliberate manual release steps and were not run locally.
-- UI directory patterns are recorded in `ui-registry.md` and use the established Taskhub canvas, card, spacing, typography, and async-state standards.
+- Android package is `com.taskhub.connect`; iOS bundle ID is `com.amfsatech.taskhub`.
+- The signup minimum age is 18+, matching the Terms. Store-facing copy should not use an em dash.
+- Writers can save drafts and publish directly, but manage only their own articles. Published content is a separate snapshot from the private draft.
 
 ## Problems solved
 
-- Removed the race between the final onboarding auto-advance timer and the Get Started button that could push the role-selection route twice.
-- Replaced the no-op Top Taskers “See all” action with a working tasker-directory route.
-- Made nearby-tasker React Query keys coordinate-aware while retaining prefix invalidation and the backend top-rated fallback when coordinates are unavailable.
-- Added Apple relay-email enabled/disabled handling and recognition of both Apple account-deletion event variants.
-- Added `npm run check:apple-auth` to the backend. It validates required variable names and key formats without printing secret values.
-- Diagnosed Apple’s screenshot rejection: the iPad PNGs contained real alpha values. Flattened them onto white and verified RGB bands, PNG color type 2, unchanged dimensions, and zero pixel differences from the correctly composited appearance.
+- Diagnosed the photographed Android Google Sign-In `DEVELOPER_ERROR` as a native OAuth configuration mismatch, most likely an Android package/signing-certificate SHA-1 mismatch. The mobile production Web client ID matches the local backend Google client ID, so that particular mismatch is not evident locally.
+- Audited Apple sign-in source: the Expo native capability/button is configured, the client passes an identity token, authorization code, and nonce, and the backend verifies Apple tokens and links identities by provider subject. Local Apple configuration validation passed; local backend and iOS bundle identifiers match. This is not proof of a successful production device sign-in.
 
 ## Current state
 
-- Mobile TypeScript and Expo lint pass with no errors or warnings after the latest navigation and tasker-directory work.
-- Backend tests pass: 39 of 39. Backend syntax checks and auth-route imports pass.
-- Expo SDK 54 configuration resolves with `usesAppleSignIn: true`, the Apple authentication plugin, and the correct iOS and Android identifiers.
-- The backend Apple configuration checker currently reports missing Apple production environment variables until they are added to the backend environment. No secret values are stored here.
-- The Apple notification route is implemented at `/api/auth/apple/notifications`. The intended production URL is `https://task-hub-backend.onrender.com/api/auth/apple/notifications` after the updated backend is deployed.
-- No production backend deployment, identity migration, Apple portal notification save, or physical-device Apple sign-in test was completed in this session.
-- The mobile and backend working trees contain uncommitted changes. Preserve unrelated existing changes, especially backend `routes/walletRoute.js` work.
-- Google Play production build was uploaded for review previously. Google Ads remains intentionally unstarted.
+- On 2026-10-08, mobile TypeScript and `npx expo install --check` passed. Backend Apple configuration check passed; backend tests passed 55/55. These are local checks, not device or live-backend verification.
+- The Google Play app-signing SHA-1 and Google Cloud Android OAuth client were not accessible from the repository, so the Google error remains unresolved. If installed from Play, use the **App signing key certificate** SHA-1 in Play Console, not only the upload key. Google Cloud needs an Android OAuth client for `com.taskhub.connect` and that SHA-1; a local/dev build needs its own certificate client.
+- Apple server-to-server notifications were previously left unconfigured in Apple Developer. This does not block sign-in, but the backend will not receive Apple account/revocation events through that endpoint until configured. A real iPhone test of first signup, returning sign-in, and connecting Apple to an existing account is still needed, as is confirmation of production backend environment settings.
+- App Store Connect Age Assurance metadata change to **None**, earlier Apple review fixes, and a replacement iOS binary remain unconfirmed. The last known reviewed build was 1.0 (10).
+- Blog CMS web production build and backend tests passed earlier, but the CMS was not deployed. Its new UI follows `#6B46C1`; the existing web app also uses `#6C3BFF`. No web `ui-registry.md` baseline was written because the `imprint` skill requires user confirmation first.
 
 ## Next session starts with
 
-1. Add the required Apple production values to the backend host environment using values from the Apple Developer account. Do not paste or commit them into source control.
-2. From `C:\Users\JESSE\Documents\Github Repo\task-hub-backend`, run `npm run check:apple-auth` in the configured environment.
-3. Back up the production database, deploy the additive backend identity changes, then run `npm run migrate:auth-identities` and verify the migration is idempotent.
-4. In Apple Developer, edit primary App ID `com.amfsatech.taskhub` and save the server-to-server notification endpoint `https://task-hub-backend.onrender.com/api/auth/apple/notifications`.
-5. Build a new signed iOS binary because the Apple capability is native, then test Apple sign-in, Google sign-in, provider linking, creating/linking both roles, switching roles, revocation, and deletion on a physical device.
-6. Upload the corrected images from `C:\Users\JESSE\Downloads\Taskhub mobile app (6)\ios\ipad-13-inch-no-alpha` to the 13-inch iPad screenshot slot.
+1. For Google Sign-In, inspect Play Console → App integrity → App signing key certificate SHA-1 and compare with the Android OAuth client in Google Cloud for `com.taskhub.connect`. Also identify whether the failed install came from Play, internal sharing, or a local APK, since each may use a different signer.
+2. Test Apple sign-in on a real iPhone against the deployed backend: new account, returning account, provider linking, and both User and Tasker roles. Confirm production Apple environment variables are present without exposing their values.
+3. If desired, configure Apple server-to-server notifications at the backend endpoint and validate delivery. Separately confirm App Store Age Assurance metadata and release status.
+4. For the blog CMS, test writer invite/login, upload, autosave, publish, and public rendering against a configured test environment before deployment. Ask whether `#6B46C1` is the admin/blog UI baseline before completing the web UI registry.
 
 ## Open questions
 
-- Confirm all Apple production environment values have been installed on the backend host and that `npm run check:apple-auth` passes there.
-- Confirm the updated backend route is publicly deployed before saving or testing Apple’s notification endpoint.
-- Complete live end-to-end tests using distinct local, Google, and Apple identities, including same-email unrelated accounts and identities with both User and Tasker roles.
-- Decide when to commit the coordinated mobile and backend changes and whether to separate unrelated pre-existing working-tree changes first.
+- Which distribution produced the Google error: Play Store, internal app sharing, EAS preview APK, or local debug build?
+- Does the Google Cloud project have Android OAuth clients for the correct signing SHA-1 values?
+- Has Apple sign-in been tested successfully on a real iPhone and has the production backend been configured identically to local?
+- Has App Store Age Assurance been set to None, and have the earlier mobile, backend, and web changes been deployed?

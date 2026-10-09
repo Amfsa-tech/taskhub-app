@@ -157,10 +157,10 @@ export function useTaskerReviews(id?: string) {
 }
 
 /** Top taskers near the user (falls back to top-rated). Backs the home carousel. */
-export function useNearbyTaskers(coords?: { latitude: number; longitude: number }) {
+export function useNearbyTaskers(coords?: { latitude: number; longitude: number }, options?: { search?: string; maxResults?: number }) {
   return useQuery({
-    queryKey: queryKeys.nearbyTaskers(coords),
-    queryFn: ({ signal }) => getNearbyTaskers(coords, signal),
+    queryKey: [...queryKeys.nearbyTaskers(coords), options?.search ?? '', options?.maxResults ?? 6],
+    queryFn: ({ signal }) => getNearbyTaskers(coords, signal, options),
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -291,11 +291,15 @@ export function useNotifications() {
   });
 }
 
-/** Conversation inbox. Polls lightly so the list stays fresh. */
-export function useConversations() {
-  return useQuery({
-    queryKey: queryKeys.conversations(),
-    queryFn: ({ signal }) => getConversations(signal),
+/** Paginated conversation inbox. Search is performed by the server. */
+export function useConversations(search = '') {
+  return useInfiniteQuery({
+    queryKey: [...queryKeys.conversations(), search],
+    queryFn: ({ pageParam, signal }) => getConversations({ page: pageParam, search }, signal),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => lastPage.currentPage < lastPage.totalPages
+      ? lastPage.currentPage + 1
+      : undefined,
     refetchInterval: 10_000,
   });
 }

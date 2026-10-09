@@ -15,7 +15,9 @@ export interface PostTaskDraft {
   description: string;
   budget: string; // raw text input
   location: string;
-  locationCoordinates: { latitude: number; longitude: number } | null;
+  locationCity: string;
+  locationState: string;
+  university: { id: string; name: string } | null;
   images: PickedImage[];
 }
 
@@ -26,7 +28,9 @@ const EMPTY: PostTaskDraft = {
   description: '',
   budget: '',
   location: '',
-  locationCoordinates: null,
+  locationCity: '',
+  locationState: '',
+  university: null,
   images: [],
 };
 
@@ -47,8 +51,8 @@ export function PostTaskProvider({ children }: { children: ReactNode }) {
     setDraft((d) =>
       d.mainCategory?._id === category._id
         ? { ...d, mainCategory: category }
-        : // Switching main category drops subcategories that no longer apply.
-          { ...d, mainCategory: category, subCategories: [] },
+        : // Switching main category drops dependent fields that no longer apply.
+          { ...d, mainCategory: category, subCategories: [], university: null },
     );
   }, []);
 

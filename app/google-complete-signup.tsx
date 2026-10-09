@@ -15,10 +15,12 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { ArrowLeft } from '@/components/icons/arrow-left';
 import { CaretDown } from '@/components/icons/caret-down';
 import { Check } from '@/components/icons/check';
+import { signupAgeError } from '@/lib/auth/age';
 import { useAuth } from '@/lib/auth/auth-context';
 import { clearPendingAppleSignup, getPendingAppleSignup } from '@/lib/auth/apple';
 import { clearPendingGoogleSignup, getPendingGoogleSignup } from '@/lib/auth/google';
@@ -48,6 +50,7 @@ export default function GoogleCompleteSignupScreen() {
   const pending = pendingApple ?? pendingGoogle;
   const providerName = pendingApple ? 'Apple' : 'Google';
   const [fullName, setFullName] = useState(pending?.profile.name ?? '');
+  const [dateOfBirth, setDateOfBirth] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -59,6 +62,7 @@ export default function GoogleCompleteSignupScreen() {
           type: 'user',
           fullName: fullName.trim(),
           country,
+          dateOfBirth: dateOfBirth.trim(),
         });
       }
       if (!pendingGoogle?.idToken) throw new Error('Your social sign-in session expired. Please try again.');
@@ -67,6 +71,7 @@ export default function GoogleCompleteSignupScreen() {
         type: 'user',
         fullName: fullName.trim(),
         country,
+        dateOfBirth: dateOfBirth.trim(),
       });
     },
     onSuccess: () => {
@@ -83,6 +88,11 @@ export default function GoogleCompleteSignupScreen() {
     setError(null);
     if (!fullName.trim()) {
       setError('Please enter your full name.');
+      return;
+    }
+    const ageError = signupAgeError(dateOfBirth);
+    if (ageError) {
+      setError(ageError);
       return;
     }
     if (!agreed) {
@@ -119,7 +129,7 @@ export default function GoogleCompleteSignupScreen() {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
+        <KeyboardAwareScrollView
           style={styles.flex}
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
@@ -132,8 +142,8 @@ export default function GoogleCompleteSignupScreen() {
 
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>Enter Name</Text>
-            <Text style={styles.subtitle}>Enter your full name to complete sign up</Text>
+            <Text style={styles.title}>Complete sign up</Text>
+            <Text style={styles.subtitle}>Enter your name and date of birth to continue</Text>
           </View>
 
           {/* Fields */}
@@ -152,6 +162,20 @@ export default function GoogleCompleteSignupScreen() {
             </View>
 
             <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Date of birth</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={COLORS.placeholder}
+                value={dateOfBirth}
+                onChangeText={setDateOfBirth}
+                keyboardType="numbers-and-punctuation"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <View style={styles.field}>
               <Text style={styles.fieldLabel}>Country</Text>
               <Pressable
                 style={styles.select}
@@ -163,7 +187,7 @@ export default function GoogleCompleteSignupScreen() {
               </Pressable>
             </View>
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
         {/* Footer */}
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>

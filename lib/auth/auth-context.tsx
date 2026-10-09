@@ -47,6 +47,7 @@ import {
   saveUser,
 } from './storage';
 import type { AccountType, AppleProfile, AuthUser, GoogleCompleteSignupPayload, GoogleProfile, LinkedRolePayload, LoginPayload, SocialCompleteSignupPayload } from './types';
+import type { SwitchModeResponse } from './auth-api';
 
 /** Result of a Google sign-in attempt: either signed in, or needs Phase-2 completion. */
 export type GoogleSignInOutcome =
@@ -56,6 +57,15 @@ export type GoogleSignInOutcome =
 export type AppleSignInOutcome =
   | { kind: 'signed-in'; user: AuthUser; accountType: AccountType; roleFallback: boolean }
   | { kind: 'needs-signup'; signupToken: string; profile: AppleProfile };
+
+export type SwitchModeOutcome = {
+  kind: 'switched' | 'onboarding-required';
+  accountType: AccountType;
+  accountId?: string;
+  user: AuthUser | null;
+  missingFields: string[];
+  profileUnavailable: boolean;
+};
 
 interface AuthContextValue {
   /** True until the persisted session has been read on launch. */
@@ -82,7 +92,7 @@ interface AuthContextValue {
   /** Re-fetch the full profile for the current account. */
   refreshProfile: () => Promise<void>;
   /** Switch to the linked counterpart account without asking for credentials again. */
-  switchMode: () => Promise<AuthUser>;
+  switchMode: () => Promise<SwitchModeOutcome>;
   /** Prove ownership of an existing opposite-role profile and switch to it. */
   linkRoleAndSwitch: (email: string, password: string) => Promise<AuthUser>;
   createRoleAndSwitch: (payload: LinkedRolePayload) => Promise<AuthUser>;
@@ -353,14 +363,97 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await saveUser(fresh);
   }, [accountType]);
 
-  const switchMode = useCallback(async () => {
-    const res = await switchAccountMode();
-    setApiToken(res.token);
-    const { user: nextUser } = await getProfile(res.user_type);
-    applySession(res.user_type, res.token, nextUser);
-    await saveSession({ token: res.token, refreshToken: res.refreshToken, accountType: res.user_type, user: nextUser });
+  const switchMode = useCallback(async (): Promise<SwitchModeOutcome> => {
+    let res: SwitchModeResponse;
+    try {
+      res = await switchAccountMode();
+    } catch (error) {
+      // During rollout, some backends return onboarding as non-2xx while still
+      // including the destination-role credentials in the response body.
+      const body = error instanceof ApiError ? error.body as SwitchModeResponse | undefined : undefined;
+      const onboarding = Boolean(
+        body && (
+          body.status === 'onboarding_required' ||
+          body.code === 'onboarding_required' ||
+          body.onboarding_required ||
+          body.onboardingRequired
+        )
+      );
+      if (!onboarding || !body) throw error;
+      res = body;
+    }
+
+    const onboardingRequired = Boolean(
+      res.status === 'onboarding_required' ||
+      res.code === 'onboarding_required' ||
+      res.onboarding_required ||
+      res.onboardingRequired
+    );
+    const fallbackType: AccountType = accountTypeRef.current === 'user' ? 'tasker' : 'user';
+    const returnedType = String(res.user_type ?? res.role ?? '').toLowerCase();
+    const nextType: AccountType =
+      returnedType === 'user' || returnedType === 'tasker' ? returnedType : fallbackType;
+
+    if (!res.token) {
+      throw new Error(
+        onboardingRequired
+          ? 'The server requested onboarding without issuing the new role token. Please update the backend and try again.'
+          : 'The server did not return a token for the selected role.',
+      );
+    }
+
+    // Save the rotated credentials before the first destination-role request.
+    // A process kill or profile fetch failure can no longer restore the old JWT.
+    try {
+      await saveSession({
+        token: res.token,
+        refreshToken: res.refreshToken,
+        accountType: nextType,
+        user: null,
+      });
+    } catch {
+      await clearSession().catch(() => undefined);
+      setApiToken(null);
+      setToken(null);
+      setAccountType(null);
+      setUser(null);
+      queryClient.removeQueries();
+      throw new Error('The new role was authorized, but this device could not save it. Please sign in again.');
+    }
+
+    applySession(nextType, res.token, null);
     queryClient.removeQueries();
-    return nextUser;
+
+    let nextUser: AuthUser | null = null;
+    let profileUnavailable = false;
+    try {
+      const profile = await getProfile(nextType);
+      nextUser = profile.user;
+      applySession(nextType, res.token, nextUser);
+      await saveUser(nextUser);
+    } catch (error) {
+      if (error instanceof ApiError && error.isUnauthorized) {
+        await clearSession().catch(() => undefined);
+        setApiToken(null);
+        setToken(null);
+        setAccountType(null);
+        setUser(null);
+        queryClient.removeQueries();
+        throw new Error('The new role token could not be verified. Please sign in again.');
+      }
+      // The role handoff is already complete and durable. Never restore the old
+      // role token merely because profile hydration had a transient failure.
+      profileUnavailable = true;
+    }
+
+    return {
+      kind: onboardingRequired ? 'onboarding-required' : 'switched',
+      accountType: nextType,
+      accountId: res.accountId,
+      user: nextUser,
+      missingFields: Array.isArray(res.missingFields) ? res.missingFields : [],
+      profileUnavailable,
+    };
   }, [applySession]);
 
   const linkRoleAndSwitch = useCallback(async (email: string, password: string) => {

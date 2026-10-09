@@ -30,7 +30,6 @@ import VerificationRing from '@/assets/icons/verification-ring.svg';
 import Wallet from '@/assets/icons/wallet.svg';
 
 import { ActiveTasks } from '@/components/taskhub/active-tasks';
-import { useLocation } from '@/context/LocationContext';
 import { useNewPost } from '@/hooks/use-new-post';
 import {
   queryKeys,
@@ -155,7 +154,6 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const startNewPost = useNewPost();
-  const { selectedLocation, isLoadingLocation } = useLocation();
   const { user, accountType } = useAuth();
   const { data: notifData } = useNotifications();
   const unreadCount = notifData?.data?.unreadCount ?? 0;
@@ -210,16 +208,11 @@ export default function HomeScreen() {
             <Pressable
               style={styles.locationRow}
               hitSlop={8}
-              onPress={() => router.push('/location-selector-modal')}
+              onPress={() => router.push('/edit-profile')}
             >
               <MapPin width={18} height={18} />
               <Text style={styles.locationText} numberOfLines={1}>
-                {isLoadingLocation
-                  ? 'Loading...'
-                  : ((selectedLocation || 'UI Main gate').length > 10
-                    ? (selectedLocation || 'UI Main gate').substring(0, 10) + '...'
-                    : (selectedLocation || 'UI Main gate'))
-                }
+                {[user?.city, user?.residentState].filter((value): value is string => typeof value === 'string' && Boolean(value)).join(', ') || 'Set your location'}
               </Text>
               <CaretDown width={12} height={18} />
             </Pressable>
@@ -847,14 +840,14 @@ function TaskerHomeView({ refreshing, onRefresh, insets, user, router }: TaskerH
   const feed = useTaskerFeed();
   const activeJobs = useTaskerTasks();
 
-  const walletBalance = balance.data?.data?.walletBalance ?? 0;
+  const walletBalance = balance.data?.data?.walletBalance;
 
   // There is no "today's earnings" endpoint, so derive it from the transaction
-  // list: credits stamped today. A tasker is only ever credited on completion,
-  // so this is the day's takings rather than an approximation of them.
+  // list: settled escrow releases stamped today. Wallet top-ups are credits too,
+  // but they are not earnings.
   const todayEarnings = (transactions.data?.transactions ?? [])
     .filter((t) => {
-      if (t.type !== 'credit' || t.status !== 'success') return false;
+      if (t.type !== 'credit' || t.status !== 'success' || t.paymentPurpose !== 'escrow_release') return false;
       const at = new Date(t.createdAt);
       const now = new Date();
       return (
@@ -912,7 +905,7 @@ function TaskerHomeView({ refreshing, onRefresh, insets, user, router }: TaskerH
             <MaterialCommunityIcons name="arrow-top-right" size={24} color={COLORS.onBrand} />
           </View>
           <Text style={styles.taskerStatLabel}>Today&apos;s Earnings</Text>
-          <Text style={styles.taskerStatValue}>{formatNaira(todayEarnings)}</Text>
+          <Text style={styles.taskerStatValue}>{transactions.isError ? 'Unavailable' : transactions.isLoading ? 'Loading…' : formatNaira(todayEarnings)}</Text>
         </View>
 
         <Pressable
@@ -923,7 +916,7 @@ function TaskerHomeView({ refreshing, onRefresh, insets, user, router }: TaskerH
           </View>
           <Text style={[styles.taskerStatLabel, { color: COLORS.textSecondary }]}>Wallet Balance</Text>
           <Text style={[styles.taskerStatValue, { color: COLORS.textPrimary }]}>
-            {formatNaira(walletBalance)}
+            {walletBalance == null ? (balance.isLoading ? 'Loading…' : 'Unavailable') : formatNaira(walletBalance)}
           </Text>
         </Pressable>
       </View>
@@ -981,12 +974,12 @@ function TaskerHomeView({ refreshing, onRefresh, insets, user, router }: TaskerH
         </View>
       )}
 
-      {/* Recommended Jobs — the category-matched feed */}
+      {/* Recommended Jobs — the category-matched, location-aware feed */}
       <View style={styles.taskerSection}>
         <View style={styles.taskerSectionHeader}>
           <Text style={styles.taskerSectionTitle}>Recommended Jobs</Text>
-          <Pressable onPress={() => router.push('/discover')}>
-            <Text style={styles.taskerSectionLink}>Discover</Text>
+          <Pressable onPress={() => router.push('/tasks-near-you')}>
+            <Text style={styles.taskerSectionLink}>See all</Text>
           </Pressable>
         </View>
 

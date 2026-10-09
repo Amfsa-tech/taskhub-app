@@ -119,7 +119,7 @@ function matchToView(m: TaskerMatch): Match {
   return {
     id: m._id,
     name: shortName(m.firstName, m.lastName),
-    rating: m.averageRating != null ? m.averageRating.toFixed(1) : '',
+    rating: (m.averageRating ?? 0) > 0 ? m.averageRating!.toFixed(1) : 'New',
     jobs: m.completedJobs ? `${m.completedJobs} Jobs` : '',
     distance: m.distance != null ? `${m.distance}km` : '',
     tags: m.primaryCategory ? [m.primaryCategory] : [],
@@ -133,7 +133,7 @@ function bidToView(b: TaskBid): BidView {
     taskerId: b.tasker._id,
     name: shortName(b.tasker.firstName, b.tasker.lastName),
     price: formatNaira(b.amount),
-    rating: b.tasker.averageRating != null ? b.tasker.averageRating.toFixed(1) : '',
+    rating: (b.tasker.averageRating ?? 0) > 0 ? b.tasker.averageRating!.toFixed(1) : 'New',
     message: b.message || '',
     avatar: b.tasker.profilePicture || '',
   };

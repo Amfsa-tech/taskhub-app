@@ -84,8 +84,15 @@ export interface CreateConversationPayload {
   taskerId?: string;
 }
 
-export function getConversations(signal?: AbortSignal) {
-  return api.get<ConversationsResponse>('/api/chat/conversations', { signal });
+export function getConversations(
+  params: { page?: number; search?: string } = {},
+  signal?: AbortSignal,
+) {
+  const query = new URLSearchParams();
+  if (params.page) query.set('page', String(params.page));
+  if (params.search) query.set('search', params.search);
+  const suffix = query.toString();
+  return api.get<ConversationsResponse>(`/api/chat/conversations${suffix ? `?${suffix}` : ''}`, { signal });
 }
 
 export function getMessages(

@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CheckCircle } from '@/components/icons/check-circle';
@@ -8,7 +9,7 @@ import { MagnifyingGlass } from '@/components/icons/magnifying-glass';
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { StepsHeader } from '@/components/taskhub/steps-header';
 import { usePostTask } from '@/context/PostTaskContext';
-import { groupCategories } from '@/lib/api/categories';
+import { groupCategories, isCampusCategory } from '@/lib/api/categories';
 import { useCategories } from '@/lib/api/queries';
 
 const COLORS = {
@@ -29,6 +30,7 @@ export default function PostServiceScreen() {
   const router = useRouter();
   const { draft, patch, toggleSubCategory } = usePostTask();
   const { data, isLoading, isError, refetch, isRefetching } = useCategories();
+  const [search, setSearch] = useState('');
 
   const main = draft.mainCategory;
   const subs =
@@ -37,6 +39,10 @@ export default function PostServiceScreen() {
       : [];
   const selectedIds = new Set(draft.subCategories.map((s) => s._id));
   const count = draft.subCategories.length;
+  const query = search.trim().toLowerCase();
+  const visibleSubs = query
+    ? subs.filter((sub) => `${sub.displayName} ${sub.name}`.toLowerCase().includes(query))
+    : subs;
 
   return (
     <View style={styles.container}>
@@ -53,7 +59,15 @@ export default function PostServiceScreen() {
 
         <View style={styles.search}>
           <MagnifyingGlass size={20} color={COLORS.iconSecondary} />
-          <Text style={styles.searchText}>Search service...</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search service..."
+            placeholderTextColor={COLORS.placeholder}
+            value={search}
+            onChangeText={setSearch}
+            accessibilityLabel="Search services"
+          />
+          {search ? <Pressable hitSlop={8} onPress={() => setSearch('')}><Text style={styles.clearSearch}>Clear</Text></Pressable> : null}
         </View>
 
         {!main ? (
@@ -78,9 +92,13 @@ export default function PostServiceScreen() {
           <View style={styles.state}>
             <Text style={styles.emptyText}>No services listed for this category.</Text>
           </View>
+        ) : visibleSubs.length === 0 ? (
+          <View style={styles.state}>
+            <Text style={styles.emptyText}>No services match your search.</Text>
+          </View>
         ) : (
           <View style={styles.list}>
-            {subs.map((sub) => {
+            {visibleSubs.map((sub) => {
               const active = selectedIds.has(sub._id);
               return (
                 <Pressable
@@ -104,7 +122,11 @@ export default function PostServiceScreen() {
             if (!draft.title.trim()) {
               patch({ title: draft.subCategories.map((service) => service.displayName).join(' and ') });
             }
-            router.push('/post-details');
+            router.push(
+              draft.mainCategory && isCampusCategory(draft.mainCategory)
+                ? { pathname: '/location-university', params: { forTask: 'true' } }
+                : '/post-details',
+            );
           }}
         />
       </View>
@@ -153,11 +175,17 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 24,
   },
-  searchText: {
+  searchInput: {
+    flex: 1,
     fontFamily: 'Geist_500Medium',
     fontSize: 17,
     letterSpacing: -0.41,
-    color: COLORS.placeholder,
+    color: COLORS.textPrimary,
+  },
+  clearSearch: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 13,
+    color: COLORS.brand,
   },
   list: {
     gap: 8,

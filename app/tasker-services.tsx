@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import {
@@ -62,6 +62,10 @@ function styleFor(category: Category): { icon: string; iconBg: string } {
 
 export default function TaskerServicesScreen() {
   const router = useRouter();
+  const { onboarding, missingFields } = useLocalSearchParams<{
+    onboarding?: string;
+    missingFields?: string;
+  }>();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { user, refreshProfile } = useAuth();
@@ -98,7 +102,23 @@ export default function TaskerServicesScreen() {
       await refreshProfile();
       // The feed is category-matched, so it is stale the moment this changes.
       queryClient.invalidateQueries({ queryKey: ['tasks', 'tasker'] });
-      router.back();
+      if (onboarding === 'tasker') {
+        const missing = new Set(
+          (missingFields ?? '')
+            .split(',')
+            .map((field) => field.trim().toLowerCase())
+            .filter(Boolean),
+        );
+        const needsLocation =
+          missing.size === 0 || missing.has('location') || missing.has('servicelocation');
+        if (needsLocation) {
+          router.replace({ pathname: '/location-permission', params: { onboarding: 'tasker' } });
+        } else {
+          router.replace('/(main)/home');
+        }
+      } else {
+        router.back();
+      }
     },
     onError: (e) =>
       Alert.alert('Could not save', e instanceof Error ? e.message : 'Please try again.'),

@@ -13,6 +13,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import 'react-native-reanimated';
 
 import { useAppStateFocus } from '@/hooks/use-app-state-focus';
@@ -108,6 +109,7 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <KeyboardProvider>
         <SafeAreaProvider>
           <LocationProvider>
             <PostTaskProvider>
@@ -115,6 +117,7 @@ export default function RootLayout() {
             </PostTaskProvider>
           </LocationProvider>
         </SafeAreaProvider>
+        </KeyboardProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
@@ -152,8 +155,6 @@ function RootNavigator() {
                     <Stack.Screen name="purpose-selection" options={{ headerShown: false }} />
                     <Stack.Screen name="location-university" options={{ headerShown: false }} />
                     <Stack.Screen name="location-permission" options={{ headerShown: false }} />
-                    <Stack.Screen name="location-confirm" options={{ headerShown: false }} />
-                    <Stack.Screen name="location-map" options={{ headerShown: false }} />
                     <Stack.Screen name="success" options={{ headerShown: false }} />
                     <Stack.Screen name="login-form" options={{ headerShown: false }} />
                     <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
@@ -173,6 +174,7 @@ function RootNavigator() {
                     <Stack.Screen name="change-password-success" options={{ headerShown: false }} />
                     <Stack.Screen name="saved-taskers" options={{ headerShown: false }} />
                     <Stack.Screen name="taskers" options={{ headerShown: false }} />
+                    <Stack.Screen name="tasks-near-you" options={{ headerShown: false }} />
                     <Stack.Screen name="receipt" options={{ headerShown: false }} />
                     <Stack.Screen name="help-support" options={{ headerShown: false }} />
                     <Stack.Screen name="blocked-users" options={{ headerShown: false }} />
@@ -189,7 +191,6 @@ function RootNavigator() {
                     <Stack.Screen name="tasker-portfolio" options={{ headerShown: false }} />
                     <Stack.Screen name="bank-account" options={{ headerShown: false }} />
                     <Stack.Screen name="(main)" options={{ headerShown: false }} />
-                    <Stack.Screen name="location-selector-modal" options={{ presentation: 'modal', headerShown: false }} />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>

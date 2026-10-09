@@ -55,9 +55,10 @@ export interface CompletionSubmission {
 }
 
 export interface TaskLocation {
-  latitude: number;
-  longitude: number;
+  latitude?: number;
+  longitude?: number;
   address?: string;
+  city?: string;
   state?: string;
   country?: string;
 }
@@ -272,15 +273,19 @@ export interface NearbyTaskersResponse {
 }
 
 /**
- * Top taskers near a point, or top-rated taskers when no coordinates are given
- * (the backend falls back gracefully). Public — no auth required.
+ * Taskers matched to the authenticated profile's typed city and state.
  */
 export function getNearbyTaskers(
   coords?: { latitude: number; longitude: number },
   signal?: AbortSignal,
+  options?: { search?: string; maxResults?: number },
 ) {
-  const qs = coords ? toQuery({ latitude: coords.latitude, longitude: coords.longitude }) : '';
-  return api.get<NearbyTaskersResponse>(`/api/taskers/nearby${qs}`, { signal, auth: false });
+  const qs = toQuery({
+    ...(coords ? { latitude: coords.latitude, longitude: coords.longitude } : {}),
+    ...(options?.search ? { search: options.search } : {}),
+    ...(options?.maxResults ? { maxResults: options.maxResults } : {}),
+  });
+  return api.get<NearbyTaskersResponse>(`/api/taskers/nearby${qs}`, { signal });
 }
 
 export interface CreateTaskPayload {
@@ -292,7 +297,7 @@ export interface CreateTaskPayload {
   deadline?: string; // ISO date, future
   isBiddingEnabled?: boolean;
   tags?: string[];
-  location?: { latitude: number; longitude: number };
+  location?: { latitude?: number; longitude?: number; address?: string; city?: string; state?: string };
   university?: string;
 }
 
@@ -489,6 +494,7 @@ export interface TaskerPerformance {
   kpis: {
     jobsCompleted: number;
     acceptanceRate: number;
+    bidsPlaced: number;
     completionRate: number;
     averageRating: number;
     repeatUsers: number;

@@ -2,7 +2,7 @@ import { useMutation } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -15,15 +15,14 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import Camera from '@/assets/icons/camera.svg';
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
-import { useLocation } from '@/context/LocationContext';
 import { updateProfile, updateProfilePicture } from '@/lib/auth/auth-api';
 import { useAuth } from '@/lib/auth/auth-context';
 import type { UpdateProfilePayload } from '@/lib/auth/types';
-import { looksLikeCoordinates, resolveAddress } from '@/lib/location/geocoding';
 import { pickImages, type PickedImage } from '@/lib/image-picker';
 
 const COLORS = {
@@ -54,50 +53,16 @@ function initialsOf(name: string, email: string): string {
 export default function EditProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { selectedLocation } = useLocation();
   const { user, refreshProfile } = useAuth();
 
   // Seeded from the live profile — never from placeholder copy.
   const [fullName, setFullName] = useState(user?.fullName ?? '');
   const [phoneNumber, setPhoneNumber] = useState(user?.phoneNumber ?? '');
   const [bio, setBio] = useState(typeof user?.bio === 'string' ? user.bio : '');
-  const [address, setAddress] = useState(
-    typeof user?.address === 'string' && user.address ? user.address : (selectedLocation ?? ''),
-  );
+  const [address, setAddress] = useState(typeof user?.address === 'string' ? user.address : '');
+  const [city, setCity] = useState(typeof user?.city === 'string' ? user.city : '');
+  const [residentState, setResidentState] = useState(typeof user?.residentState === 'string' ? user.residentState : '');
   const [photo, setPhoto] = useState<PickedImage | null>(null);
-
-  // The location modal writes to LocationContext, which is app-wide (the Home
-  // header reads it too). Only adopt it into `address` once the user has
-  // actually opened the picker from this screen — otherwise merely visiting
-  // Edit Profile would silently overwrite a saved address with the Home value.
-  const openedPicker = useRef(false);
-  useEffect(() => {
-    if (openedPicker.current && selectedLocation) {
-      setAddress(selectedLocation);
-    }
-  }, [selectedLocation]);
-
-  // A profile saved by an older build may hold a raw "lat, lon" pair — show
-  // (and, on the next save, persist) the place name instead.
-  useEffect(() => {
-    let mounted = true;
-    if (looksLikeCoordinates(address)) {
-      resolveAddress(address).then((resolved) => {
-        // Skip if the user has since picked a different location.
-        if (mounted && !openedPicker.current) setAddress(resolved);
-      });
-    }
-    return () => {
-      mounted = false;
-    };
-    // Run once for the seeded value only.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const openLocationPicker = () => {
-    openedPicker.current = true;
-    router.push('/location-selector-modal');
-  };
 
   const choosePhoto = async () => {
     // Square crop; `edit` also makes iOS deliver JPEG rather than HEIC.
@@ -126,6 +91,8 @@ export default function EditProfileScreen() {
       if (nextAddress !== (typeof user?.address === 'string' ? user.address : '')) {
         payload.address = nextAddress;
       }
+      if (city.trim() !== (typeof user?.city === 'string' ? user.city : '')) payload.city = city.trim();
+      if (residentState.trim() !== (typeof user?.residentState === 'string' ? user.residentState : '')) payload.residentState = residentState.trim();
 
       if (Object.keys(payload).length > 0) {
         await updateProfile(payload);
@@ -176,7 +143,7 @@ export default function EditProfileScreen() {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
+        <KeyboardAwareScrollView
           style={styles.flex}
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
@@ -236,17 +203,16 @@ export default function EditProfileScreen() {
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Location</Text>
-              <Pressable style={styles.input} onPress={openLocationPicker} disabled={pending}>
-                <Text
-                  style={[
-                    styles.inputText,
-                    { color: address ? COLORS.textPrimary : COLORS.placeholder },
-                  ]}
-                  numberOfLines={1}>
-                  {address || 'Enter your location'}
-                </Text>
-              </Pressable>
+              <Text style={styles.fieldLabel}>Address</Text>
+              <View style={styles.input}><TextInput style={styles.inputText} value={address} onChangeText={setAddress} placeholder="Street, area or landmark" placeholderTextColor={COLORS.placeholder} editable={!pending} /></View>
+            </View>
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>City</Text>
+              <View style={styles.input}><TextInput style={styles.inputText} value={city} onChangeText={setCity} placeholder="Your city" placeholderTextColor={COLORS.placeholder} editable={!pending} /></View>
+            </View>
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>State</Text>
+              <View style={styles.input}><TextInput style={styles.inputText} value={residentState} onChangeText={setResidentState} placeholder="Your state" placeholderTextColor={COLORS.placeholder} editable={!pending} /></View>
             </View>
 
             {/* Bio */}
@@ -272,7 +238,7 @@ export default function EditProfileScreen() {
               </View>
             </View>
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
         {/* Footer */}
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>

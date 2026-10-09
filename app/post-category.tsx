@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import GraduationCapWhite from '@/assets/icons/graduation-cap-white.svg';
 import HouseWhite from '@/assets/icons/house-white.svg';
@@ -41,8 +42,15 @@ export default function PostCategoryScreen() {
   const router = useRouter();
   const { setMainCategory } = usePostTask();
   const { data, isLoading, isError, refetch, isRefetching } = useCategories();
+  const [search, setSearch] = useState('');
 
   const groups = data ? groupCategories(data.categories) : [];
+  const query = search.trim().toLowerCase();
+  const visibleGroups = query
+    ? groups.filter(({ main, subs }) =>
+        `${main.displayName} ${main.name} ${main.description ?? ''}`.toLowerCase().includes(query) ||
+        subs.some((sub) => `${sub.displayName} ${sub.name}`.toLowerCase().includes(query)))
+    : groups;
 
   const select = (main: Category) => {
     setMainCategory(main);
@@ -62,7 +70,15 @@ export default function PostCategoryScreen() {
 
         <View style={styles.search}>
           <MagnifyingGlass size={20} color={COLORS.iconSecondary} />
-          <Text style={styles.searchText}>Search category, service...</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search category, service..."
+            placeholderTextColor={COLORS.placeholder}
+            value={search}
+            onChangeText={setSearch}
+            accessibilityLabel="Search categories and services"
+          />
+          {search ? <Pressable hitSlop={8} onPress={() => setSearch('')}><Text style={styles.clearSearch}>Clear</Text></Pressable> : null}
         </View>
 
         {isLoading ? (
@@ -80,9 +96,13 @@ export default function PostCategoryScreen() {
           <View style={styles.state}>
             <Text style={styles.emptyText}>No categories available yet.</Text>
           </View>
+        ) : visibleGroups.length === 0 ? (
+          <View style={styles.state}>
+            <Text style={styles.emptyText}>No categories or services match your search.</Text>
+          </View>
         ) : (
           <View style={styles.list}>
-            {groups.map(({ main, subs }) => {
+            {visibleGroups.map(({ main, subs }) => {
               const v = visual(main);
               return (
                 <Pressable key={main._id} style={styles.card} onPress={() => select(main)}>
@@ -144,11 +164,17 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 24,
   },
-  searchText: {
+  searchInput: {
+    flex: 1,
     fontFamily: 'Geist_500Medium',
     fontSize: 17,
     letterSpacing: -0.41,
-    color: COLORS.placeholder,
+    color: COLORS.textPrimary,
+  },
+  clearSearch: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 13,
+    color: COLORS.purple,
   },
   list: {
     gap: 12,

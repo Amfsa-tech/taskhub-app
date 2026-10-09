@@ -400,16 +400,9 @@ These need backend work first. Everything else in this doc does not.
 | `/tasker-portfolio` | api ✅ | upload/delete grid over `previousWork` (max 10) |
 | `/performance` | api ⚠️ | derived from tasks/bids/transactions; no analytics endpoint (§3.6) |
 
-### Location (🌐 Geoapify)
+### Location (typed address, city, state)
 
-> Since 2026-08-06 reverse geocoding no longer requires the Geoapify key: `lib/location/geocoding.ts` falls back to the device's native geocoder, and stored raw "lat, lon" strings self-migrate to place names on read. Search/autocomplete and map tiles still need `EXPO_PUBLIC_GEOAPIFY_API_KEY`.
-
-| Route | Data now | Gap |
-|---|---|---|
-| `/location-permission` | static | none (expo-location) |
-| `/location-confirm` | geo + api ✅ | persists coords + address |
-| `/location-map` | geo | hands coords to `/location-confirm`, which saves |
-| `/location-selector-modal` | geo + ctx:Loc | optional persist |
+`/location-permission` now collects typed address, city, and state and saves them with `PUT /api/auth/profile`. Task posting sends the same fields to the backend. The app no longer bundles map screens, geocoding, or location-permission requests.
 | `/location-university` | api ✅ | real list; saves the university id |
 
 ---

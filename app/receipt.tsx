@@ -26,6 +26,8 @@ const COLORS = {
   textPrimary: '#111122',
   textSecondary: '#5a5a70',
   success: '#15803d',
+  warning: '#b45309',
+  error: '#b42318',
   successLight: '#f0fdf4',
   successBgSubtle: '#d1fae5',
   border: '#e2e2ec',
@@ -102,21 +104,25 @@ export default function ReceiptScreen() {
         showsVerticalScrollIndicator={false}>
         {/* Top Header Section */}
         <View style={styles.topSection}>
-          <Text style={styles.statusText}>{receipt.status}</Text>
+          <Text style={[styles.statusText, receipt.status === 'failed' && { color: COLORS.error }, receipt.status === 'pending' && { color: COLORS.warning }]}>{receipt.status}</Text>
           <Text style={styles.amountText}>{formatNaira(receipt.amount)}</Text>
           <Text style={styles.dateText}>{formatLongDate(receipt.date)}</Text>
         </View>
 
         {/* Details Card */}
         <View style={styles.card}>
-          <View style={styles.row}>
+          {receipt.taskTitle ? <View style={styles.row}>
             <Text style={styles.label}>Task</Text>
-            <Text style={styles.value}>{receipt.taskTitle || receipt.description || 'Transaction'}</Text>
-          </View>
-          <View style={styles.row}>
+            <Text style={styles.value}>{receipt.taskTitle}</Text>
+          </View> : null}
+          {receipt.description ? <View style={styles.row}>
+            <Text style={styles.label}>Description</Text>
+            <Text style={styles.value}>{receipt.description}</Text>
+          </View> : null}
+          {receipt.counterparty ? <View style={styles.row}>
             <Text style={styles.label}>Counterparty</Text>
-            <Text style={styles.value}>{receipt.counterparty || 'TaskHub'}</Text>
-          </View>
+            <Text style={styles.value}>{receipt.counterparty}</Text>
+          </View> : null}
           <View style={styles.row}>
             <Text style={styles.label}>Created</Text>
             <Text style={styles.value}>{formatLongDate(receipt.createdAt || receipt.date)}</Text>
@@ -125,10 +131,10 @@ export default function ReceiptScreen() {
             <Text style={styles.label}>Processed</Text>
             <Text style={styles.value}>{formatLongDate(receipt.date)}</Text>
           </View>
-          <View style={styles.row}>
+          {(receipt.paymentMethod || receipt.provider) ? <View style={styles.row}>
             <Text style={styles.label}>Payment Method</Text>
-            <Text style={styles.value}>{receipt.provider || 'TaskHub Wallet'}</Text>
-          </View>
+            <Text style={styles.value}>{receipt.paymentMethod || receipt.provider}</Text>
+          </View> : null}
           {receipt.platformFee != null && (
             <View style={styles.row}>
               <Text style={styles.label}>Platform Fee</Text>
@@ -143,8 +149,8 @@ export default function ReceiptScreen() {
           )}
         </View>
 
-        {/* Escrow Badge */}
-        <View style={styles.escrowBanner}>
+        {/* Only successful ledger entries receive a verified badge. */}
+        {receipt.status === 'success' ? <View style={styles.escrowBanner}>
           <View style={styles.escrowIconBox}>
             <ShieldCheck width={20} height={20} />
           </View>
@@ -152,7 +158,7 @@ export default function ReceiptScreen() {
             <Text style={styles.escrowTitle}>Verified Transaction</Text>
             <Text style={styles.escrowSubtitle}>This receipt was generated from TaskHub records</Text>
           </View>
-        </View>
+        </View> : null}
 
         {/* Reference ID copy block */}
         <View style={styles.refBlock}>

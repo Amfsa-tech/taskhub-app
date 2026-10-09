@@ -1,11 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as WebBrowser from 'expo-web-browser';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -51,25 +53,43 @@ export default function NinVerificationScreen() {
   const accountQ = useVerificationStatus();
   // Didit record detail — rejection reasons and masked NIN, when present.
   const recordQ = useKycStatus();
+  const refetchAccount = accountQ.refetch;
+  const refetchRecord = recordQ.refetch;
 
-  const isVerified = accountQ.data?.data.isVerified === true;
   const record = recordQ.data?.data;
+  const isVerified = accountQ.data?.data.isVerified === true || record?.status === 'approved';
   const rejectionReasons = record?.rejectionReasons ?? [];
   const isRejected = record?.status === 'rejected';
-  const isPending = record?.status === 'pending';
+  const isPending = record?.status === 'under_review';
+  const isResumable = record?.status === 'in_progress' || record?.status === 'not_started';
 
   const refresh = () => {
-    accountQ.refetch();
-    recordQ.refetch();
+    void refetchAccount();
+    void refetchRecord();
   };
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void refetchAccount();
+        void refetchRecord();
+      }
+    });
+    return () => subscription.remove();
+  }, [refetchAccount, refetchRecord]);
 
   // The backend only issues sessions to taskers (identity verification is a
   // tasker requirement), so the start button is tasker-only too.
-  const canStart = accountType === 'tasker' && !isVerified && !isPending;
+  const canStart = accountType === 'tasker' && !isVerified && !isPending
+    && !accountQ.isLoading && !recordQ.isLoading && !accountQ.isError && !recordQ.isError;
 
   const startMutation = useMutation({
     mutationFn: () => createDiditKycSession(),
     onSuccess: async (res) => {
+      if (!res.data.url) {
+        Alert.alert('Verification is preparing', 'Please try again shortly.');
+        return;
+      }
       // Didit's hosted flow does the ID + selfie capture in the browser; the
       // decision reaches the backend via webhook, so refresh when they return.
       await WebBrowser.openBrowserAsync(res.data.url);
@@ -91,9 +111,14 @@ export default function NinVerificationScreen() {
         style={styles.flex}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 20 }]}
         showsVerticalScrollIndicator={false}>
-        {accountQ.isLoading ? (
+        {accountQ.isLoading || recordQ.isLoading ? (
           <View style={styles.successContainer}>
             <ActivityIndicator color={COLORS.brand} />
+          </View>
+        ) : accountQ.isError || recordQ.isError ? (
+          <View style={styles.formContainer}>
+            <Text style={styles.instructions}>Could not check your verification status. Please try again.</Text>
+            <Pressable style={styles.btn} onPress={refresh}><Text style={styles.btnText}>Retry status check</Text></Pressable>
           </View>
         ) : isVerified ? (
           <View style={styles.successContainer}>
@@ -154,7 +179,7 @@ export default function NinVerificationScreen() {
                   <ActivityIndicator color="#ffffff" size="small" />
                 ) : (
                   <Text style={styles.btnText}>
-                    {isRejected ? 'Try again' : 'Start verification'}
+                    {isRejected ? 'Try again' : isResumable ? 'Complete Profile' : 'Start verification'}
                   </Text>
                 )}
               </Pressable>

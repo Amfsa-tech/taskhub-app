@@ -56,6 +56,7 @@ export interface TransactionReceipt {
   currency?: string;
   balanceAfter?: number | null;
   provider?: string;
+  paymentMethod?: string;
   counterparty?: string;
   taskerName?: string;
   userName?: string;
@@ -389,28 +390,12 @@ const TX_COLORS = {
   info: '#2563eb',
 };
 
-/**
- * Row status pill. Reads `status` first (a failed/pending transaction is that,
- * whatever it was for), then falls back to the escrow purpose so a held vs
- * released vs refunded escrow reads differently on the row.
- */
+/** Status always reflects the persisted transaction state, not its purpose. */
 export function transactionStatus(tx: WalletTransaction): { label: string; color: string } {
   if (tx.status === 'failed') return { label: 'Failed', color: TX_COLORS.error };
   if (tx.status === 'pending') return { label: 'Pending', color: TX_COLORS.warning };
-
-  switch (tx.paymentPurpose) {
-    case 'escrow_hold':
-      return { label: 'In Escrow', color: TX_COLORS.info };
-    case 'escrow_release':
-      return { label: 'Released', color: TX_COLORS.success };
-    case 'escrow_refund':
-    case 'refund':
-      return { label: 'Refunded', color: TX_COLORS.success };
-    case 'withdrawal':
-      return { label: 'Withdrawn', color: TX_COLORS.success };
-    default:
-      return { label: 'Success', color: TX_COLORS.success };
-  }
+  if (tx.status === 'success') return { label: 'Success', color: TX_COLORS.success };
+  return { label: 'Unknown', color: TX_COLORS.info };
 }
 
 /** Ionicons glyph + colours for the row's leading icon box. */

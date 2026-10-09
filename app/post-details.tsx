@@ -11,12 +11,16 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useEffect } from 'react';
 
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { StepsHeader } from '@/components/taskhub/steps-header';
 import { usePostTask } from '@/context/PostTaskContext';
 import { pickImages } from '@/lib/image-picker';
+import { useAuth } from '@/lib/auth/auth-context';
+import { isCampusCategory } from '@/lib/api/categories';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -32,6 +36,17 @@ export default function PostDetailsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { draft, patch } = usePostTask();
+  const { user } = useAuth();
+  const isRemoteTask = /digital|remote/i.test(draft.mainCategory?.name ?? '');
+
+  useEffect(() => {
+    if (draft.location || !user) return;
+    patch({
+      location: typeof user.address === 'string' ? user.address : '',
+      locationCity: typeof user.city === 'string' ? user.city : '',
+      locationState: typeof user.residentState === 'string' ? user.residentState : '',
+    });
+  }, [draft.location, patch, user]);
   const suggestedTitle =
     draft.subCategories.map((service) => service.displayName).join(' and ') ||
     draft.mainCategory?.displayName ||
@@ -40,7 +55,9 @@ export default function PostDetailsScreen() {
   const canContinue =
     draft.title.trim().length > 0 &&
     draft.description.trim().length > 0 &&
-    draft.budget.trim().length > 0;
+    draft.budget.trim().length > 0 &&
+    (isRemoteTask || (Boolean(draft.location.trim()) && Boolean(draft.locationCity.trim()) && Boolean(draft.locationState.trim()))) &&
+    (!draft.mainCategory || !isCampusCategory(draft.mainCategory) || draft.university !== null);
 
   const addPhotos = async () => {
     const remaining = 5 - draft.images.length;
@@ -60,7 +77,7 @@ export default function PostDetailsScreen() {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
+        <KeyboardAwareScrollView
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
@@ -94,21 +111,35 @@ export default function PostDetailsScreen() {
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.label}>Location</Text>
+              <Text style={styles.label}>Task address</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Unilorin , First Gate"
+                placeholder="Street, area or landmark"
                 placeholderTextColor={COLORS.placeholder}
                 value={draft.location}
-                onChangeText={(location) => patch({ location, locationCoordinates: null })}
+                onChangeText={(location) => patch({ location })}
               />
-              <Pressable
-                hitSlop={6}
-                accessibilityRole="button"
-                onPress={() => router.push({ pathname: '/location-map', params: { forTask: 'true' } })}>
-                <Text style={styles.useMap}>Use Map</Text>
-              </Pressable>
+              <TextInput style={styles.input} placeholder="City" placeholderTextColor={COLORS.placeholder}
+                value={draft.locationCity} onChangeText={(locationCity) => patch({ locationCity })} />
+              <TextInput style={styles.input} placeholder="State" placeholderTextColor={COLORS.placeholder}
+                value={draft.locationState} onChangeText={(locationState) => patch({ locationState })} />
+              {!isRemoteTask && (!draft.location.trim() || !draft.locationCity.trim() || !draft.locationState.trim()) ? <Text style={styles.helper}>Enter the address, city and state for this task.</Text> : null}
             </View>
+
+            {draft.mainCategory && isCampusCategory(draft.mainCategory) ? (
+              <View style={styles.field}>
+                <Text style={styles.label}>University</Text>
+                <Pressable
+                  style={styles.input}
+                  onPress={() =>
+                    router.push({ pathname: '/location-university', params: { forTask: 'true' } })
+                  }>
+                  <Text style={draft.university ? styles.inputValue : styles.inputPlaceholder}>
+                    {draft.university?.name ?? 'Select your university'}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
 
             <View style={styles.field}>
               <Text style={styles.label}>Set Budget</Text>
@@ -145,7 +176,7 @@ export default function PostDetailsScreen() {
               </View>
             </View>
           </View>
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
           <PrimaryButton
@@ -290,6 +321,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
     letterSpacing: -0.24,
     color: COLORS.textSecondary,
+  },
+  inputValue: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 17,
+    color: COLORS.textPrimary,
+  },
+  inputPlaceholder: {
+    fontFamily: 'Geist_500Medium',
+    fontSize: 17,
+    color: COLORS.placeholder,
   },
   footer: {
     paddingHorizontal: 16,

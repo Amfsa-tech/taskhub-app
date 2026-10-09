@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useMemo, useState } from 'react';
 import {
@@ -21,6 +21,8 @@ import { MagnifyingGlass } from '@/components/icons/magnifying-glass';
 import { useUniversities } from '@/lib/api/queries';
 import { filterUniversities } from '@/lib/api/universities';
 import { updateProfile } from '@/lib/auth/auth-api';
+import { useAuth } from '@/lib/auth/auth-context';
+import { usePostTask } from '@/context/PostTaskContext';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -37,9 +39,17 @@ const COLORS = {
 export default function LocationUniversityScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { forTask } = useLocalSearchParams<{ forTask?: string }>();
+  const isTaskPost = forTask === 'true';
+  const { user, refreshProfile } = useAuth();
+  const { draft, patch } = usePostTask();
   const [query, setQuery] = useState('');
   /** University `_id` — the backend resolves the reference from it. */
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const profileUniversity = typeof user?.university === 'string' ? user.university : null;
+  const [selectedId, setSelectedId] = useState<string | null>(
+    draft.university?.id ?? profileUniversity,
+  );
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const universitiesQ = useUniversities();
   const universities = useMemo(
@@ -58,20 +68,41 @@ export default function LocationUniversityScreen() {
     mutationFn: (id: string) => updateProfile({ university: id }),
   });
 
-  const goNext = () => router.push('/location-permission');
+  const goNext = () =>
+    isTaskPost ? router.replace('/post-details') : router.push('/location-permission');
 
   /**
-   * Save the pick, then continue. As with the purpose screen, a failed save
-   * still advances — the university is a matching hint, not a gate, and
-   * blocking onboarding on a flaky connection is worse than a missing field.
+   * A university is required for campus tasks, so do not report success when
+   * the profile write fails. Task posting also keeps the selected id in its
+   * own draft and submits it explicitly instead of depending on stale profile
+   * state.
    */
   const finish = async () => {
-    if (selectedId) {
-      try {
-        await save.mutateAsync(selectedId);
-      } catch {
-        // Non-blocking by design.
+    if (!selectedId) {
+      setSaveError('Select a university to continue.');
+      return;
+    }
+
+    const selected = universities.find((university) => university._id === selectedId);
+    if (!selected) {
+      setSaveError('That university is no longer available. Select another university.');
+      return;
+    }
+    if (isTaskPost) {
+      patch({ university: { id: selected._id, name: selected.name } });
+    }
+
+    setSaveError(null);
+    try {
+      await save.mutateAsync(selectedId);
+      await refreshProfile();
+    } catch (error) {
+      if (!isTaskPost) {
+        setSaveError(error instanceof Error ? error.message : 'Could not save your university. Please try again.');
+        return;
       }
+      // The task request includes the selected active university directly, so
+      // a transient profile-save failure must not block this post.
     }
     goNext();
   };
@@ -159,11 +190,12 @@ export default function LocationUniversityScreen() {
 
       {/* Footer */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+        {saveError ? <Text style={styles.listStateError}>{saveError}</Text> : null}
         <Pressable
-          disabled={save.isPending}
+          disabled={save.isPending || universitiesQ.isLoading || !selectedId}
           style={({ pressed }) => [
             styles.button,
-            (pressed || save.isPending) && styles.buttonPressed,
+            (pressed || save.isPending || universitiesQ.isLoading || !selectedId) && styles.buttonPressed,
           ]}
           onPress={finish}>
           <Text style={styles.buttonLabel}>{save.isPending ? 'Saving…' : 'Continue'}</Text>

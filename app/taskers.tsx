@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -19,7 +19,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
 import { useCategories, useNearbyTaskers } from '@/lib/api/queries';
 import type { TaskerMatch } from '@/lib/api/tasks';
-import { useAuth } from '@/lib/auth/auth-context';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -113,18 +112,16 @@ function TaskerDirectoryCard({ tasker, onPress }: { tasker: TaskerMatch; onPress
 export default function TaskersScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [category, setCategory] = useState('All');
   const [sort, setSort] = useState<SortMode>('nearest');
 
-  const location = user?.location;
-  const coords = location
-    && Number.isFinite(location.latitude)
-    && Number.isFinite(location.longitude)
-    ? { latitude: location.latitude, longitude: location.longitude }
-    : undefined;
-  const taskersQuery = useNearbyTaskers(coords);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 350);
+    return () => clearTimeout(timer);
+  }, [search]);
+  const taskersQuery = useNearbyTaskers(undefined, { search: debouncedSearch, maxResults: 100 });
   const categoriesQuery = useCategories();
   const taskers = useMemo(() => taskersQuery.data?.data ?? [], [taskersQuery.data]);
 
@@ -139,16 +136,9 @@ export default function TaskersScreen() {
   }, [categoriesQuery.data?.categories, taskers]);
 
   const visibleTaskers = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
     const filtered = taskers.filter((tasker) => {
-      const matchesSearch = !normalizedSearch || [
-        fullName(tasker),
-        tasker.primaryCategory,
-        tasker.area,
-        tasker.residentState,
-      ].some((value) => value?.toLowerCase().includes(normalizedSearch));
       const matchesCategory = category === 'All' || tasker.primaryCategory === category;
-      return matchesSearch && matchesCategory;
+      return matchesCategory;
     });
 
     return filtered.sort((left, right) => {
@@ -156,7 +146,7 @@ export default function TaskersScreen() {
       if (sort === 'popular') return (right.completedJobs ?? 0) - (left.completedJobs ?? 0);
       return (left.distance ?? Number.POSITIVE_INFINITY) - (right.distance ?? Number.POSITIVE_INFINITY);
     });
-  }, [category, search, sort, taskers]);
+  }, [category, sort, taskers]);
 
   const clearFilters = () => {
     setSearch('');

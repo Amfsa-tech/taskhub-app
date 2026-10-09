@@ -1,7 +1,8 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Bell from '@/assets/icons/bell.svg';
@@ -76,9 +77,18 @@ export default function MessagesScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { accountType } = useAuth();
-  const { data, isLoading, isError, refetch, isRefetching } = useConversations();
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(handle);
+  }, [search]);
+  const {
+    data, isLoading, isError, refetch, isRefetching,
+    fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError,
+  } = useConversations(debouncedSearch);
 
-  const rows: ChatRowView[] = (data?.conversations ?? []).map((c) => {
+  const rows: ChatRowView[] = (data?.pages.flatMap((page) => page.conversations) ?? []).map((c) => {
     const { name, avatar } = otherParty(c, accountType);
     return {
       id: c._id,
@@ -107,7 +117,21 @@ export default function MessagesScreen() {
 
         <View style={styles.search}>
           <MagnifyingGlass size={20} color={COLORS.placeholder} />
-          <Text style={styles.searchText}>Search Conversations...</Text>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search conversations..."
+            placeholderTextColor={COLORS.placeholder}
+            value={search}
+            onChangeText={setSearch}
+            autoCorrect={false}
+            returnKeyType="search"
+            accessibilityLabel="Search conversations"
+          />
+          {search.length > 0 ? (
+            <Pressable hitSlop={8} onPress={() => setSearch('')} accessibilityLabel="Clear conversation search">
+              <Text style={styles.clearSearch}>Clear</Text>
+            </Pressable>
+          ) : null}
         </View>
       </View>
 
@@ -115,7 +139,7 @@ export default function MessagesScreen() {
         <View style={styles.state}>
           <ActivityIndicator color={COLORS.brand} />
         </View>
-      ) : isError ? (
+      ) : isError && !data ? (
         <View style={styles.state}>
           <Text style={styles.errorText}>Couldn’t load conversations.</Text>
           <Pressable hitSlop={8} onPress={() => refetch()} disabled={isRefetching}>
@@ -125,24 +149,41 @@ export default function MessagesScreen() {
       ) : rows.length === 0 ? (
         <View style={styles.state}>
           <Text style={styles.emptyText}>
-            No conversations yet. Chat opens when you invite or hire a tasker.
+            {debouncedSearch
+              ? 'No conversations match your search. Try another name, task, or message.'
+              : 'No conversations yet. Chat opens when you invite or hire a tasker.'}
           </Text>
         </View>
       ) : (
-        <ScrollView
+        <FlatList
           style={styles.flex}
           contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
-          showsVerticalScrollIndicator={false}>
-          {rows.map((chat) => (
+          showsVerticalScrollIndicator={false}
+          data={rows}
+          keyExtractor={(chat) => chat.id}
+          onEndReached={() => {
+            if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+          }}
+          onEndReachedThreshold={0.4}
+          ListHeaderComponent={isError ? (
+            <Pressable style={styles.inlineError} onPress={() => {
+              if (isFetchNextPageError) void fetchNextPage();
+              else void refetch();
+            }}>
+              <Text style={styles.errorText}>Couldn’t refresh conversations. Showing saved results.</Text>
+              <Text style={styles.retry}>Tap to retry</Text>
+            </Pressable>
+          ) : null}
+          ListFooterComponent={isFetchingNextPage ? <ActivityIndicator color={COLORS.brand} /> : null}
+          renderItem={({ item: chat }) => (
             <ChatRow
-              key={chat.id}
               chat={chat}
               onPress={() =>
                 router.push({ pathname: '/chat', params: { id: chat.id, name: chat.name, avatar: chat.avatar, taskerId: chat.taskerId ?? '' } })
               }
             />
-          ))}
-        </ScrollView>
+          )}
+        />
       )}
     </View>
   );
@@ -187,11 +228,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  searchText: {
+  searchInput: {
+    flex: 1,
     fontFamily: 'Geist_500Medium',
     fontSize: 17,
     letterSpacing: -0.41,
-    color: COLORS.placeholder,
+    color: COLORS.textPrimary,
+  },
+  clearSearch: {
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 13,
+    color: COLORS.brand,
   },
   scroll: {
     paddingHorizontal: 16,
@@ -283,6 +330,12 @@ const styles = StyleSheet.create({
     fontSize: 15,
     letterSpacing: -0.24,
     color: COLORS.error,
+  },
+  inlineError: {
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
   },
   emptyText: {
     fontFamily: 'Geist_500Medium',

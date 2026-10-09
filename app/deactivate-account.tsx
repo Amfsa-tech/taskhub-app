@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { ScreenHeader } from '@/components/taskhub/screen-header';
 import { ApiError } from '@/lib/api/client';
@@ -67,7 +68,7 @@ export default function DeleteAccountScreen() {
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <StatusBar style="dark" />
       <ScreenHeader title="Delete Account" />
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}>
+      <KeyboardAwareScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}>
         <View style={styles.warning}>
           <Text style={styles.title}>This permanently deletes Taskhub Connect</Text>
           <Text style={styles.body}>Your linked client and tasker roles are deleted together. Personal data, sessions, messages, KYC details, payout accounts, and uploaded media are removed. De-identified records required for completed payments may be retained.</Text>
@@ -94,7 +95,7 @@ export default function DeleteAccountScreen() {
         <Pressable style={({ pressed }) => [styles.button, (!confirmed || mutation.isPending) && styles.disabled, pressed && confirmed && styles.pressed]} disabled={!confirmed || mutation.isPending} onPress={confirmDeletion}>
           {mutation.isPending ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.buttonText}>Permanently delete account</Text>}
         </Pressable>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </KeyboardAvoidingView>
   );
 }

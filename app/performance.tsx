@@ -53,7 +53,7 @@ const MONTH_LABELS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'S
  * guesses about accepted, completed, repeated, and rated work.
  */
 function bucketEarnings(
-  transactions: { amount: number; type: string; status: string; createdAt: string }[],
+  transactions: { amount: number; type: string; status: string; paymentPurpose?: string; createdAt: string }[],
   period: Period,
   now: Date,
 ): { label: string; value: number }[] {
@@ -62,7 +62,7 @@ function bucketEarnings(
   const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
 
   const credits = transactions.filter(
-    (t) => t.type === 'credit' && t.status === 'success' && new Date(t.createdAt) >= cutoff,
+    (t) => t.type === 'credit' && t.status === 'success' && t.paymentPurpose === 'escrow_release' && new Date(t.createdAt) >= cutoff,
   );
 
   const buckets = new Map<string, { label: string; value: number; order: number }>();
@@ -137,14 +137,14 @@ export default function PerformanceScreen() {
     },
     {
       label: 'Acceptance rate',
-      value: performance ? `${Math.round(performance.kpis.acceptanceRate)}%` : '—',
+      value: performance && performance.kpis.bidsPlaced > 0 ? `${Math.round(performance.kpis.acceptanceRate)}%` : '—',
       icon: 'check-circle-outline',
       iconColor: COLORS.successText,
       bg: COLORS.successBg,
     },
     {
       label: 'Average rating',
-      value: performance ? `${performance.kpis.averageRating.toFixed(1)}/5` : '—',
+      value: performance && performance.kpis.averageRating > 0 ? `${performance.kpis.averageRating.toFixed(1)}/5` : 'New',
       icon: 'star-outline',
       iconColor: '#e07b00',
       bg: '#fff4e5',
@@ -199,9 +199,11 @@ export default function PerformanceScreen() {
         {/* Earnings Chart Card */}
         <View style={styles.chartCard}>
           <Text style={styles.chartLabel}>Earnings · {period}</Text>
-          <Text style={styles.chartAmount}>{formatNaira(periodTotal)}</Text>
+          <Text style={styles.chartAmount}>{transactionsQ.isError ? 'Unavailable' : transactionsQ.isLoading ? 'Loading…' : formatNaira(periodTotal)}</Text>
 
-          {loading ? (
+          {transactionsQ.isError ? (
+            <Text style={styles.chartLabel}>Could not load earnings. Please try again later.</Text>
+          ) : loading ? (
             <ActivityIndicator style={{ marginVertical: 40 }} color={COLORS.brand} />
           ) : (
             <View style={styles.barChartArea}>

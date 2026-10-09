@@ -16,6 +16,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { ScreenHeader } from '@/components/taskhub/screen-header';
 import { useSavedBankAccounts, useTaskerBalance, useTaskerBankAccount } from '@/lib/api/queries';
@@ -155,7 +156,7 @@ export default function WithdrawScreen() {
           </View>
         ) : (
           <>
-            <ScrollView
+            <KeyboardAwareScrollView
               style={styles.flex}
               contentContainerStyle={styles.scroll}
               keyboardShouldPersistTaps="handled"
@@ -265,7 +266,7 @@ export default function WithdrawScreen() {
                   right away.
                 </Text>
               </View>
-            </ScrollView>
+            </KeyboardAwareScrollView>
 
             {/* Footer */}
             <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>

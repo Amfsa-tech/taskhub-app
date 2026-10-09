@@ -31,7 +31,8 @@ export default function PostReviewScreen() {
     { label: 'Service', value: serviceValue },
     { label: 'Title', value: draft.title.trim() || '—' },
     { label: 'Budget', value: budgetNum > 0 ? formatNaira(budgetNum) : '—', emphasized: true },
-    { label: 'Location', value: draft.location.trim() || 'From your profile' },
+    { label: 'Location', value: [draft.location, draft.locationCity, draft.locationState].filter(Boolean).join(', ') || 'Remote' },
+    ...(draft.university ? [{ label: 'University', value: draft.university.name }] : []),
     ...(draft.images.length > 0
       ? [{ label: 'Photos', value: `${draft.images.length} attached` }]
       : []),
@@ -46,7 +47,10 @@ export default function PostReviewScreen() {
           mainCategory: draft.mainCategory!._id,
           categories: draft.subCategories.map((s) => s._id),
           budget: budgetNum,
-          ...(draft.locationCoordinates ? { location: draft.locationCoordinates } : {}),
+          ...(draft.location.trim() && draft.locationCity.trim() && draft.locationState.trim()
+            ? { location: { address: draft.location.trim(), city: draft.locationCity.trim(), state: draft.locationState.trim() } }
+            : {}),
+          ...(draft.university ? { university: draft.university.id } : {}),
         },
         draft.images,
       ),
@@ -73,6 +77,11 @@ export default function PostReviewScreen() {
     }
     if (!(budgetNum > 0)) {
       Alert.alert('Invalid budget', 'Please enter a valid budget amount.');
+      return;
+    }
+    if (!/digital|remote/i.test(draft.mainCategory?.name ?? '') &&
+      (!draft.location.trim() || !draft.locationCity.trim() || !draft.locationState.trim())) {
+      Alert.alert('Missing location', 'Enter the task address, city and state.');
       return;
     }
     createMutation.mutate();
