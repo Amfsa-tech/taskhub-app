@@ -223,7 +223,7 @@ export default function TaskerProfileScreen() {
                 ) : null}
               </View>
             ) : null}
-            {tasker?.isVerified ? (
+            {tasker?.isVerified === true ? (
               <View style={styles.verifiedBadge}>
                 <ShieldSuccess width={16} height={16} />
                 <Text style={styles.verifiedText}>Verified Tasker</Text>

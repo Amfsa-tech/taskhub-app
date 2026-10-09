@@ -353,3 +353,60 @@ Last updated: 2026-10-04
 - Keep DOB formatting (`YYYY-MM-DD`) and 18+ validation identical for user, social, and tasker signup.
 - Reuse the existing signup field treatment; SDK 54 does not provide the Expo UI universal form controls.
 
+### Tasker Identity Badge
+
+Files: `app/tasker-profile.tsx`, `app/saved-taskers.tsx`
+Last updated: 2026-10-09
+
+| Property | Standard |
+| --- | --- |
+| Background | `#edfaf3` (`COLORS.successBg`) |
+| Border | None |
+| Border radius | `999px` pill |
+| Text, primary | Geist 500, `#0d6639` (`COLORS.successText`) |
+| Spacing | `8px` horizontal, `2px` to `4px` vertical, `4px` icon gap |
+| Accent usage | Success green only for confirmed identity |
+
+**Pattern notes:**
+
+- Render “Verified Tasker” or “Verified” only when the backend identity flag is explicitly `true`. Missing or false status must not display a trust badge.
+- The public tasker profile response maps the backend's `verifyIdentity` to `isVerified`; saved taskers already receive `isVerified` from the backend.
+
+### Optional Bidding Deadline Control
+
+Files: `app/post-details.tsx`, `app/edit-task.tsx`, `app/task-details.tsx`
+Last updated: 2026-10-09
+
+| Property | Standard |
+| --- | --- |
+| Background | `#f9f9fb` screen canvas, `#ffffff` form input |
+| Border | `#e0e0ea` input border |
+| Border radius | Match adjacent task form inputs; `12px` for the primary reopen action |
+| Text, primary | `#111122` selected date and task values |
+| Text, secondary | `#5a5a70` explanation and clear action, `#a0a0ba` placeholder |
+| Spacing | Use the existing task-form field gap and scrollable form padding |
+| Interactive state | Native date picker for selection; explicit Clear deadline; disabled reopen while saving |
+| Accent usage | `#6c3bff` for the reopen action |
+
+**Pattern notes:**
+
+- The date is optional and means last day to place a bid, not completion due date.
+- Explain the no-bid closure and wallet refund alongside the field. Display “No bidding deadline” when unset.
+- Closed tasks use the existing task card; details provide a wallet-funded reopen action and the existing delete action.
+
+### Task Actions Sheet
+
+File: `components/taskhub/task-actions-modal.tsx`
+Last updated: 2026-10-09
+
+| Property | Standard |
+| --- | --- |
+| Background | White sheet over `rgba(17, 17, 34, 0.4)` backdrop |
+| Text, primary | `#111122` |
+| Text, secondary | `#5a5a70` with `#b01515` destructive actions |
+| Spacing | Existing action-row padding and bottom safe-area inset |
+| Interactive state | Render only actions with valid handlers for the current task status |
+| Accent usage | Destructive red only for cancel/delete/report |
+
+**Pattern notes:** Closed tasks expose Delete but not Edit or Cancel. Reopen is the separate primary action on the task detail.
+

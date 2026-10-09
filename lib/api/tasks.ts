@@ -19,7 +19,8 @@ export type TaskStatus =
   | 'in-progress'
   | 'awaiting-confirmation'
   | 'completed'
-  | 'cancelled';
+  | 'cancelled'
+  | 'closed';
 
 export type TaskEscrowStatus =
   | 'not_held'
@@ -178,6 +179,7 @@ export interface UpdateTaskPayload {
   title?: string;
   description?: string;
   budget?: number;
+  deadline?: string | null;
 }
 
 /**
@@ -523,6 +525,12 @@ export function deleteTask(id: string) {
   return api.delete<{ status: string; message: string }>(`/api/tasks/${id}`);
 }
 
+export function reopenTask(id: string, deadline?: string) {
+  return api.post<{ status: string; message: string; task: Task }>(
+    `/api/tasks/${id}/reopen`, { deadline: deadline || null },
+  );
+}
+
 export interface CompletionCodeResponse {
   status: string;
   data: { taskId: string; completionCode: string };
@@ -615,6 +623,8 @@ export function statusLabel(status: TaskStatus): string {
       return 'Completed';
     case 'cancelled':
       return 'Cancelled';
+    case 'closed':
+      return 'Closed';
     default:
       return status;
   }
@@ -670,7 +680,7 @@ export function taskToCard(task: Task): TaskCardModel {
     title: task.title,
     bids: `${bids} ${bids === 1 ? 'Bid' : 'Bids'}`,
     location: locationLabel(task),
-    date: formatShortDate(task.deadline || task.createdAt),
+    date: task.deadline ? `Bids close ${formatShortDate(task.deadline)}` : 'No bidding deadline',
   };
 }
 
@@ -683,7 +693,7 @@ export function taskToInProgressCard(task: Task): InProgressTaskModel {
     price: formatNaira(task.budget),
     title: task.title,
     location: locationLabel(task),
-    date: formatShortDate(task.deadline || task.createdAt),
+    date: `Posted ${formatShortDate(task.createdAt)}`,
   };
 }
 

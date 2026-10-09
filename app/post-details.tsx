@@ -14,6 +14,8 @@ import {
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useEffect } from 'react';
+import { useState } from 'react';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { StepsHeader } from '@/components/taskhub/steps-header';
@@ -36,6 +38,7 @@ export default function PostDetailsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { draft, patch } = usePostTask();
+  const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
   const { user } = useAuth();
   const isRemoteTask = /digital|remote/i.test(draft.mainCategory?.name ?? '');
 
@@ -151,6 +154,34 @@ export default function PostDetailsScreen() {
                 onChangeText={(budget) => patch({ budget })}
                 keyboardType="numeric"
               />
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>Bidding deadline (optional)</Text>
+              <Pressable style={styles.input} onPress={() => setShowDeadlinePicker(true)}>
+                <Text style={draft.biddingDeadline ? styles.inputValue : styles.inputPlaceholder}>
+                  {draft.biddingDeadline || 'No deadline'}
+                </Text>
+              </Pressable>
+              {draft.biddingDeadline ? (
+                <Pressable onPress={() => patch({ biddingDeadline: '' })}><Text style={styles.helper}>Clear deadline</Text></Pressable>
+              ) : null}
+              <Text style={styles.helper}>Last day taskers can bid. With no bids by then, the task closes and its budget returns to your wallet. Leave blank to keep bidding open.</Text>
+              {showDeadlinePicker ? (
+                <DateTimePicker
+                  mode="date"
+                  value={draft.biddingDeadline ? new Date(`${draft.biddingDeadline}T12:00:00`) : new Date()}
+                  minimumDate={new Date()}
+                  onChange={(event, selectedDate) => {
+                    setShowDeadlinePicker(false);
+                    if (event.type !== 'set' || !selectedDate) return;
+                    const year = selectedDate.getFullYear();
+                    const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+                    const day = String(selectedDate.getDate()).padStart(2, '0');
+                    patch({ biddingDeadline: `${year}-${month}-${day}` });
+                  }}
+                />
+              ) : null}
             </View>
 
             <View style={styles.field}>

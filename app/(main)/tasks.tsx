@@ -73,7 +73,7 @@ const COLORS = {
 
 const SHIELD_IMAGE = require('@/assets/images/3d-shield.png');
 
-type TaskTab = 'posted' | 'in_progress' | 'completed';
+type TaskTab = 'posted' | 'in_progress' | 'completed' | 'closed';
 
 type StateViewProps = {
   mode: 'loading' | 'error' | 'empty';
@@ -121,6 +121,7 @@ export default function TasksScreen() {
   const posted = useUserTasks({ status: 'open' });
   const inProgress = useUserTasksByStatuses(['assigned', 'in-progress']);
   const completed = useUserTasks({ status: 'completed' });
+  const closed = useUserTasks({ status: 'closed' });
 
   const postedTasks = posted.data?.tasks ?? [];
   const completedTasks = completed.data?.tasks ?? [];
@@ -154,13 +155,13 @@ export default function TasksScreen() {
 
   const goTab = (next: TaskTab) => {
     setTab(next);
-    const idx = next === 'posted' ? 0 : next === 'in_progress' ? 1 : 2;
+    const idx = next === 'posted' ? 0 : next === 'in_progress' ? 1 : next === 'completed' ? 2 : 3;
     pagerRef.current?.scrollTo({ x: idx * SCREEN_WIDTH, animated: true });
   };
 
   const onPagerScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-    const next: TaskTab = idx === 0 ? 'posted' : idx === 1 ? 'in_progress' : 'completed';
+    const next: TaskTab = idx === 0 ? 'posted' : idx === 1 ? 'in_progress' : idx === 2 ? 'completed' : 'closed';
     if (next !== tab) setTab(next);
   };
 
@@ -210,6 +211,9 @@ export default function TasksScreen() {
             <Text style={[styles.tabText, tab === 'completed' && styles.tabTextActive]}>
               Completed
             </Text>
+          </Pressable>
+          <Pressable style={[styles.tab, tab === 'closed' && styles.tabActive]} onPress={() => goTab('closed')}>
+            <Text style={[styles.tabText, tab === 'closed' && styles.tabTextActive]}>Closed</Text>
           </Pressable>
         </View>
       </View>
@@ -304,6 +308,17 @@ export default function TasksScreen() {
               );
             })
           )}
+        </ScrollView>
+        <ScrollView style={{ width: SCREEN_WIDTH }}
+          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
+          refreshControl={refreshControl(closed.refetch, closed.isRefetching)}>
+          {closed.isLoading ? <StateView mode="loading" /> : closed.isError ? (
+            <StateView mode="error" onRetry={closed.refetch} isRetrying={closed.isRefetching} />
+          ) : (closed.data?.tasks ?? []).length === 0 ? (
+            <StateView mode="empty" emptyText="No tasks have closed without bids. Your refunded budget appears in your wallet." />
+          ) : (closed.data?.tasks ?? []).map((task) => (
+            <TaskCard key={task._id} task={taskToCard(task)} onPress={() => openTask(task._id)} />
+          ))}
         </ScrollView>
       </ScrollView>
 

@@ -143,7 +143,7 @@ export default function SavedTaskersScreen() {
                       <Text style={styles.name} numberOfLines={1}>
                         {name}
                       </Text>
-                      {tasker.isVerified ? (
+                      {tasker.isVerified === true ? (
                         <View style={styles.verifiedBadge}>
                           <Ionicons name="checkmark-sharp" size={10} color={COLORS.successText} />
                           <Text style={styles.verifiedText}>Verified</Text>

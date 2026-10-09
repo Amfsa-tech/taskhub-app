@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from '@/lib/auth/auth-context';
 
 import ArrowLeft from '@/assets/icons/arrow-left.svg';
@@ -39,10 +40,11 @@ import {
   updateBid,
 } from '@/lib/api/bids';
 import { createOrGetConversation } from '@/lib/api/chat';
-import { useTask, useTaskMatches, useTaskerBids } from '@/lib/api/queries';
+import { queryKeys, useTask, useTaskMatches, useTaskerBids } from '@/lib/api/queries';
 import {
   changeTaskStatus,
   deleteTask,
+  reopenTask,
   formatNaira,
   formatRelativeTime,
   formatShortDate,
@@ -85,6 +87,7 @@ const STATUS_COLORS: Record<TaskStatus, { bg: string; text: string }> = {
   'awaiting-confirmation': { bg: '#fffbea', text: '#b45309' },
   completed: { bg: '#edfaf3', text: '#0d6639' },
   cancelled: { bg: '#fff1f1', text: '#b01515' },
+  closed: { bg: '#fff1f1', text: '#b01515' },
 };
 
 type Match = {
@@ -295,7 +298,7 @@ export default function TaskDetailsScreen() {
     ? myBid.invitedByUser && !myBid.taskerConfirmed
       ? 'invitation_received'
       : 'bid_sent'
-    : task?.status === 'open'
+    : task?.status === 'open' && (!task.deadline || new Date(task.deadline).getTime() > Date.now())
       ? 'open'
       : 'closed';
 
@@ -317,6 +320,7 @@ export default function TaskDetailsScreen() {
   const [invite, setInvite] = useState<{ taskerId: string; name: string } | null>(null);
   const [hire, setHire] = useState<HireContext | null>(null);
   const [actionsVisible, setActionsVisible] = useState(false);
+  const [showReopenDatePicker, setShowReopenDatePicker] = useState(false);
 
   const matches = (matchesQ.data?.matches ?? []).map(matchToView);
   const bids = (task?.bids ?? []).map(bidToView);
@@ -370,6 +374,20 @@ export default function TaskDetailsScreen() {
     },
     onError: (err) => Alert.alert('Could not delete task', errorMessage(err)),
   });
+  const reopenMutation = useMutation({
+    mutationFn: (deadline?: string) => reopenTask(id as string, deadline),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.task(id as string) });
+      Alert.alert('Task reopened', 'The budget is reserved from your wallet again.');
+    },
+    onError: (err) => Alert.alert('Could not reopen task', errorMessage(err)),
+  });
+  const chooseReopen = () => Alert.alert('Reopen task', 'The task budget will be reserved from your wallet again. Choose a new bidding deadline or keep bidding open.', [
+    { text: 'Cancel', style: 'cancel' },
+    { text: 'No deadline', onPress: () => reopenMutation.mutate(undefined) },
+    { text: 'Choose date', onPress: () => setShowReopenDatePicker(true) },
+  ]);
 
   // The backend refuses to delete once work has started; cancelling is the path
   // for those, and it also handles the escrow refund.
@@ -567,7 +585,7 @@ export default function TaskDetailsScreen() {
             <View style={styles.taskerMetaItem}>
               <Clock width={14} height={14} color="#5a5a70" />
               <Text style={styles.taskerMetaText}>
-                {formatShortDate(task.deadline || task.createdAt)}
+                {task.deadline ? `Bids close ${formatShortDate(task.deadline)}` : 'No bidding deadline'}
               </Text>
             </View>
             <View style={styles.taskerMetaItem}>
@@ -1117,7 +1135,7 @@ export default function TaskDetailsScreen() {
               <View style={styles.metaItem}>
                 <Clock width={16} height={16} />
                 <Text style={styles.metaText}>
-                  {formatShortDate(task.deadline || task.createdAt)}
+                  {task.deadline ? `Bids close ${formatShortDate(task.deadline)}` : 'No bidding deadline'}
                 </Text>
               </View>
               <View style={styles.metaItem}>
@@ -1131,6 +1149,23 @@ export default function TaskDetailsScreen() {
               <Text style={styles.budgetText}>Budget</Text>
               <Text style={styles.priceText}>{budgetText}</Text>
             </View>
+            {task.status === 'closed' ? (
+              <Pressable onPress={chooseReopen} disabled={reopenMutation.isPending}
+                style={{ backgroundColor: COLORS.brand, borderRadius: 12, padding: 14, alignItems: 'center', marginHorizontal: 16 }}>
+                <Text style={{ color: '#ffffff', fontWeight: '600' }}>{reopenMutation.isPending ? 'Reopening…' : 'Reopen task'}</Text>
+              </Pressable>
+            ) : null}
+            {showReopenDatePicker ? (
+              <DateTimePicker mode="date" value={new Date()} minimumDate={new Date()}
+                onChange={(event, date) => {
+                  setShowReopenDatePicker(false);
+                  if (event.type !== 'set' || !date) return;
+                  const year = date.getFullYear();
+                  const month = String(date.getMonth() + 1).padStart(2, '0');
+                  const day = String(date.getDate()).padStart(2, '0');
+                  reopenMutation.mutate(`${year}-${month}-${day}`);
+                }} />
+            ) : null}
 
             {/* Tabs */}
             <View style={styles.tabs}>
@@ -1253,17 +1288,8 @@ export default function TaskDetailsScreen() {
           <TaskActionsModal
             visible={actionsVisible}
             onClose={() => setActionsVisible(false)}
-            onEdit={() => {
-              if (task?.status === 'open') {
-                router.push({ pathname: '/edit-task' as any, params: { id: id as string } });
-              } else {
-                Alert.alert(
-                  'Edit task',
-                  'Only open tasks can be edited — once a tasker is hired the agreed price is locked in escrow.',
-                );
-              }
-            }}
-            onCancel={confirmCancel}
+            onEdit={task?.status === 'open' ? () => router.push({ pathname: '/edit-task' as any, params: { id: id as string } }) : undefined}
+            onCancel={task && ['open', 'assigned', 'in-progress'].includes(task.status) ? confirmCancel : undefined}
             onDelete={canDelete ? confirmDelete : undefined}
             onReport={() =>
               router.push({

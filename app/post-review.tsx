@@ -31,6 +31,7 @@ export default function PostReviewScreen() {
     { label: 'Service', value: serviceValue },
     { label: 'Title', value: draft.title.trim() || '—' },
     { label: 'Budget', value: budgetNum > 0 ? formatNaira(budgetNum) : '—', emphasized: true },
+    { label: 'Bidding deadline', value: draft.biddingDeadline || 'No deadline' },
     { label: 'Location', value: [draft.location, draft.locationCity, draft.locationState].filter(Boolean).join(', ') || 'Remote' },
     ...(draft.university ? [{ label: 'University', value: draft.university.name }] : []),
     ...(draft.images.length > 0
@@ -47,6 +48,7 @@ export default function PostReviewScreen() {
           mainCategory: draft.mainCategory!._id,
           categories: draft.subCategories.map((s) => s._id),
           budget: budgetNum,
+          ...(draft.biddingDeadline ? { deadline: draft.biddingDeadline } : {}),
           ...(draft.location.trim() && draft.locationCity.trim() && draft.locationState.trim()
             ? { location: { address: draft.location.trim(), city: draft.locationCity.trim(), state: draft.locationState.trim() } }
             : {}),

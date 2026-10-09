@@ -14,6 +14,7 @@ export interface PostTaskDraft {
   title: string;
   description: string;
   budget: string; // raw text input
+  biddingDeadline: string; // YYYY-MM-DD in Nigeria, or empty for no cutoff
   location: string;
   locationCity: string;
   locationState: string;
@@ -27,6 +28,7 @@ const EMPTY: PostTaskDraft = {
   title: '',
   description: '',
   budget: '',
+  biddingDeadline: '',
   location: '',
   locationCity: '',
   locationState: '',

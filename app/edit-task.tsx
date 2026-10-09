@@ -15,6 +15,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Pressable } from 'react-native';
 
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
@@ -49,6 +51,8 @@ export default function EditTaskScreen() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [budget, setBudget] = useState('');
+  const [deadline, setDeadline] = useState('');
+  const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
   const [seeded, setSeeded] = useState(false);
 
   // Seed the form once the task arrives; don't clobber in-progress edits on
@@ -58,6 +62,7 @@ export default function EditTaskScreen() {
       setTitle(task.title);
       setDescription(task.description);
       setBudget(String(task.budget));
+      setDeadline(task.deadline ? new Date(task.deadline).toISOString().slice(0, 10) : '');
       setSeeded(true);
     }
   }, [task, seeded]);
@@ -68,6 +73,7 @@ export default function EditTaskScreen() {
         title: title.trim(),
         description: description.trim(),
         budget: Number(budget),
+        deadline: deadline || null,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.task(id as string) });
@@ -148,15 +154,28 @@ export default function EditTaskScreen() {
           <TextInput
             style={styles.input}
             value={budget}
-            onChangeText={(t) => setBudget(t.replace(/\D/g, ''))}
+            editable={false}
             keyboardType="number-pad"
             placeholder="0"
             placeholderTextColor={COLORS.placeholder}
           />
 
           <Text style={styles.note}>
-            Need to change the category, photos, or location? Cancel this task and post it again.
+            Budget is locked because funds are already reserved. The bidding deadline is the last day taskers may bid. Leave it blank to keep bidding open. Need to change the budget, category, photos, or location? Delete this task and post it again.
           </Text>
+          <Text style={styles.fieldLabel}>Bidding deadline (optional)</Text>
+          <Pressable style={styles.input} onPress={() => setShowDeadlinePicker(true)}>
+            <Text style={{ color: deadline ? COLORS.textPrimary : COLORS.placeholder }}>{deadline || 'No deadline'}</Text>
+          </Pressable>
+          {deadline ? <Pressable onPress={() => setDeadline('')}><Text style={styles.note}>Clear deadline</Text></Pressable> : null}
+          {showDeadlinePicker ? (
+            <DateTimePicker mode="date" value={deadline ? new Date(`${deadline}T12:00:00`) : new Date()}
+              minimumDate={new Date()} onChange={(event, date) => {
+                setShowDeadlinePicker(false);
+                if (event.type !== 'set' || !date) return;
+                setDeadline(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`);
+              }} />
+          ) : null}
 
           <PrimaryButton
             label={saveMutation.isPending ? 'Saving…' : 'Save changes'}
