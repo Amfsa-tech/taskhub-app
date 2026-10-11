@@ -6,6 +6,7 @@ import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { StepsHeader } from '@/components/taskhub/steps-header';
 import { usePostTask } from '@/context/PostTaskContext';
+import { useAuth } from '@/lib/auth/auth-context';
 import { createTask, formatNaira } from '@/lib/api/tasks';
 
 const COLORS = {
@@ -19,6 +20,7 @@ export default function PostReviewScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { draft, reset } = usePostTask();
+  const { user, accountType } = useAuth();
 
   const budgetNum = Number(draft.budget.replace(/[^\d.]/g, ''));
   const serviceValue =
@@ -84,6 +86,26 @@ export default function PostReviewScreen() {
     if (!/digital|remote/i.test(draft.mainCategory?.name ?? '') &&
       (!draft.location.trim() || !draft.locationCity.trim() || !draft.locationState.trim())) {
       Alert.alert('Missing location', 'Enter the task address, city and state.');
+      return;
+    }
+    // Email verification is required before posting. Blocking here keeps the
+    // draft intact (it lives in PostTaskContext) so no work is lost.
+    if (user && user.isEmailVerified === false) {
+      Alert.alert(
+        'Verify your email',
+        'Please verify your email before posting a task.',
+        [
+          { text: 'Not now', style: 'cancel' },
+          {
+            text: 'Verify Email',
+            onPress: () =>
+              router.push({
+                pathname: '/otp',
+                params: { email: user.emailAddress, type: accountType ?? 'user' },
+              }),
+          },
+        ],
+      );
       return;
     }
     createMutation.mutate();

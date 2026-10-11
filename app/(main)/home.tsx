@@ -244,7 +244,11 @@ export default function HomeScreen() {
           }>
           <View style={styles.emailBannerCopy}>
             <Text style={styles.emailBannerTitle}>Verify your email</Text>
-            <Text style={styles.emailBannerText}>Verify now to post, accept, and pay for tasks.</Text>
+            <Text style={styles.emailBannerText}>
+              {accountType === 'tasker'
+                ? 'Verify your email to start accepting tasks.'
+                : 'Verify your email to start posting tasks.'}
+            </Text>
           </View>
           <Text style={styles.emailBannerAction}>Verify</Text>
         </Pressable>

@@ -280,8 +280,32 @@ export default function TaskDetailsScreen() {
   const matchesQ = useTaskMatches(id);
   const task = taskQ.data?.task;
 
-  const { accountType } = useAuth();
+  const { accountType, user } = useAuth();
   const isTasker = accountType === 'tasker';
+
+  // Email verification is required before a tasker can bid on or accept a task.
+  // Returns false (and prompts) when the account's email is unverified.
+  const ensureEmailVerified = (): boolean => {
+    if (user && user.isEmailVerified === false) {
+      Alert.alert(
+        'Verify your email',
+        'Please verify your email before accepting tasks.',
+        [
+          { text: 'Not now', style: 'cancel' },
+          {
+            text: 'Verify Email',
+            onPress: () =>
+              router.push({
+                pathname: '/otp',
+                params: { email: user.emailAddress, type: accountType ?? 'tasker' },
+              }),
+          },
+        ],
+      );
+      return false;
+    }
+    return true;
+  };
 
   // The detail endpoint returns no tasker-side bid info, so the tasker's own
   // bid on this task comes from their bids list (same query the Jobs tab uses).
@@ -451,6 +475,7 @@ export default function TaskDetailsScreen() {
   });
 
   const submitBid = () => {
+    if (!ensureEmailVerified()) return;
     if (task?.isBiddingEnabled) {
       const amount = Number(bidAmountInput.replace(/[^0-9.]/g, ''));
       if (!Number.isFinite(amount) || amount <= 0) {
@@ -768,7 +793,7 @@ export default function TaskDetailsScreen() {
                 style={[styles.dialogButton, { backgroundColor: '#10b981' }]}
                 disabled={hireResponseMutation.isPending}
                 onPress={() => {
-                  if (myBid) hireResponseMutation.mutate({ bidId: myBid._id, action: 'accept' });
+                  if (myBid && ensureEmailVerified()) hireResponseMutation.mutate({ bidId: myBid._id, action: 'accept' });
                 }}>
                 {hireResponseMutation.isPending ? (
                   <ActivityIndicator color="#ffffff" />
