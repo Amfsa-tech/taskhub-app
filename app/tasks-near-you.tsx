@@ -58,7 +58,7 @@ export default function TasksNearYouScreen() {
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
-      <ScreenHeader title="Tasks near you" />
+      <ScreenHeader title="Available tasks" />
       <FlatList
         data={tasks}
         keyExtractor={(item) => item._id}
@@ -73,7 +73,7 @@ export default function TasksNearYouScreen() {
         onEndReachedThreshold={0.35}
         ListHeaderComponent={
           <Text style={styles.intro}>
-            Open tasks matched to your services and service location.
+            Open tasks matched to your services, regardless of location.
           </Text>
         }
         ListEmptyComponent={
@@ -86,13 +86,13 @@ export default function TasksNearYouScreen() {
             <View style={styles.state}><ActivityIndicator color={COLORS.brand} /></View>
           ) : feed.isError ? (
             <View style={styles.state}>
-              <Text style={styles.errorText}>Could not load nearby tasks.</Text>
+              <Text style={styles.errorText}>Could not load available tasks.</Text>
               <Pressable hitSlop={8} onPress={() => feed.refetch()}><Text style={styles.retry}>Retry</Text></Pressable>
             </View>
           ) : (
             <View style={styles.state}>
               <Text style={styles.stateTitle}>No matching tasks yet</Text>
-              <Text style={styles.stateCopy}>Add your services and location so TaskHub can match nearby work to you.</Text>
+              <Text style={styles.stateCopy}>No open tasks match your services yet. Tasks from any location can appear here.</Text>
               <Pressable style={styles.servicesButton} onPress={() => router.push('/tasker-services')}>
                 <Text style={styles.servicesLabel}>Update my services</Text>
               </Pressable>

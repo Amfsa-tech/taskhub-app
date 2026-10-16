@@ -23,3 +23,6 @@ export const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
 // native SDK on iOS. Its reversed form is also the app's URL scheme (configured
 // via the google-signin config plugin in app.json).
 export const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim() || '';
+
+// Temporarily hide Stellar funding and payout entry points without removing their integration.
+export const STELLAR_WALLET_ENABLED: boolean = false;

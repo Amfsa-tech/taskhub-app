@@ -46,13 +46,13 @@ export interface CompletionSubmission {
   note?: string;
   submittedBy?: string;
   submittedAt?: string;
-  attachments?: Array<{
+  attachments?: {
     url: string;
     publicId?: string;
     type?: string;
     name?: string;
     size?: number;
-  }>;
+  }[];
 }
 
 export interface TaskLocation {
@@ -109,6 +109,7 @@ export interface Task {
   images?: TaskImage[];
   location?: TaskLocation | null;
   deadline?: string | null;
+  cancellationReason?: string | null;
   user?: TaskUserRef | string;
   assignedTasker?: TaskTaskerRef | null;
   rating?: number | null;
@@ -200,6 +201,7 @@ export interface TaskerMatch {
   completedJobs?: number;
   primaryCategory?: string | null;
   area?: string | null;
+  city?: string | null;
   residentState?: string;
   distance?: number; // kilometres, present only when the task has coordinates
 }
@@ -224,6 +226,7 @@ export interface TaskerProfile {
   bio: string;
   averageRating: number;
   completedJobs: number;
+  amountEarned?: number;
   primaryCategory: string | null;
   services: string[];
   area: string | null;
@@ -272,6 +275,25 @@ export function getTaskerReviews(id: string, signal?: AbortSignal) {
 export interface NearbyTaskersResponse {
   success: boolean;
   data: TaskerMatch[];
+}
+
+export interface TaskerDirectoryResponse {
+  success: boolean;
+  data: TaskerMatch[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
+export function getTaskerDirectory(
+  filters: { page: number; search?: string; category?: string; sort?: string },
+  signal?: AbortSignal,
+) {
+  return api.get<TaskerDirectoryResponse>(`/api/taskers/directory${toQuery({
+    page: filters.page,
+    limit: 24,
+    ...(filters.search ? { search: filters.search } : {}),
+    ...(filters.category && filters.category !== 'All' ? { category: filters.category } : {}),
+    ...(filters.sort ? { sort: filters.sort } : {}),
+  })}`, { signal });
 }
 
 /**
@@ -378,11 +400,31 @@ export function getReviewsAboutMe(signal?: AbortSignal) {
   return api.get<ReviewsAboutMeResponse>('/api/tasks/user/reviews', { signal });
 }
 
+/** Reviews of the current role: received by taskers, given by clients. */
+export interface MyRoleReview {
+  taskId: string;
+  taskTitle: string;
+  taskCategory: string | null;
+  rating: number;
+  reviewText: string;
+  ratedAt: string | null;
+  person: { fullName?: string; profilePicture?: string | null } | null;
+}
+
+export interface MyRoleReviewsResponse {
+  status: string;
+  data: { mode: 'about-you' | 'you-gave'; reviews: MyRoleReview[] };
+}
+
+export function getMyRoleReviews(signal?: AbortSignal) {
+  return api.get<MyRoleReviewsResponse>('/api/taskers/reviews/me', { signal });
+}
+
 /** Change a task's status as the owner (e.g. cancel an open/assigned task). */
-export function changeTaskStatus(id: string, status: TaskStatus) {
+export function changeTaskStatus(id: string, status: TaskStatus, cancellationReason?: string) {
   return api.patch<{ status: string; message: string; task: Task }>(
     `/api/tasks/${id}/status`,
-    { status },
+    { status, ...(cancellationReason ? { cancellationReason } : {}) },
   );
 }
 
@@ -437,8 +479,7 @@ export interface TaskerFeedResponse {
  *  - **No categories set → an empty list, not an error.** The backend returns
  *    200 with `message: "No categories set…"`. Send the tasker to
  *    `/tasker-services` rather than showing "no tasks nearby".
- *  - **Location narrows it hard.** With a tasker location on file the feed is
- *    filtered to `maxDistance` miles (default 200).
+ *  - Task location is shown for bidding decisions, not used to hide matches.
  */
 export function getTaskerFeed(
   params: { limit?: number; cursor?: string; maxDistance?: number; biddingOnly?: boolean } = {},

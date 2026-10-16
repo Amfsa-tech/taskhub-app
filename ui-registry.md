@@ -1,5 +1,43 @@
 # UI Pattern Registry
 
+### Saved Tasker Heart Feedback
+
+File: `app/tasker-profile.tsx`
+Last updated: 2026-10-12
+
+| Property | Standard |
+| --- | --- |
+| Touch target | 44 by 44 points around the existing heart icon |
+| Brand accent | `COLORS.brand` (`#6c3bff`) for compact success sparkles |
+| Press state | 0.97 scale over 120 ms, omitted with reduced motion |
+| Pending state | 0.5 opacity, disabled to prevent duplicate save requests |
+
+**Pattern notes:** The heart reflects optimistic saved state while the request runs. A brief six-dot burst and success haptic occur only after saving succeeds. Unsave has no celebration; request failures roll back and show an alert.
+
+## Browse Taskers and Task Cancellation — Established 2026-10-12
+
+- Tasker directory cards show coarse `city, state` only. Do not display the user-entered `area` or address.
+- Directory results are paginated with a single explicit "Load more taskers" action. Preserve loaded cards if a later page fails, and allow retry.
+- Cancellation uses a centered, scrollable modal with selectable reason rows. The "Others" choice reveals a multiline text field and disables confirmation until a non-blank reason is entered. Keep the draft visible on network failure.
+- Optional task deadlines show a prominent, accessible "Remove deadline" text button only when a date is selected, both while posting and editing.
+
+### Cancelled task history card
+
+File: `app/(main)/tasks.tsx`
+Last updated: 2026-10-12
+
+| Property | Standard |
+| --- | --- |
+| Background | `COLORS.surface` (`#ffffff`) |
+| Border | `1px #e0e0ea` |
+| Radius | `16` |
+| Primary text | `COLORS.textPrimary`, Geist SemiBold, 15 |
+| Secondary text | `COLORS.textSecondary`, Geist Regular, 13 |
+| Spacing | Padding 16, gap 8 |
+| Status accent | Pale red `#fff1f1` with `COLORS.error` text |
+
+**Pattern notes:** Show the saved cancellation reason in selectable text; use "No reason provided" only for older records without one. The task opens its detail screen when pressed. The five user-history tabs remain visible on narrow devices by using compact labels.
+
 ## Baseline — Established 2026-06-14
 
 *Note: This baseline was established via `/imprint audit`*
@@ -64,6 +102,23 @@ Bottom-sheet modals are rendered using the React Native native `<Modal>` compone
 - Async screens provide centered loading, explicit empty/error copy, and a brand-colored retry action. Financial actions remain disabled while pending.
 - Financial summary cards use the brand surface with white primary values; transaction breakdowns use white cards and subtle dividers.
 - Settings groups use uppercase 12px section labels, white 16px cards, 32px icon tiles, and 12px vertical rows.
+
+### Tasker Feed States
+
+Files: `app/(main)/home.tsx`, `app/tasks-near-you.tsx`
+Last updated: 2026-10-12
+
+| Property | Standard |
+| --- | --- |
+| Background | `#f9f9fb` canvas and `#ffffff` cards |
+| Border | `1px #e0e0ea` on task cards |
+| Border radius | `16px` task cards and `12px` retry/actions |
+| Text, primary | Geist 600 headings with `#111122` |
+| Text, secondary | Geist 400 descriptions with `#5a5a70` |
+| Spacing | `16px` screen gutter and task-card padding |
+| Accent usage | `#6c3bff` for retry and service actions |
+
+**Pattern notes:** A failed feed request gets a retry state, not a no-tasks state. Empty copy describes category matching without implying that location hides tasks.
 
 ## Destructive Identity Flows: Established 2026-09-17
 
@@ -409,4 +464,21 @@ Last updated: 2026-10-09
 | Accent usage | Destructive red only for cancel/delete/report |
 
 **Pattern notes:** Closed tasks expose Delete but not Edit or Cancel. Reopen is the separate primary action on the task detail.
+
+### Role-Aware Profile Stats and Reviews
+
+Files: `app/(main)/profile.tsx`, `app/tasker-profile.tsx`, `app/my-reviews.tsx`
+Last updated: 2026-10-16
+
+| Property | Standard |
+| --- | --- |
+| Background | `#f9f9fb` canvas; `#ffffff` profile and review cards |
+| Border | Existing `#eef0f3` review-card border |
+| Border radius | Existing `16px` stat and review cards |
+| Text, primary | Geist 600, `#111122` |
+| Text, secondary | Geist 400/500, `#5a5a70` |
+| Spacing | Existing profile stat row and `12px` review-list gap |
+| Accent usage | `#6c3bff` for the active review tab and actions |
+
+**Pattern notes:** Show server-calculated role metrics without mock fallbacks: users see posted, completed, and trust score; taskers see completed, average rating, and earned. Review tabs query the appropriate role endpoint. Keep long currency values inside cards with one-line font fitting.
 

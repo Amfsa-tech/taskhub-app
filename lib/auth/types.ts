@@ -14,12 +14,17 @@ export interface AuthUser {
   firstName?: string;
   lastName?: string;
   phoneNumber?: string;
+  dateOfBirth?: string;
   profilePicture?: string;
   wallet?: number;
   isEmailVerified?: boolean;
   isKYCVerified?: boolean;
   /** Profile stats, returned by `GET /api/auth/user`. Counted server-side. */
   tasksPostedCount?: number;
+  completedTasksCount?: number;
+  trustScore?: number;
+  tasksCompleted?: number;
+  amountEarned?: number;
   /** Reviews this user has left on their completed tasks. */
   reviewsGivenCount?: number;
   savedTaskersCount?: number;

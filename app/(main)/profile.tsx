@@ -7,7 +7,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Spinner } from '@/components/taskhub/spinner';
-import { useSavedTaskers, useTaskerPerformance } from '@/lib/api/queries';
+import { formatNaira } from '@/lib/api/tasks';
 import { ApiError } from '@/lib/api/client';
 import { useAuth } from '@/lib/auth/auth-context';
 
@@ -232,12 +232,6 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { user, accountType, isBootstrapping, signOut, switchMode } = useAuth();
 
-  // The Saved tile reads from the live query rather than the (cached) user
-  // object, so it updates as soon as a tasker is saved or unsaved.
-  const { data: saved } = useSavedTaskers();
-  const performanceQ = useTaskerPerformance(accountType === 'tasker');
-  const performance = performanceQ.data?.data;
-
   const switchMutation = useMutation({
     mutationFn: switchMode,
     onSuccess: (outcome) => {
@@ -403,12 +397,10 @@ export default function ProfileScreen() {
     'User';
 
   const isVerified = Boolean(user.isKYCVerified);
-  const savedCount = saved?.count ?? user.savedTaskersCount ?? 0;
-
   const stats = [
-    { value: user.tasksPostedCount ?? 0, label: 'Task Posted' },
-    { value: user.reviewsGivenCount ?? 0, label: 'Reviews' },
-    { value: savedCount, label: 'Saved' },
+    { value: user.tasksPostedCount ?? 0, label: 'Tasks Posted' },
+    { value: user.completedTasksCount ?? 0, label: 'Completed' },
+    { value: `${user.trustScore ?? 0}%`, label: 'Trust Score' },
   ];
 
   return (
@@ -529,13 +521,12 @@ export default function ProfileScreen() {
         {accountType === 'tasker' && (
           <View style={styles.taskerStatCards}>
             {[
-              { value: performanceQ.isLoading ? '…' : performanceQ.isError ? 'Unavailable' : (performance?.kpis.averageRating ?? 0) > 0 ? performance!.kpis.averageRating.toFixed(1) : 'New', label: 'Rating' },
-              { value: performanceQ.isLoading ? '…' : performanceQ.isError ? 'Unavailable' : (performance?.kpis.bidsPlaced ?? 0) > 0 ? `${performance!.kpis.acceptanceRate}%` : '—', label: 'Accept' },
-              { value: performanceQ.isLoading ? '…' : performanceQ.isError ? 'Unavailable' : String(performance?.kpis.jobsCompleted ?? 0), label: 'Complete' },
-              { value: performanceQ.isLoading ? '…' : performanceQ.isError ? 'Unavailable' : String(performance?.kpis.repeatUsers ?? 0), label: 'Repeat' },
+              { value: String(user.tasksCompleted ?? 0), label: 'Completed' },
+              { value: (user.averageRating ?? 0) > 0 ? Number(user.averageRating).toFixed(1) : 'New', label: 'Avg Rating' },
+              { value: formatNaira(user.amountEarned ?? 0), label: 'Earned' },
             ].map((s) => (
               <View key={s.label} style={styles.taskerStatCard}>
-                <Text style={styles.taskerStatValue}>{s.value}</Text>
+                <Text style={styles.taskerStatValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{s.value}</Text>
                 <Text style={styles.taskerStatLabel}>{s.label}</Text>
               </View>
             ))}

@@ -22,6 +22,7 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Linking,
   Modal,
   Pressable,
@@ -36,6 +37,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const PopperImage = require('@/assets/images/party_popper_3d.png');
 const AVATAR = require('@/assets/images/taskers/tasker-1.png');
+const CANCELLATION_REASONS = [
+  'Changed my mind',
+  'Found Someone else',
+  'Task no longer needed',
+  'Budget Issues',
+  'Tasker was unresponsive',
+  'Others',
+] as const;
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -141,6 +150,9 @@ export default function TrackTaskScreen() {
   const isTasker = accountType === 'tasker';
 
   const [statusSheetVisible, setStatusSheetVisible] = useState(false);
+  const [cancelSheetVisible, setCancelSheetVisible] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState<string>('Changed my mind');
+  const [customCancellationReason, setCustomCancellationReason] = useState('');
   const [completionNote, setCompletionNote] = useState('');
   const [completionProof, setCompletionProof] = useState<PickedImage[]>([]);
 
@@ -207,8 +219,9 @@ export default function TrackTaskScreen() {
   });
 
   const cancel = useMutation({
-    mutationFn: () => changeTaskStatus(id as string, 'cancelled'),
+    mutationFn: (reason: string) => changeTaskStatus(id as string, 'cancelled', reason),
     onSuccess: async () => {
+      setCancelSheetVisible(false);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['tasks'] }),
         queryClient.invalidateQueries({ queryKey: ['wallet'] }),
@@ -230,11 +243,7 @@ export default function TrackTaskScreen() {
       Alert.alert('Could not submit review', err instanceof Error ? err.message : 'Please try again.'),
   });
 
-  const confirmCancel = () =>
-    Alert.alert('Cancel task', 'This releases the tasker and refunds any escrow. Continue?', [
-      { text: 'Keep task', style: 'cancel' },
-      { text: 'Cancel task', style: 'destructive', onPress: () => cancel.mutate() },
-    ]);
+  const confirmCancel = () => setCancelSheetVisible(true);
 
   // ---- Loading / error / missing id ----
   if (!id || taskQ.isLoading || taskQ.isError || !task) {
@@ -553,6 +562,40 @@ export default function TrackTaskScreen() {
       </View>
 
       {/* Update Job Status Bottom Sheet (Tasker Only) */}
+      <Modal visible={cancelSheetVisible} transparent animationType="fade" onRequestClose={() => !cancel.isPending && setCancelSheetVisible(false)}>
+        <KeyboardAvoidingView behavior={process.env.EXPO_OS === 'ios' ? 'padding' : undefined} style={styles.cancelBackdrop}>
+          <View style={styles.cancelDialog}>
+            <Text style={styles.cancelTitle}>Cancel Task</Text>
+            <Text style={styles.cancelHelp}>Choose a reason. Any held escrow will be returned to your wallet.</Text>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.cancelReasons}>
+              {CANCELLATION_REASONS.map((reason) => (
+                <Pressable key={reason} accessibilityRole="radio" accessibilityState={{ checked: cancellationReason === reason }}
+                  onPress={() => setCancellationReason(reason)}
+                  style={[styles.cancelReasonRow, cancellationReason === reason && styles.cancelReasonSelected]}>
+                  <Text style={styles.cancelReasonText}>{reason}</Text>
+                  <Ionicons name={cancellationReason === reason ? 'radio-button-on' : 'radio-button-off'} size={21} color={COLORS.brand} />
+                </Pressable>
+              ))}
+              {cancellationReason === 'Others' && (
+                <TextInput accessibilityLabel="Your cancellation reason" value={customCancellationReason}
+                  onChangeText={setCustomCancellationReason} multiline maxLength={500}
+                  placeholder="Tell us why you are cancelling" placeholderTextColor={COLORS.textSecondary}
+                  style={styles.cancelReasonInput} />
+              )}
+            </ScrollView>
+            <Pressable accessibilityRole="button"
+              disabled={cancel.isPending || (cancellationReason === 'Others' && !customCancellationReason.trim())}
+              style={[styles.cancelConfirm, (cancel.isPending || (cancellationReason === 'Others' && !customCancellationReason.trim())) && { opacity: 0.5 }]}
+              onPress={() => cancel.mutate(cancellationReason === 'Others' ? customCancellationReason.trim() : cancellationReason)}>
+              {cancel.isPending ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.cancelConfirmText}>Confirm Cancellation</Text>}
+            </Pressable>
+            <Pressable accessibilityRole="button" disabled={cancel.isPending}
+              style={styles.cancelKeep} onPress={() => setCancelSheetVisible(false)}>
+              <Text style={styles.cancelKeepText}>Keep Task</Text>
+            </Pressable>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
       <Modal visible={statusSheetVisible} transparent animationType="slide" onRequestClose={() => setStatusSheetVisible(false)}>
         <Pressable style={styles.modalBackdrop} onPress={() => setStatusSheetVisible(false)}>
           <Pressable style={[styles.bottomSheet, { paddingBottom: insets.bottom + 16 }]} onPress={() => { }}>
@@ -689,6 +732,19 @@ export default function TrackTaskScreen() {
 }
 
 const styles = StyleSheet.create({
+  cancelBackdrop: { flex: 1, justifyContent: 'center', backgroundColor: 'rgba(17,17,34,0.55)', paddingHorizontal: 16 },
+  cancelDialog: { backgroundColor: COLORS.surface, borderRadius: 24, padding: 20, gap: 12, maxHeight: '85%' },
+  cancelTitle: { fontFamily: 'Geist_700Bold', fontSize: 20, color: COLORS.textPrimary },
+  cancelHelp: { fontFamily: 'Geist_400Regular', fontSize: 13, color: COLORS.textSecondary },
+  cancelReasons: { gap: 8 },
+  cancelReasonRow: { minHeight: 46, borderWidth: 1, borderColor: COLORS.border, borderRadius: 12, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  cancelReasonSelected: { borderColor: COLORS.brand, backgroundColor: '#f3eeff' },
+  cancelReasonText: { fontFamily: 'Geist_500Medium', fontSize: 14, color: COLORS.textPrimary },
+  cancelReasonInput: { minHeight: 84, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 12, fontFamily: 'Geist_400Regular', fontSize: 14, color: COLORS.textPrimary, textAlignVertical: 'top' },
+  cancelConfirm: { minHeight: 48, borderRadius: 12, backgroundColor: '#ef4444', alignItems: 'center', justifyContent: 'center' },
+  cancelConfirmText: { fontFamily: 'Geist_600SemiBold', fontSize: 16, color: '#ffffff' },
+  cancelKeep: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  cancelKeepText: { fontFamily: 'Geist_600SemiBold', fontSize: 14, color: COLORS.brand },
   container: {
     flex: 1,
     backgroundColor: COLORS.canvas,

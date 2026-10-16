@@ -9,7 +9,6 @@ import {
   Linking,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -81,7 +80,7 @@ function Field({
 export default function TaskerDetailsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { completeAppleSignup, completeGoogleSignup, createRoleAndSwitch } = useAuth();
+  const { completeAppleSignup, completeGoogleSignup, createRoleAndSwitch, user } = useAuth();
   const { firstName, lastName, email, password, country, social, linked } = useLocalSearchParams<{
     firstName?: string;
     lastName?: string;
@@ -93,7 +92,11 @@ export default function TaskerDetailsScreen() {
   }>();
 
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState(
+    linked === 'true' && typeof user?.dateOfBirth === 'string'
+      ? user.dateOfBirth.slice(0, 10)
+      : '',
+  );
   const [residentState, setResidentState] = useState('');
   const [city, setCity] = useState('');
   const [originState, setOriginState] = useState('');
@@ -136,7 +139,11 @@ export default function TaskerDetailsScreen() {
       if (isSocial || isLinkedRole) {
         clearPendingAppleSignup();
         clearPendingGoogleSignup();
-        router.replace('/(main)/home');
+        router.replace(
+          isLinkedRole
+            ? { pathname: '/tasker-services', params: { onboarding: 'tasker' } }
+            : '/(main)/home',
+        );
         return;
       }
       router.push({
@@ -161,7 +168,7 @@ export default function TaskerDetailsScreen() {
     }
     if (
       !phoneNumber.trim() ||
-      !dateOfBirth.trim() ||
+      (!isLinkedRole && !dateOfBirth.trim()) ||
       !residentState.trim() ||
       !city.trim() ||
       !originState.trim() ||
@@ -170,10 +177,12 @@ export default function TaskerDetailsScreen() {
       setError('Please fill in every field.');
       return;
     }
-    const ageError = signupAgeError(dateOfBirth);
-    if (ageError) {
-      setError(ageError);
-      return;
+    if (!isLinkedRole) {
+      const ageError = signupAgeError(dateOfBirth);
+      if (ageError) {
+        setError(ageError);
+        return;
+      }
     }
     registerMutation.mutate();
   };
@@ -221,14 +230,16 @@ export default function TaskerDetailsScreen() {
               keyboardType="phone-pad"
               autoCapitalize="none"
             />
-            <Field
-              label="Date of birth"
-              placeholder="YYYY-MM-DD"
-              value={dateOfBirth}
-              onChangeText={setDateOfBirth}
-              keyboardType="numbers-and-punctuation"
-              autoCapitalize="none"
-            />
+            {!isLinkedRole && (
+              <Field
+                label="Date of birth"
+                placeholder="YYYY-MM-DD"
+                value={dateOfBirth}
+                onChangeText={setDateOfBirth}
+                keyboardType="numbers-and-punctuation"
+                autoCapitalize="none"
+              />
+            )}
             <Field
               label="State of residence"
               placeholder="e.g Lagos"

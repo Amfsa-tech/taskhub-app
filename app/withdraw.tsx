@@ -23,6 +23,7 @@ import { useSavedBankAccounts, useTaskerBalance, useTaskerBankAccount } from '@/
 import { formatNaira } from '@/lib/api/tasks';
 import { requestWithdrawal } from '@/lib/api/wallet';
 import { useAuth } from '@/lib/auth/auth-context';
+import { STELLAR_WALLET_ENABLED } from '@/lib/config';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -63,6 +64,7 @@ export default function WithdrawScreen() {
   const [amountInput, setAmountInput] = useState('');
   const [method, setMethod] = useState<'bank_transfer' | 'stellar_crypto'>('bank_transfer');
   const [stellarAddress, setStellarAddress] = useState('');
+  const payoutMethod = STELLAR_WALLET_ENABLED ? method : 'bank_transfer';
   const [selectedBankId, setSelectedBankId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -85,9 +87,9 @@ export default function WithdrawScreen() {
     mutationFn: (amount: number) =>
       requestWithdrawal({
         amount,
-        payoutMethod: method,
-        bankId: method === 'bank_transfer' ? selectedBank?._id : undefined,
-        stellarAddress: method === 'stellar_crypto' ? stellarAddress.trim() : undefined,
+        payoutMethod,
+        bankId: payoutMethod === 'bank_transfer' ? selectedBank?._id : undefined,
+        stellarAddress: payoutMethod === 'stellar_crypto' ? stellarAddress.trim() : undefined,
       }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['wallet'] });
@@ -117,7 +119,7 @@ export default function WithdrawScreen() {
       setError(`That's more than your available balance of ${formatNaira(available)}.`);
       return;
     }
-    if (method === 'stellar_crypto' && !stellarAddress.trim()) {
+    if (payoutMethod === 'stellar_crypto' && !stellarAddress.trim()) {
       setError('Enter the Stellar destination address.');
       return;
     }
@@ -182,9 +184,9 @@ export default function WithdrawScreen() {
                 <Text style={styles.sectionTitle}>Payout method</Text>
                 <View style={styles.methodRow}>
                   <Pressable style={[styles.methodButton, method === 'bank_transfer' && styles.methodButtonActive]} onPress={() => setMethod('bank_transfer')}><Text style={[styles.methodText, method === 'bank_transfer' && styles.methodTextActive]}>Bank account</Text></Pressable>
-                  <Pressable style={[styles.methodButton, method === 'stellar_crypto' && styles.methodButtonActive]} onPress={() => setMethod('stellar_crypto')}><Text style={[styles.methodText, method === 'stellar_crypto' && styles.methodTextActive]}>Stellar</Text></Pressable>
+                  {STELLAR_WALLET_ENABLED && <Pressable style={[styles.methodButton, method === 'stellar_crypto' && styles.methodButtonActive]} onPress={() => setMethod('stellar_crypto')}><Text style={[styles.methodText, method === 'stellar_crypto' && styles.methodTextActive]}>Stellar</Text></Pressable>}
                 </View>
-                {method === 'stellar_crypto' ? (
+                {payoutMethod === 'stellar_crypto' ? (
                   <TextInput
                     style={styles.input}
                     placeholder="Stellar public address"
@@ -259,7 +261,7 @@ export default function WithdrawScreen() {
                     if (error) setError(null);
                   }}
                   keyboardType="numeric"
-                  editable={!hasPendingWithdrawal && (method === 'stellar_crypto' || hasPayoutAccount)}
+                  editable={!hasPendingWithdrawal && (payoutMethod === 'stellar_crypto' || hasPayoutAccount)}
                 />
                 <Text style={styles.hint}>
                   Requests are reviewed before payout — the amount is reserved from your balance
@@ -275,10 +277,10 @@ export default function WithdrawScreen() {
                 style={({ pressed }) => [
                   styles.button,
                   pressed && styles.pressed,
-                  (submitting || hasPendingWithdrawal || (method === 'bank_transfer' && !hasPayoutAccount)) && styles.buttonDisabled,
+                  (submitting || hasPendingWithdrawal || (payoutMethod === 'bank_transfer' && !hasPayoutAccount)) && styles.buttonDisabled,
                 ]}
                 onPress={submit}
-                disabled={submitting || hasPendingWithdrawal || (method === 'bank_transfer' && !hasPayoutAccount)}>
+                disabled={submitting || hasPendingWithdrawal || (payoutMethod === 'bank_transfer' && !hasPayoutAccount)}>
                 {submitting ? (
                   <ActivityIndicator color={COLORS.onBrand} />
                 ) : (

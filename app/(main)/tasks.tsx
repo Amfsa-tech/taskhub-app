@@ -73,7 +73,7 @@ const COLORS = {
 
 const SHIELD_IMAGE = require('@/assets/images/3d-shield.png');
 
-type TaskTab = 'posted' | 'in_progress' | 'completed' | 'closed';
+type TaskTab = 'posted' | 'in_progress' | 'completed' | 'closed' | 'cancelled';
 
 type StateViewProps = {
   mode: 'loading' | 'error' | 'empty';
@@ -118,10 +118,11 @@ export default function TasksScreen() {
   const isTasker = accountType === 'tasker';
 
   const queryClient = useQueryClient();
-  const posted = useUserTasks({ status: 'open' });
-  const inProgress = useUserTasksByStatuses(['assigned', 'in-progress']);
-  const completed = useUserTasks({ status: 'completed' });
-  const closed = useUserTasks({ status: 'closed' });
+  const posted = useUserTasks({ status: 'open' }, !isTasker);
+  const inProgress = useUserTasksByStatuses(['assigned', 'in-progress'], !isTasker);
+  const completed = useUserTasks({ status: 'completed' }, !isTasker);
+  const closed = useUserTasks({ status: 'closed' }, !isTasker);
+  const cancelled = useUserTasks({ status: 'cancelled', limit: 100 }, !isTasker);
 
   const postedTasks = posted.data?.tasks ?? [];
   const completedTasks = completed.data?.tasks ?? [];
@@ -155,13 +156,13 @@ export default function TasksScreen() {
 
   const goTab = (next: TaskTab) => {
     setTab(next);
-    const idx = next === 'posted' ? 0 : next === 'in_progress' ? 1 : next === 'completed' ? 2 : 3;
+    const idx = next === 'posted' ? 0 : next === 'in_progress' ? 1 : next === 'completed' ? 2 : next === 'closed' ? 3 : 4;
     pagerRef.current?.scrollTo({ x: idx * SCREEN_WIDTH, animated: true });
   };
 
   const onPagerScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-    const next: TaskTab = idx === 0 ? 'posted' : idx === 1 ? 'in_progress' : idx === 2 ? 'completed' : 'closed';
+    const next: TaskTab = idx === 0 ? 'posted' : idx === 1 ? 'in_progress' : idx === 2 ? 'completed' : idx === 3 ? 'closed' : 'cancelled';
     if (next !== tab) setTab(next);
   };
 
@@ -203,7 +204,7 @@ export default function TasksScreen() {
           <Pressable
             style={[styles.tab, tab === 'in_progress' && styles.tabActive]}
             onPress={() => goTab('in_progress')}>
-            <Text style={[styles.tabText, tab === 'in_progress' && styles.tabTextActive]}>In progress</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={[styles.tabText, tab === 'in_progress' && styles.tabTextActive]}>In progress</Text>
           </Pressable>
           <Pressable
             style={[styles.tab, tab === 'completed' && styles.tabActive]}
@@ -214,6 +215,9 @@ export default function TasksScreen() {
           </Pressable>
           <Pressable style={[styles.tab, tab === 'closed' && styles.tabActive]} onPress={() => goTab('closed')}>
             <Text style={[styles.tabText, tab === 'closed' && styles.tabTextActive]}>Closed</Text>
+          </Pressable>
+          <Pressable style={[styles.tab, tab === 'cancelled' && styles.tabActive]} onPress={() => goTab('cancelled')}>
+            <Text style={[styles.tabText, tab === 'cancelled' && styles.tabTextActive]}>Cancelled</Text>
           </Pressable>
         </View>
       </View>
@@ -320,6 +324,36 @@ export default function TasksScreen() {
             <TaskCard key={task._id} task={taskToCard(task)} onPress={() => openTask(task._id)} />
           ))}
         </ScrollView>
+        <ScrollView style={{ width: SCREEN_WIDTH }}
+          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
+          refreshControl={refreshControl(cancelled.refetch, cancelled.isRefetching)}>
+          {cancelled.isError && (cancelled.data?.tasks ?? []).length > 0 ? (
+            <Pressable accessibilityRole="button" onPress={() => cancelled.refetch()}>
+              <Text style={styles.errorText}>Couldn’t refresh cancelled tasks. Tap to retry.</Text>
+            </Pressable>
+          ) : null}
+          {cancelled.isLoading ? <StateView mode="loading" /> : cancelled.isError && (cancelled.data?.tasks ?? []).length === 0 ? (
+            <StateView mode="error" onRetry={cancelled.refetch} isRetrying={cancelled.isRefetching} />
+          ) : (cancelled.data?.tasks ?? []).length === 0 ? (
+            <StateView mode="empty" emptyText="No cancelled tasks yet." />
+          ) : (cancelled.data?.tasks ?? []).map((task) => (
+            <Pressable
+              key={task._id}
+              accessibilityRole="button"
+              accessibilityLabel={`View cancelled task ${task.title}`}
+              style={styles.cancelledCard}
+              onPress={() => openTask(task._id)}>
+              <View style={styles.cancelledCardHeader}>
+                <Text style={styles.cancelledBadge}>Cancelled</Text>
+                <Text style={styles.cancelledBudget}>{formatNaira(task.budget)}</Text>
+              </View>
+              <Text style={styles.cancelledTitle} numberOfLines={2}>{task.title}</Text>
+              <Text selectable style={styles.cancelledReason}>
+                Reason: {task.cancellationReason?.trim() || 'No reason provided'}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
       </ScrollView>
 
       <HireAgainModal
@@ -345,6 +379,28 @@ export default function TasksScreen() {
 }
 
 const styles = StyleSheet.create({
+  cancelledCard: {
+    backgroundColor: COLORS.surface,
+    borderColor: '#e0e0ea',
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+    gap: 8,
+  },
+  cancelledCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  cancelledBadge: {
+    backgroundColor: '#fff1f1',
+    color: COLORS.error,
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 12,
+    borderRadius: 6,
+    overflow: 'hidden',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  cancelledBudget: { fontFamily: 'Geist_600SemiBold', fontSize: 14, color: COLORS.textPrimary },
+  cancelledTitle: { fontFamily: 'Geist_600SemiBold', fontSize: 15, color: COLORS.textPrimary },
+  cancelledReason: { fontFamily: 'Geist_400Regular', fontSize: 13, color: COLORS.textSecondary },
   container: {
     flex: 1,
     backgroundColor: COLORS.canvas,
@@ -382,10 +438,10 @@ const styles = StyleSheet.create({
   tabs: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 0,
     backgroundColor: COLORS.sunken,
     borderRadius: 8,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
     paddingVertical: 4,
   },
   tab: {
@@ -400,7 +456,7 @@ const styles = StyleSheet.create({
   },
   tabText: {
     fontFamily: 'Geist_500Medium',
-    fontSize: 15,
+    fontSize: 11,
     letterSpacing: -0.24,
     color: COLORS.textSecondary,
   },

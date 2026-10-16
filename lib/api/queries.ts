@@ -25,7 +25,9 @@ import { getBidPaymentSummary, getTaskerBids, type BidStatus } from './bids';
 import {
   getCompletionCode,
   getNearbyTaskers,
+  getTaskerDirectory,
   getReviewsAboutMe,
+  getMyRoleReviews,
   getTaskById,
   getTaskerById,
   getTaskerReviews,
@@ -52,6 +54,7 @@ export const queryKeys = {
   tasker: (id: string) => ['taskers', 'detail', id] as const,
   taskerReviews: (id: string) => ['taskers', 'reviews', id] as const,
   reviewsAboutMe: () => ['reviews', 'about-me'] as const,
+  myRoleReviews: (role: string) => ['reviews', 'my-role', role] as const,
   categories: () => ['categories'] as const,
   savedTaskers: () => ['saved-taskers'] as const,
   blockedUsers: () => ['blocked-users'] as const,
@@ -82,10 +85,11 @@ export const queryKeys = {
 };
 
 /** Tasks posted by the signed-in user. */
-export function useUserTasks(params?: TaskListParams) {
+export function useUserTasks(params?: TaskListParams, enabled = true) {
   return useQuery({
     queryKey: queryKeys.userTasks(params),
     queryFn: ({ signal }) => getUserTasks(params, signal),
+    enabled,
   });
 }
 
@@ -94,11 +98,12 @@ export function useUserTasks(params?: TaskListParams) {
  * `assigned` + `in-progress`). Runs one query per status and merges the
  * first page of each. Returns combined loading/error flags.
  */
-export function useUserTasksByStatuses(statuses: TaskStatus[]) {
+export function useUserTasksByStatuses(statuses: TaskStatus[], enabled = true) {
   const results = useQueries({
     queries: statuses.map((status) => ({
       queryKey: queryKeys.userTasks({ status }),
       queryFn: ({ signal }: { signal: AbortSignal }) => getUserTasks({ status }, signal),
+      enabled,
     })),
   });
 
@@ -165,11 +170,31 @@ export function useNearbyTaskers(coords?: { latitude: number; longitude: number 
   });
 }
 
+export function useTaskerDirectory(filters: { search: string; category: string; sort: string }) {
+  return useInfiniteQuery({
+    queryKey: ['tasker-directory', filters],
+    queryFn: ({ pageParam, signal }) => getTaskerDirectory({ ...filters, page: pageParam }, signal),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => lastPage.pagination.page < lastPage.pagination.totalPages
+      ? lastPage.pagination.page + 1 : undefined,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 /** Reviews taskers have left about the signed-in client (the "About you" tab). */
-export function useReviewsAboutMe() {
+export function useReviewsAboutMe(enabled = true) {
   return useQuery({
     queryKey: queryKeys.reviewsAboutMe(),
     queryFn: ({ signal }) => getReviewsAboutMe(signal),
+    enabled,
+  });
+}
+
+export function useMyRoleReviews(role: 'user' | 'tasker' | null, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.myRoleReviews(role ?? 'none'),
+    queryFn: ({ signal }) => getMyRoleReviews(signal),
+    enabled: Boolean(role) && enabled,
   });
 }
 
@@ -376,9 +401,8 @@ export function useWalletTransactionsPaged(
 /**
  * Open tasks matching the tasker's categories, paged by cursor.
  *
- * `hasNextPage` comes from the server rather than being inferred from page
- * length: distance filtering happens after the DB query, so a short page does
- * not mean the feed is exhausted.
+ * `hasNextPage` comes from the server so the client does not guess whether
+ * another page of category-matched tasks is available.
  */
 export function useTaskerFeed(enabled = true) {
   return useInfiniteQuery({

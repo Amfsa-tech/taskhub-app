@@ -17,7 +17,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/taskhub/screen-header';
-import { useCategories, useNearbyTaskers } from '@/lib/api/queries';
+import { useCategories, useTaskerDirectory } from '@/lib/api/queries';
 import type { TaskerMatch } from '@/lib/api/tasks';
 
 const COLORS = {
@@ -54,7 +54,7 @@ function TaskerDirectoryCard({ tasker, onPress }: { tasker: TaskerMatch; onPress
   const name = fullName(tasker);
   const rating = tasker.averageRating ?? 0;
   const jobs = tasker.completedJobs ?? 0;
-  const place = tasker.area || tasker.residentState || 'Nearby';
+  const place = [tasker.city, tasker.residentState].filter(Boolean).join(', ') || 'Nigeria';
 
   return (
     <Pressable
@@ -121,9 +121,13 @@ export default function TaskersScreen() {
     const timer = setTimeout(() => setDebouncedSearch(search.trim()), 350);
     return () => clearTimeout(timer);
   }, [search]);
-  const taskersQuery = useNearbyTaskers(undefined, { search: debouncedSearch, maxResults: 100 });
+  const taskersQuery = useTaskerDirectory({
+    search: debouncedSearch,
+    category,
+    sort: sort === 'rating' ? 'highest_rated' : sort === 'popular' ? 'most_popular' : 'nearest',
+  });
   const categoriesQuery = useCategories();
-  const taskers = useMemo(() => taskersQuery.data?.data ?? [], [taskersQuery.data]);
+  const taskers = useMemo(() => taskersQuery.data?.pages.flatMap((page) => page.data) ?? [], [taskersQuery.data]);
 
   const categories = useMemo(() => {
     const apiCategories = (categoriesQuery.data?.categories ?? [])
@@ -135,18 +139,7 @@ export default function TaskersScreen() {
     return ['All', ...Array.from(new Set([...apiCategories, ...taskerCategories])).sort()];
   }, [categoriesQuery.data?.categories, taskers]);
 
-  const visibleTaskers = useMemo(() => {
-    const filtered = taskers.filter((tasker) => {
-      const matchesCategory = category === 'All' || tasker.primaryCategory === category;
-      return matchesCategory;
-    });
-
-    return filtered.sort((left, right) => {
-      if (sort === 'rating') return (right.averageRating ?? 0) - (left.averageRating ?? 0);
-      if (sort === 'popular') return (right.completedJobs ?? 0) - (left.completedJobs ?? 0);
-      return (left.distance ?? Number.POSITIVE_INFINITY) - (right.distance ?? Number.POSITIVE_INFINITY);
-    });
-  }, [category, sort, taskers]);
+  const visibleTaskers = taskers;
 
   const clearFilters = () => {
     setSearch('');
@@ -187,7 +180,7 @@ export default function TaskersScreen() {
           <View style={styles.headerContent}>
             <View style={styles.intro}>
               <Text style={styles.title}>Find the right tasker</Text>
-              <Text style={styles.subtitle}>Browse trusted professionals available near you.</Text>
+              <Text style={styles.subtitle}>Taskers in your city first, then professionals across Nigeria.</Text>
             </View>
 
             <View style={styles.searchBox}>
@@ -195,7 +188,7 @@ export default function TaskersScreen() {
               <TextInput
                 value={search}
                 onChangeText={setSearch}
-                placeholder="Search by name or skill"
+                placeholder="Search nationwide by name, skill or location"
                 placeholderTextColor={COLORS.muted}
                 style={styles.searchInput}
                 returnKeyType="search"
@@ -283,6 +276,16 @@ export default function TaskersScreen() {
             </View>
           )
         )}
+        ListFooterComponent={taskersQuery.hasNextPage ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Load more taskers"
+            style={styles.retryButton}
+            disabled={taskersQuery.isFetchingNextPage}
+            onPress={() => taskersQuery.fetchNextPage()}>
+            {taskersQuery.isFetchingNextPage ? <ActivityIndicator color={COLORS.onBrand} /> : <Text style={styles.retryText}>Load more taskers</Text>}
+          </Pressable>
+        ) : null}
       />
     </View>
   );

@@ -167,7 +167,11 @@ export default function EditTaskScreen() {
           <Pressable style={styles.input} onPress={() => setShowDeadlinePicker(true)}>
             <Text style={{ color: deadline ? COLORS.textPrimary : COLORS.placeholder }}>{deadline || 'No deadline'}</Text>
           </Pressable>
-          {deadline ? <Pressable onPress={() => setDeadline('')}><Text style={styles.note}>Clear deadline</Text></Pressable> : null}
+          {deadline ? (
+            <Pressable accessibilityRole="button" accessibilityLabel="Remove bidding deadline" onPress={() => setDeadline('')} style={{ minHeight: 40, justifyContent: 'center' }}>
+              <Text style={{ color: COLORS.brand, fontFamily: 'Geist_600SemiBold', fontSize: 14 }}>Remove deadline</Text>
+            </Pressable>
+          ) : null}
           {showDeadlinePicker ? (
             <DateTimePicker mode="date" value={deadline ? new Date(`${deadline}T12:00:00`) : new Date()}
               minimumDate={new Date()} onChange={(event, date) => {

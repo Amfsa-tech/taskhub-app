@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  KeyboardAvoidingView,
   Modal,
   Pressable,
   ScrollView,
@@ -56,6 +57,14 @@ import {
 } from '@/lib/api/tasks';
 
 const SHIELD_IMAGE = require('@/assets/images/3d-shield.png');
+const CANCELLATION_REASONS = [
+  'Changed my mind',
+  'Found Someone else',
+  'Task no longer needed',
+  'Budget Issues',
+  'Tasker was unresponsive',
+  'Others',
+] as const;
 
 type HireContext =
   | { kind: 'accept'; bidId: string; name: string; avatar: string; price: string }
@@ -330,6 +339,9 @@ export default function TaskDetailsScreen() {
   const [declineSheetVisible, setDeclineSheetVisible] = useState(false);
   const [acceptedSuccessVisible, setAcceptedSuccessVisible] = useState(false);
   const [withdrawModalVisible, setWithdrawModalVisible] = useState(false);
+  const [cancelModalVisible, setCancelModalVisible] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState<string>('Changed my mind');
+  const [customCancellationReason, setCustomCancellationReason] = useState('');
   const [editBidSheetVisible, setEditBidSheetVisible] = useState(false);
   const [bidUpdatedVisible, setBidUpdatedVisible] = useState(false);
   const [taskerActionsVisible, setTaskerActionsVisible] = useState(false);
@@ -372,8 +384,9 @@ export default function TaskDetailsScreen() {
   });
 
   const cancelMutation = useMutation({
-    mutationFn: () => changeTaskStatus(id as string, 'cancelled'),
+    mutationFn: (reason: string) => changeTaskStatus(id as string, 'cancelled', reason),
     onSuccess: () => {
+      setCancelModalVisible(false);
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       Alert.alert('Task cancelled', 'Your task has been cancelled.', [
         { text: 'OK', onPress: () => router.back() },
@@ -382,11 +395,7 @@ export default function TaskDetailsScreen() {
     onError: (err) => Alert.alert('Could not cancel task', errorMessage(err)),
   });
 
-  const confirmCancel = () =>
-    Alert.alert('Cancel Task', 'Are you sure you want to cancel this task?', [
-      { text: 'No', style: 'cancel' },
-      { text: 'Yes', style: 'destructive', onPress: () => cancelMutation.mutate() },
-    ]);
+  const confirmCancel = () => setCancelModalVisible(true);
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteTask(id as string),
@@ -1323,6 +1332,60 @@ export default function TaskDetailsScreen() {
               })
             }
           />
+          <Modal
+            visible={cancelModalVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => !cancelMutation.isPending && setCancelModalVisible(false)}>
+            <KeyboardAvoidingView
+              behavior={process.env.EXPO_OS === 'ios' ? 'padding' : undefined}
+              style={styles.cancelBackdrop}>
+              <View style={styles.cancelDialog}>
+                <Text style={styles.dialogTitle}>Cancel Task</Text>
+                <Text style={styles.dialogSubtitle}>Choose a reason for cancelling this task.</Text>
+                <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.cancelReasons}>
+                  {CANCELLATION_REASONS.map((reason) => (
+                    <Pressable
+                      key={reason}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: cancellationReason === reason }}
+                      onPress={() => setCancellationReason(reason)}
+                      style={[styles.cancelReasonRow, cancellationReason === reason && styles.cancelReasonSelected]}>
+                      <Text style={styles.cancelReasonText}>{reason}</Text>
+                      <Ionicons name={cancellationReason === reason ? 'radio-button-on' : 'radio-button-off'} size={21} color={COLORS.brand} />
+                    </Pressable>
+                  ))}
+                  {cancellationReason === 'Others' && (
+                    <TextInput
+                      accessibilityLabel="Your cancellation reason"
+                      value={customCancellationReason}
+                      onChangeText={setCustomCancellationReason}
+                      multiline
+                      maxLength={500}
+                      placeholder="Tell us why you are cancelling"
+                      placeholderTextColor={COLORS.textSecondary}
+                      style={styles.cancelReasonInput}
+                    />
+                  )}
+                </ScrollView>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={cancelMutation.isPending || (cancellationReason === 'Others' && !customCancellationReason.trim())}
+                  style={[styles.dialogButton, { backgroundColor: '#ef4444' },
+                    (cancelMutation.isPending || (cancellationReason === 'Others' && !customCancellationReason.trim())) && { opacity: 0.5 }]}
+                  onPress={() => cancelMutation.mutate(cancellationReason === 'Others' ? customCancellationReason.trim() : cancellationReason)}>
+                  {cancelMutation.isPending ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.dialogButtonText}>Confirm Cancellation</Text>}
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={cancelMutation.isPending}
+                  style={styles.btnNotYet}
+                  onPress={() => setCancelModalVisible(false)}>
+                  <Text style={styles.btnNotYetText}>Keep Task</Text>
+                </Pressable>
+              </View>
+            </KeyboardAvoidingView>
+          </Modal>
         </>
       )}
     </View>
@@ -1330,6 +1393,43 @@ export default function TaskDetailsScreen() {
 }
 
 const styles = StyleSheet.create({
+  cancelBackdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(17,17,34,0.55)',
+    paddingHorizontal: 16,
+  },
+  cancelDialog: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 24,
+    padding: 20,
+    gap: 12,
+    maxHeight: '85%',
+  },
+  cancelReasons: { gap: 8 },
+  cancelReasonRow: {
+    minHeight: 46,
+    borderWidth: 1,
+    borderColor: '#e0e0ea',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  cancelReasonSelected: { borderColor: COLORS.brand, backgroundColor: COLORS.pillBg },
+  cancelReasonText: { fontFamily: 'Geist_500Medium', fontSize: 14, color: COLORS.textPrimary },
+  cancelReasonInput: {
+    minHeight: 84,
+    borderWidth: 1,
+    borderColor: '#e0e0ea',
+    borderRadius: 8,
+    padding: 12,
+    fontFamily: 'Geist_400Regular',
+    fontSize: 14,
+    color: COLORS.textPrimary,
+    textAlignVertical: 'top',
+  },
   container: { flex: 1, backgroundColor: COLORS.canvas },
   flex: { flex: 1 },
   topBar: {

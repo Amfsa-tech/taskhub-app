@@ -201,7 +201,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         } catch (err) {
           // A 401 means the stored token is no longer valid — clear it.
-          if (err instanceof ApiError && err.isUnauthorized && !cancelled) {
+          if (err instanceof ApiError && err.isUnauthorized && !err.afterSuccessfulRefresh && !cancelled) {
             await clearSession();
             setApiToken(null);
             setToken(null);
@@ -432,7 +432,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       applySession(nextType, res.token, nextUser);
       await saveUser(nextUser);
     } catch (error) {
-      if (error instanceof ApiError && error.isUnauthorized) {
+      if (error instanceof ApiError && error.isUnauthorized && !error.afterSuccessfulRefresh) {
         await clearSession().catch(() => undefined);
         setApiToken(null);
         setToken(null);

@@ -164,7 +164,9 @@ export default function PostDetailsScreen() {
                 </Text>
               </Pressable>
               {draft.biddingDeadline ? (
-                <Pressable onPress={() => patch({ biddingDeadline: '' })}><Text style={styles.helper}>Clear deadline</Text></Pressable>
+                <Pressable accessibilityRole="button" accessibilityLabel="Remove bidding deadline" onPress={() => patch({ biddingDeadline: '' })} style={{ minHeight: 40, justifyContent: 'center' }}>
+                  <Text style={{ color: COLORS.brand, fontFamily: 'Geist_600SemiBold', fontSize: 14 }}>Remove deadline</Text>
+                </Pressable>
               ) : null}
               <Text style={styles.helper}>Last day taskers can bid. With no bids by then, the task closes and its budget returns to your wallet. Leave blank to keep bidding open.</Text>
               {showDeadlinePicker ? (

@@ -33,12 +33,15 @@ export class ApiError extends Error {
   readonly status: number;
   /** Parsed response body, when available. */
   readonly body?: ApiErrorBody | unknown;
+  /** The refresh token worked, but this particular endpoint still rejected the new access token. */
+  readonly afterSuccessfulRefresh: boolean;
 
-  constructor(message: string, status: number, body?: unknown) {
+  constructor(message: string, status: number, body?: unknown, afterSuccessfulRefresh = false) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.body = body;
+    this.afterSuccessfulRefresh = afterSuccessfulRefresh;
   }
 
   /** Field names the backend flagged as missing (register/create-task flows). */
@@ -94,6 +97,8 @@ export interface RequestOptions {
   timeoutMs?: number;
   /** Internal guard which prevents an auth refresh request from refreshing itself. */
   skipAuthRefresh?: boolean;
+  /** Internal marker used to avoid discarding a valid refreshed session. */
+  afterSuccessfulRefresh?: boolean;
 }
 
 export async function apiRequest<T = unknown>(
@@ -109,6 +114,7 @@ export async function apiRequest<T = unknown>(
     signal,
     timeoutMs,
     skipAuthRefresh = false,
+    afterSuccessfulRefresh = false,
   } = options;
 
   const url = path.startsWith('http')
@@ -178,6 +184,7 @@ export async function apiRequest<T = unknown>(
         ...options,
         token: refreshedToken,
         skipAuthRefresh: true,
+        afterSuccessfulRefresh: true,
       });
     }
   }
@@ -198,7 +205,7 @@ export async function apiRequest<T = unknown>(
       (data && typeof data === 'object' && 'message' in data
         ? String((data as ApiErrorBody).message)
         : null) || `Request failed (${response.status})`;
-    throw new ApiError(message, response.status, data);
+    throw new ApiError(message, response.status, data, afterSuccessfulRefresh);
   }
 
   return data as T;

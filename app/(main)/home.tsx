@@ -978,7 +978,7 @@ function TaskerHomeView({ refreshing, onRefresh, insets, user, router }: TaskerH
         </View>
       )}
 
-      {/* Recommended Jobs — the category-matched, location-aware feed */}
+      {/* Recommended Jobs — category-matched across all locations */}
       <View style={styles.taskerSection}>
         <View style={styles.taskerSectionHeader}>
           <Text style={styles.taskerSectionTitle}>Recommended Jobs</Text>
@@ -989,12 +989,17 @@ function TaskerHomeView({ refreshing, onRefresh, insets, user, router }: TaskerH
 
         {feed.isLoading ? (
           <ActivityIndicator style={{ marginVertical: 24 }} color={COLORS.brand} />
+        ) : feed.isError && recommended.length === 0 ? (
+          <Pressable style={styles.taskerEmptyCard} onPress={() => void feed.refetch()}>
+            <Text style={styles.taskerEmptyTitle}>Could not load jobs</Text>
+            <Text style={styles.taskerEmptySubtitle}>Check your connection and tap to retry.</Text>
+          </Pressable>
         ) : recommended.length === 0 ? (
           <Pressable style={styles.taskerEmptyCard} onPress={() => router.push('/tasker-services')}>
-            <Text style={styles.taskerEmptyTitle}>No matching jobs yet</Text>
+            <Text style={styles.taskerEmptyTitle}>No open jobs in your categories yet</Text>
             <Text style={styles.taskerEmptySubtitle}>
-              The feed only shows tasks in the categories you offer. Set your services to start
-              seeing work.
+              Jobs from any location will appear here when they match your services. Tap to review
+              your services.
             </Text>
           </Pressable>
         ) : (

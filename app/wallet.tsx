@@ -18,6 +18,7 @@ import {
 import { useAuth } from '@/lib/auth/auth-context';
 import { formatNaira, formatShortDate } from '@/lib/api/tasks';
 import { initializeFunding, verifyFunding, type WalletTransaction } from '@/lib/api/wallet';
+import { STELLAR_WALLET_ENABLED } from '@/lib/config';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -256,11 +257,11 @@ export default function WalletScreen() {
               <Text style={styles.fundLabel}>Withdraw</Text>
             </Pressable>
           )}
-          <Pressable
+          {STELLAR_WALLET_ENABLED && <Pressable
             style={({ pressed }) => [styles.stellarLink, pressed && styles.pressed]}
             onPress={() => router.push('/stellar-deposit' as any)}>
             <Text style={styles.stellarLinkText}>Stellar deposit details</Text>
-          </Pressable>
+          </Pressable>}
         </View>
 
         {!isTasker && pendingFunding ? (

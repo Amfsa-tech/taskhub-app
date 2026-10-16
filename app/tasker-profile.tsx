@@ -3,12 +3,14 @@ import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Share as NativeShare, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, Alert, Modal, Pressable, ScrollView, Share as NativeShare, StyleSheet, Text, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { queryKeys, useSavedTaskers, useTasker, useTaskerReviews } from '@/lib/api/queries';
-import { saveTasker, unsaveTasker } from '@/lib/api/saved-taskers';
-import type { TaskerReview } from '@/lib/api/tasks';
+import { saveTasker, unsaveTasker, type SavedTaskersResponse } from '@/lib/api/saved-taskers';
+import { formatNaira, type TaskerProfile, type TaskerReview } from '@/lib/api/tasks';
 
 import Heart from '@/assets/icons/heart.svg';
 import HeartOutline from '@/assets/icons/heart-outline.svg';
@@ -110,28 +112,72 @@ function ReviewCard({ review }: { review: TaskerReview }) {
 }
 
 /** The heart is only meaningful when we know which tasker this is. */
-function SaveHeart({ taskerId, size = 24 }: { taskerId: string; size?: number }) {
+function SaveSpark({ progress, dx, dy }: { progress: ReturnType<typeof useSharedValue<number>>; dx: number; dy: number }) {
+  const style = useAnimatedStyle(() => ({
+    opacity: 1 - progress.get(),
+    transform: [{ translateX: dx * progress.get() }, { translateY: dy * progress.get() }, { scale: 1 - progress.get() * 0.4 }],
+  }));
+  return <Animated.View pointerEvents="none" style={[styles.saveSpark, style]} />;
+}
+
+function SaveHeart({ taskerId, tasker, size = 24 }: { taskerId: string; tasker?: TaskerProfile; size?: number }) {
   const queryClient = useQueryClient();
   const { data } = useSavedTaskers();
   const isSaved = (data?.taskers ?? []).some((t) => t._id === taskerId);
+  const [pressed, setPressed] = useState(false);
+  const reducedMotion = useReducedMotion();
+  const burst = useSharedValue(1);
 
   const toggle = useMutation({
     mutationFn: () => (isSaved ? unsaveTasker(taskerId) : saveTasker(taskerId)),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.savedTaskers() });
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.savedTaskers() });
+      const previous = queryClient.getQueryData<SavedTaskersResponse>(queryKeys.savedTaskers());
+      queryClient.setQueryData<SavedTaskersResponse>(queryKeys.savedTaskers(), (current) => {
+        const taskers = current?.taskers ?? [];
+        const next = isSaved
+          ? taskers.filter((item) => item._id !== taskerId)
+          : [...taskers, { _id: taskerId, firstName: tasker?.firstName, lastName: tasker?.lastName, profilePicture: tasker?.profilePicture, averageRating: tasker?.averageRating, completedJobs: tasker?.completedJobs }];
+        return { status: 'success', count: next.length, taskers: next };
+      });
+      return { previous };
     },
-    onError: (err: Error) => {
+    onSuccess: () => {
+      if (!isSaved) {
+        if (!reducedMotion) {
+          burst.set(0);
+          burst.set(withTiming(1, { duration: 300 }));
+        }
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      AccessibilityInfo.announceForAccessibility(isSaved ? 'Tasker removed from saved taskers' : 'Tasker saved');
+    },
+    onError: (err: Error, _variables, context) => {
+      queryClient.setQueryData(queryKeys.savedTaskers(), context?.previous);
       Alert.alert(isSaved ? 'Could not remove' : 'Could not save', err.message);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.savedTaskers() });
     },
   });
 
   return (
     <Pressable
-      hitSlop={6}
+      hitSlop={10}
+      accessibilityRole="button"
+      accessibilityLabel={isSaved ? 'Remove saved tasker' : 'Save tasker'}
+      accessibilityState={{ selected: isSaved, disabled: toggle.isPending }}
       disabled={toggle.isPending}
       onPress={() => toggle.mutate()}
-      style={toggle.isPending && { opacity: 0.5 }}>
-      {isSaved ? <Heart width={size} height={size} /> : <HeartOutline width={size} height={size} />}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
+      style={[styles.saveHeartTouch, toggle.isPending && { opacity: 0.5 }]}>
+      <Animated.View style={[styles.saveHeartIcon, pressed && !reducedMotion && styles.saveHeartPressed]}>
+        {isSaved ? <Heart width={size} height={size} /> : <HeartOutline width={size} height={size} />}
+      </Animated.View>
+      {!reducedMotion ? [[-19, -15], [0, -25], [19, -15], [-20, 15], [0, 25], [20, 15]].map(([dx, dy], index) => (
+        <SaveSpark key={index} progress={burst} dx={dx} dy={dy} />
+      )) : null}
     </Pressable>
   );
 }
@@ -148,7 +194,6 @@ export default function TaskerProfileScreen() {
   const { data: reviewsRes } = useTaskerReviews(taskerId);
   const tasker = taskerRes?.data;
   const reviews = reviewsRes?.data?.reviews ?? [];
-  const reviewCount = reviewsRes?.data?.pagination?.total ?? reviews.length;
 
   const name = tasker
     ? shortName(tasker.firstName, tasker.lastName)
@@ -170,7 +215,7 @@ export default function TaskerProfileScreen() {
         title="Profile"
         right={
           <View style={styles.headerIcons}>
-            {taskerId ? <SaveHeart taskerId={taskerId} /> : null}
+            {taskerId ? <SaveHeart taskerId={taskerId} tasker={tasker} /> : null}
             <Pressable
               hitSlop={6}
               onPress={() => NativeShare.share({ message: `View ${tasker?.firstName || 'this tasker'} on TaskHub${taskerId ? ` — tasker ${taskerId}` : ''}` })}>
@@ -237,15 +282,15 @@ export default function TaskerProfileScreen() {
               <View style={styles.statsRow}>
                 <View style={styles.statCard}>
                   <Text style={styles.statValue}>{tasker.completedJobs}</Text>
-                  <Text style={styles.statLabel}>Jobs done</Text>
+                  <Text style={styles.statLabel}>Completed</Text>
+                </View>
+                <View style={styles.statCard}>
+                  <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{formatNaira(tasker.amountEarned ?? 0)}</Text>
+                  <Text style={styles.statLabel}>Earned</Text>
                 </View>
                 <View style={styles.statCard}>
                   <Text style={styles.statValue}>{ratingLabel}</Text>
-                  <Text style={styles.statLabel}>Rating</Text>
-                </View>
-                <View style={styles.statCard}>
-                  <Text style={styles.statValue}>{reviewCount}</Text>
-                  <Text style={styles.statLabel}>{reviewCount === 1 ? 'Review' : 'Reviews'}</Text>
+                  <Text style={styles.statLabel}>Avg Rating</Text>
                 </View>
               </View>
 
@@ -397,7 +442,24 @@ const styles = StyleSheet.create({
   headerIcons: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 8,
+  },
+  saveHeartTouch: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  saveHeartIcon: {
+    transform: [{ scale: 1 }],
+    transitionProperty: 'transform',
+    transitionDuration: '120ms',
+    transitionTimingFunction: 'ease-out',
+  },
+  saveHeartPressed: { transform: [{ scale: 0.97 }] },
+  saveSpark: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: COLORS.brand,
   },
   scroll: {
     paddingHorizontal: 16,

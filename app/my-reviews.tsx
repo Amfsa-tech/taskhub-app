@@ -5,8 +5,9 @@ import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useReviewsAboutMe, useUserTasks } from '@/lib/api/queries';
-import { formatRelativeTime, type ClientReview, type Task } from '@/lib/api/tasks';
+import { useMyRoleReviews, useReviewsAboutMe, useTaskerTasks } from '@/lib/api/queries';
+import { formatRelativeTime, type ClientReview, type MyRoleReview, type Task } from '@/lib/api/tasks';
+import { useAuth } from '@/lib/auth/auth-context';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -48,35 +49,58 @@ function toReviewVM(review: ClientReview): ReviewVM {
   };
 }
 
-function taskReviewToVM(task: Task): ReviewVM {
-  const tasker = task.assignedTasker;
-  const first = tasker?.firstName?.trim() ?? '';
-  const last = tasker?.lastName?.trim() ?? '';
+function taskerGivenReviewToVM(task: Task): ReviewVM {
+  const name = typeof task.user === 'object' ? task.user?.fullName?.trim() || 'Client' : 'Client';
   const category = task.mainCategory && typeof task.mainCategory === 'object'
     ? task.mainCategory.displayName || task.mainCategory.name
     : '';
   return {
     id: task._id,
-    name: [first, last ? `${last[0]}.` : ''].filter(Boolean).join(' ') || 'Tasker',
-    initials: `${first[0] ?? ''}${last[0] ?? ''}`.toUpperCase() || 'T',
-    rating: task.rating ?? 0,
-    message: task.reviewText ?? '',
+    name,
+    initials: name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase(),
+    rating: task.clientRating ?? 0,
+    message: task.clientReviewText ?? '',
     tag: category,
-    time: formatRelativeTime(task.ratedAt),
+    time: formatRelativeTime(task.clientRatedAt),
+  };
+}
+
+function roleReviewToVM(review: MyRoleReview): ReviewVM {
+  const name = review.person?.fullName?.trim() || 'TaskHub member';
+  return {
+    id: review.taskId,
+    name,
+    initials: name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase(),
+    rating: review.rating,
+    message: review.reviewText,
+    tag: review.taskCategory || review.taskTitle,
+    time: formatRelativeTime(review.ratedAt),
   };
 }
 
 export default function MyReviewsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { accountType } = useAuth();
   const [activeTab, setActiveTab] = useState<'about' | 'gave'>('about');
 
-  const aboutQ = useReviewsAboutMe();
-  const givenQ = useUserTasks({ status: 'completed', limit: 100 });
+  const roleQ = useMyRoleReviews(
+    accountType,
+    (accountType === 'tasker' && activeTab === 'about') ||
+      (accountType === 'user' && activeTab === 'gave'),
+  );
+  const clientAboutQ = useReviewsAboutMe(accountType === 'user' && activeTab === 'about');
+  const taskerGivenQ = useTaskerTasks('completed', accountType === 'tasker' && activeTab === 'gave');
   const reviews = activeTab === 'about'
-    ? (aboutQ.data?.reviews ?? []).map(toReviewVM)
-    : (givenQ.data?.tasks ?? []).filter((task) => Boolean(task.rating)).map(taskReviewToVM);
-  const activeQuery = activeTab === 'about' ? aboutQ : givenQ;
+    ? accountType === 'tasker'
+      ? (roleQ.data?.data.reviews ?? []).map(roleReviewToVM)
+      : (clientAboutQ.data?.reviews ?? []).map(toReviewVM)
+    : accountType === 'tasker'
+      ? (taskerGivenQ.data?.tasks ?? []).filter((task) => task.clientRating != null).map(taskerGivenReviewToVM)
+      : (roleQ.data?.data.reviews ?? []).map(roleReviewToVM);
+  const activeQuery = activeTab === 'about'
+    ? accountType === 'tasker' ? roleQ : clientAboutQ
+    : accountType === 'tasker' ? taskerGivenQ : roleQ;
 
   return (
     <View style={styles.container}>
