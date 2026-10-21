@@ -228,7 +228,8 @@ export interface TaskerProfile {
   completedJobs: number;
   amountEarned?: number;
   primaryCategory: string | null;
-  services: string[];
+  subCategories?: { _id: string; name?: string; displayName?: string; description?: string }[];
+  services?: string[];
   area: string | null;
   residentState: string | null;
   previousWork: { url: string; publicId?: string }[];

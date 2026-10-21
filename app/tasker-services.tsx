@@ -1,5 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
@@ -16,8 +16,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { groupCategories, type Category } from '@/lib/api/categories';
-import { useCategories } from '@/lib/api/queries';
-import { updateTaskerCategories } from '@/lib/auth/auth-api';
+import { useCategories, useUniversities } from '@/lib/api/queries';
+import { getProfile, updateTaskerCategories } from '@/lib/auth/auth-api';
+import { ApiError } from '@/lib/api/client';
 import { useAuth } from '@/lib/auth/auth-context';
 
 const COLORS = {
@@ -68,7 +69,18 @@ export default function TaskerServicesScreen() {
   }>();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const { user, refreshProfile } = useAuth();
+  const { user, accountType, refreshProfile, createRoleAndSwitch } = useAuth();
+  const isRoleCreation = accountType === 'user';
+  const roleProfile = useQuery({ queryKey: ['role-creation', user?._id], queryFn: () => getProfile('user'), enabled: isRoleCreation && !user?.roleCreation });
+  const requirements = roleProfile.data?.user.roleCreation || user?.roleCreation;
+  const [serverMissing, setServerMissing] = useState<string[]>([]);
+  const [fieldErrors, setFieldErrors] = useState<string[]>([]);
+  const [personalDraft, setPersonalDraft] = useState<Record<string, string>>({});
+  const roleMissing = [...new Set([...(requirements?.missingFields || []), ...serverMissing])];
+  const personalFields = isRoleCreation ? roleMissing.filter((field) => !['mainCategories', 'subCategories', 'categories', 'services', 'university'].includes(field)) : [];
+  const universitiesQuery = useUniversities();
+  const [university, setUniversity] = useState('');
+  const [universitySearch, setUniversitySearch] = useState('');
 
   const categoriesQuery = useCategories();
   const groups = groupCategories(categoriesQuery.data?.categories ?? []);
@@ -92,14 +104,33 @@ export default function TaskerServicesScreen() {
     setHydrated(true);
   }, [user, groups.length, hydrated]);
 
+  useEffect(() => {
+    if (university || !user?.university) return;
+    const saved = typeof user.university === 'string' ? user.university : '';
+    const match = universitiesQuery.data?.universities.find((item) => item._id === saved || item.name === saved);
+    if (match) setUniversity(match.name);
+  }, [university, user?.university, universitiesQuery.data]);
+
+  const requiresUniversity = groups.some((group) => selectedCategories.has(group.main._id) && group.main.name.toLowerCase().includes('campus'));
   const saveMutation = useMutation({
-    mutationFn: () =>
-      updateTaskerCategories({
-        mainCategories: Array.from(selectedCategories),
-        subCategories: Array.from(selectedServices),
-      }),
-    onSuccess: async () => {
+    mutationFn: async () => {
+      const incomplete = personalFields.filter((field) => !personalDraft[field]?.trim());
+      setFieldErrors(incomplete);
+      if (incomplete.length) throw new Error('Fill in the highlighted fields.');
+      if (requiresUniversity && !university) { setFieldErrors(['university']); throw new Error('Select your university.'); }
+      const services = { mainCategories: Array.from(selectedCategories), subCategories: Array.from(selectedServices), ...(requiresUniversity ? { university } : {}) };
+      if (isRoleCreation) {
+        if (!requirements) throw new Error('Your Tasker setup requirements are not available. Please retry.');
+        await createRoleAndSwitch({ user_type: 'tasker', ...personalDraft, ...services });
+        return { created: true };
+      }
+      if (accountType !== 'tasker') throw new Error('Sign in before updating Tasker services.');
+      await updateTaskerCategories(services);
       await refreshProfile();
+      return { created: false };
+    },
+    onSuccess: async (result) => {
+      if (result.created) { router.replace('/(main)/home'); return; }
       // The feed is category-matched, so it is stale the moment this changes.
       queryClient.invalidateQueries({ queryKey: ['tasks', 'tasker'] });
       if (onboarding === 'tasker') {
@@ -120,8 +151,13 @@ export default function TaskerServicesScreen() {
         router.back();
       }
     },
-    onError: (e) =>
-      Alert.alert('Could not save', e instanceof Error ? e.message : 'Please try again.'),
+    onError: (error) => {
+      if (error instanceof ApiError && error.code === 'missing_fields' && error.missingFields) {
+        setServerMissing((fields) => [...new Set([...fields, ...error.missingFields!])]);
+        setFieldErrors(error.missingFields);
+      }
+      Alert.alert('Could not save', error instanceof Error ? error.message : 'Please try again.');
+    },
   });
 
   // ── Category step helpers ─────────────────────────────────────────────────
@@ -181,7 +217,8 @@ export default function TaskerServicesScreen() {
       label: s.displayName.length > 12 ? s.displayName.slice(0, 10) + '…' : s.displayName,
     }));
 
-  if (categoriesQuery.isLoading) {
+  if (isRoleCreation && !requirements && !roleProfile.isLoading) return <View style={[styles.container, { padding: 24 }]}><Text>Could not load Tasker setup requirements.</Text><Pressable onPress={() => roleProfile.refetch()}><Text style={{ color: COLORS.brand }}>Try again</Text></Pressable></View>;
+  if (categoriesQuery.isLoading || (isRoleCreation && !requirements)) {
     return (
       <View style={[styles.container, { justifyContent: 'center' }]}>
         <ActivityIndicator color={COLORS.brand} />
@@ -280,6 +317,21 @@ export default function TaskerServicesScreen() {
           Pick all the services you can offer. You can change these anytime.
         </Text>
 
+        {personalFields.map((field) => <View key={field} style={{ gap: 6, marginBottom: 16 }}>
+          <Text style={styles.sectionLabel}>{field.replace(/([A-Z])/g, ' $1').replace(/^./, (letter) => letter.toUpperCase())}</Text>
+          <TextInput accessibilityLabel={field} style={[styles.searchInput, { minHeight: 48, borderWidth: 1, borderColor: fieldErrors.includes(field) ? '#dc2626' : COLORS.border, borderRadius: 8, paddingHorizontal: 12 }]} value={personalDraft[field] || ''} onChangeText={(value) => setPersonalDraft((draft) => ({ ...draft, [field]: value }))} placeholder={field === 'dateOfBirth' ? 'YYYY-MM-DD' : ''} keyboardType={field === 'phoneNumber' ? 'phone-pad' : 'default'} />
+          {fieldErrors.includes(field) && <Text accessibilityRole="alert" style={{ color: '#dc2626' }}>This field is required.</Text>}
+        </View>)}
+        {requiresUniversity && <View style={{ gap: 8, marginBottom: 16 }}>
+          <Text style={styles.sectionLabel}>University</Text>
+          <TextInput accessibilityLabel="Search university" value={universitySearch} onChangeText={setUniversitySearch} placeholder="Search your university" style={styles.searchInput} />
+          {!!university && <Text>Selected: {university}</Text>}
+          {universitiesQuery.isLoading && <ActivityIndicator color={COLORS.brand} />}
+          {universitiesQuery.isError && <Pressable onPress={() => universitiesQuery.refetch()}><Text>Could not load universities. Tap to retry.</Text></Pressable>}
+          {(universitiesQuery.data?.universities || []).filter((item) => item.name.toLowerCase().includes(universitySearch.toLowerCase())).slice(0, 6).map((item) => <Pressable key={item._id} accessibilityRole="button" onPress={() => setUniversity(item.name)} style={{ minHeight: 48, justifyContent: 'center' }}><Text style={{ color: item.name === university ? COLORS.brand : COLORS.textPrimary }}>{item.name}</Text></Pressable>)}
+          {fieldErrors.includes('university') && <Text accessibilityRole="alert" style={{ color: '#dc2626' }}>Please select your university.</Text>}
+        </View>}
+        {fieldErrors.some((field) => ['mainCategories', 'subCategories', 'services'].includes(field)) && <Text accessibilityRole="alert" style={{ color: '#dc2626' }}>Select the required categories and services.</Text>}
         {/* Selected chips */}
         {selectedServices.size > 0 && (
           <View style={styles.chipsSection}>

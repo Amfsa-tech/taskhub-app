@@ -482,3 +482,21 @@ Last updated: 2026-10-16
 
 **Pattern notes:** Show server-calculated role metrics without mock fallbacks: users see posted, completed, and trust score; taskers see completed, average rating, and earned. Review tabs query the appropriate role endpoint. Keep long currency values inside cards with one-line font fitting.
 
+### Public Tasker Services Disclosure
+
+File: `app/tasker-profile.tsx`
+Last updated: 2026-10-17
+
+| Property | Standard |
+| --- | --- |
+| Collapsed surface | `#f3eeff` brand-subtle, 12px radius, 48px minimum tap height |
+| Expanded items | White cards, 10px radius, `#e0e0ea` border, 8px vertical gap |
+| Text | Geist 600 brand-purple toggle; Geist 500 dark service names |
+| Interaction | Button announces expanded state; all selected subcategories appear in one vertical list |
+
+**Pattern notes:** Read populated `subCategories` from the public tasker detail API, using `services` only as a legacy fallback. Never display raw MongoDB IDs as service names.
+
+
+### Linked Tasker Creation — 2026-10-21
+
+In `app/tasker-services.tsx`, reuse the services screen palette and spacing for the server-declared missing personal fields. Labels use the existing section style; inputs have 48-point minimum height, 8-point radius, and border color `COLORS.border`, changing to red for field errors. Preserve all drafts on failure. Campus university search uses public university names with 48-point option targets. Role creation uses POST /roles with missing details and services in one request while still authenticated as User; persist and activate the returned Tasker session before fetching the Tasker profile. PUT /categories is only for existing Tasker roles.

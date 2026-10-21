@@ -8,6 +8,7 @@ export type AccountType = 'user' | 'tasker';
  * Extra profile fields are allowed through the index signature.
  */
 export interface AuthUser {
+  roleCreation?: { missingFields: string[] };
   _id: string;
   emailAddress: string;
   fullName?: string;
@@ -182,7 +183,11 @@ export interface SocialCompleteSignupPayload {
   originState?: string;
 }
 
-export type LinkedRolePayload = Omit<SocialCompleteSignupPayload, 'signupToken'>;
+export type LinkedRolePayload = Omit<SocialCompleteSignupPayload, 'signupToken'> & {
+  mainCategories?: string[];
+  subCategories?: string[];
+  university?: string | null;
+};
 
 /**
  * Phase 2 — finish creating a brand-new Google account. New users must supply

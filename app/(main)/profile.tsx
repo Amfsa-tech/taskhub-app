@@ -235,6 +235,10 @@ export default function ProfileScreen() {
   const switchMutation = useMutation({
     mutationFn: switchMode,
     onSuccess: (outcome) => {
+      if (outcome.kind === 'role-creation-required') {
+        router.replace({ pathname: '/tasker-services', params: { creation: 'tasker' } });
+        return;
+      }
       if (outcome.kind === 'onboarding-required') {
         const missing = new Set(outcome.missingFields.map((field) => field.toLowerCase()));
         const needsServices = [

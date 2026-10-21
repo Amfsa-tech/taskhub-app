@@ -201,11 +201,19 @@ export default function TaskerProfileScreen() {
   const firstName = name.split(/[.\s]/).filter(Boolean)[0] ?? name;
 
   const [activeTab, setActiveTab] = useState<'about' | 'reviews'>('about');
+  const [servicesOpen, setServicesOpen] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [hireOpen, setHireOpen] = useState(false);
 
   const ratingLabel =
     tasker && tasker.averageRating > 0 ? tasker.averageRating.toFixed(1) : 'New';
+  const services = Array.from(new Set(
+    (tasker?.subCategories?.length
+      ? tasker.subCategories.map((service) => service.displayName || service.name || '')
+      : tasker?.services ?? [])
+      .map((service) => service.trim())
+      .filter((service) => service && !/^[0-9a-f]{24}$/i.test(service)),
+  ));
 
   return (
     <View style={styles.container}>
@@ -323,16 +331,26 @@ export default function TaskerProfileScreen() {
                   </View>
 
                   {/* Services */}
-                  {(tasker.services?.length ?? 0) > 0 ? (
+                  {services.length > 0 ? (
                     <View style={styles.section}>
                       <Text style={styles.sectionTitle}>Services</Text>
-                      <View style={styles.chips}>
-                        {(tasker.services ?? []).map((service) => (
-                          <View key={service} style={styles.chip}>
-                            <Text style={styles.chipText}>{service}</Text>
-                          </View>
-                        ))}
-                      </View>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityState={{ expanded: servicesOpen }}
+                        onPress={() => setServicesOpen((open) => !open)}
+                        style={styles.servicesToggle}>
+                        <Text style={styles.servicesToggleText}>View all {services.length} {services.length === 1 ? 'service' : 'services'}</Text>
+                        <Text style={styles.servicesToggleText}>{servicesOpen ? '−' : '+'}</Text>
+                      </Pressable>
+                      {servicesOpen ? (
+                        <View style={styles.servicesList}>
+                          {services.map((service) => (
+                            <View key={service} style={styles.serviceItem}>
+                              <Text style={styles.serviceItemText}>{service}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      ) : null}
                     </View>
                   ) : null}
 
@@ -605,23 +623,23 @@ const styles = StyleSheet.create({
     letterSpacing: -0.24,
     color: COLORS.textSecondary,
   },
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chip: {
+  servicesToggle: {
     backgroundColor: COLORS.brandSubtle,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 999,
+    borderRadius: 12,
+    minHeight: 48,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  chipText: {
-    fontFamily: 'Geist_500Medium',
+  servicesToggleText: {
+    fontFamily: 'Geist_600SemiBold',
     fontSize: 15,
-    letterSpacing: -0.24,
     color: COLORS.brand,
   },
+  servicesList: { gap: 8 },
+  serviceItem: { backgroundColor: COLORS.surface, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: COLORS.starEmpty },
+  serviceItemText: { fontFamily: 'Geist_500Medium', fontSize: 14, color: COLORS.textPrimary },
   galleryRow: {
     gap: 8,
   },

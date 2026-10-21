@@ -1,44 +1,56 @@
-# Memory — TaskHub Release Handoff
+# Memory — Closed Tasks, Profile Parity, and Google Deletion Confirmation
 
-Last updated: 2026-10-09 21:58 Africa/Lagos
+Last updated: 2026-10-18 20:41 Africa/Lagos
 
 ## What was built
 
-- Implemented optional bidding deadlines across three repositories: mobile `C:\Users\JESSE\Documents\Github Repo\taskhub-app`, web `C:\Users\JESSE\Documents\Github Repo\task-hub-webapp`, backend `C:\Users\JESSE\Documents\Github Repo\task-hub-backend`.
-- Backend: added `utils/biddingDeadline.js`, replaced the old 14-day stale-task cancellation in `utils/cronJobs.js` with a five-minute expired-unbid-task sweep, added `closed` Task status, guarded new bids against expired deadlines, and added `POST /api/tasks/:id/reopen`. Closure/refund and reopen/escrow reserve use MongoDB transactions and ledger rows. Open-task cancellation/refund was made transactional; task budget edits are blocked because they would desync escrow. Added `tests/biddingDeadline.test.js`.
-- Web: posting/editing forms now have an optional bidding date; task detail and cards label it as a bidding cutoff. Owner History gained a Closed tab with Reopen/Delete controls. Tasker application UI hides new-bid form after cutoff. Added the reopen API binding and `closed` task type.
-- Mobile: added the SDK 54-compatible native date picker to post/edit flows; review screen includes the selected deadline. Added a Closed tab, reopen action in task details, no-deadline messaging, and status-aware task actions. Updated `ui-registry.md` with the new form and action-sheet patterns.
-- Prepared a WhatsApp tester message covering earlier authentication, onboarding, task posting, verification, bidding, chat, self-dealing, and this new deadline flow. It instructs testers to wait for deployment, use throwaway accounts for deletion, and avoid unapproved real-money payment tests.
+- Work spans the sibling web repo `C:/Users/JESSE/Documents/Github Repo/task-hub-webapp` and backend repo `C:/Users/JESSE/Documents/Github Repo/task-hub-backend`. The user's phrase “Tasker profile model” means the home Tasker profile modal.
+- Web history: added `lib/task-history.ts` and updated `app/(main)/history/page.tsx`. In Progress now accepts actual assigned/started/awaiting-confirmation work rather than every task not completed or cancelled. Automatically closed tasks no longer appear there; closed parent tasks also leave pending invitation/bid filtering. Closed remains a separate terminal status, not a cancellation.
+- Public tasker location: backend `controllers/tasker-controller.js` exposes city, resident state, country, and `universityName`; university IDs are resolved to full names while retaining the original university field for compatibility. No street address or coordinates are exposed. Added `tests/publicTaskerLocation.test.js`.
+- Web profile labels: added `lib/tasker-profile-labels.ts` and `components/taskers/TaskerLocationDetails.tsx`. Location names are deduplicated; the selected full university name appears for campus taskers; unresolved database IDs are hidden. Added `tests/history-profile-labels.test.mjs`.
+- Profile/modal parity: added `components/taskers/TaskerProfileHeader.tsx`, now used by both `app/(main)/taskers/[id]/page.tsx` and `components/dashboard/TaskerProfileModal.tsx`. It owns avatar, name, location, campus university, verification, ratings, jobs, and earnings. The modal uses the fetched biography, reports loading/errors with retry, and disables hiring when complete details are unavailable. It suspends its parent Dialog before opening the shared HireAgainModal. The full-profile hire handler requires client mode.
+- Profile data: removed the nearby-card fallback from `lib/api/taskers.ts`; failed public-profile requests now surface as failures instead of caching incomplete summaries. `hooks/useNearbyTaskers.ts` refetches details on mount. Added `tests/tasker-details-api.test.mjs` and `tests/profile-parity.browser.test.mjs`.
+- Google deletion: `components/auth/DeleteAccountModal.tsx` shows Google sign-in immediately, before DELETE is typed or a deletion request is attempted. Sign-in only prepares credentials. The final button requires credentials and DELETE confirmation and is the only action submitting deletion. Closing unmounts the form and clears credentials; users can switch sign-in method. Added `tests/delete-account-google.test.mjs`.
+- Web UI patterns were recorded in `ui-registry.md`. Earlier local wording change in `components/HireAgainModal.tsx` (“Hire [name]” rather than “Hire [name] again”) was preserved.
 
 ## Decisions made
 
-- Deadline means last time to place a bid, not work completion due date. Date-only cutoff is 11:59:59.999 p.m. Africa/Lagos. A task with no deadline stays open until other lifecycle action.
-- At expiry, automatically close and refund only if there are zero active bids. If a bid exists, owner can still review/accept it, but no new bids may be placed. If the last active bid is withdrawn after expiry, the sweep can close/refund it. Reopening can use no deadline or a new future date, and re-reserves the task budget from the User wallet. No grace-period feature yet.
-- User and Tasker accounts belonging to the same person must not transact/review each other. Minimum signup age is 18+. Android package is `com.taskhub.connect`, iOS bundle is `com.amfsatech.taskhub`. Store-facing copy should not use an em dash.
-- Preserve pre-existing uncommitted work in all repositories; there are unrelated auth, profile, chat, and blog changes in the working trees.
+- Keep public profile facts in the shared header so additions reach the full page and modal together; do not recreate separate copies of location, university, verification, or statistics markup.
+- Both profile surfaces fetch the complete public tasker endpoint. Never silently substitute a nearby/directory card on failure, including permission or blocked-account errors.
+- Google authentication and destructive confirmation remain separate steps. Credentials stay in component memory and are never persisted in storage or memory documentation.
+- Continue enforcing hire ownership, verification, category/service eligibility and self-dealing restrictions on the backend. Continue respecting deletion blockers for money, work, escrow, withdrawals, and disputes.
 
 ## Problems solved
 
-- Removed the backend's prior 14-day expiry behavior, which conflicted with indefinite tasks.
-- Added a task-document write in the ordinary bid transaction so bid insertion conflicts with a concurrent auto-close transaction. Added cutoff checks to invite/hire request paths as well.
-- Prevented post-publication budget edits from silently changing the budget while a different amount is held in escrow.
+- Closed no-bid tasks were classified as active by a catch-all history predicate and displayed as In Progress.
+- Stored university IDs were unsuitable as public labels, and location fields were missing from the public detail payload.
+- The profile modal mixed summary-card and fetched data. A failed detail request could be treated as a successful incomplete nearby summary and cached for five minutes. Shared header rendering plus explicit failure handling prevents this drift.
+- The Google option appeared only after a failed deletion request, and Google success previously triggered deletion immediately.
 
 ## Current state
 
-- Local backend suite passes 66/66 tests; mobile and web `npx tsc --noEmit` pass; syntax and `git diff --check` pass apart from harmless Git line-ending warnings. No live wallet mutation or deployment was performed for the deadline work.
-- Formal review found release gaps: mobile Closed tab currently fetches only the backend's default first 10 tasks, while web Closed history fetches at most 100; both need pagination for old tasks. Invite/hire creation checks the cutoff before writing but does not yet have the same transaction guard as ordinary bids, so a cutoff race remains. End-to-end wallet/refund/reopen behavior needs a safe integration test on a replica-set staging environment before release.
-- Older release concerns remain unverified: photographed Android Google Sign-In `DEVELOPER_ERROR` likely requires matching the Play app-signing SHA-1 with the Android OAuth client for `com.taskhub.connect`; Apple sign-in source/config checks passed locally but real-device production sign-in/linking is not proven; Apple server-to-server notifications were left unconfigured; App Store Connect Age Assurance should be None if the app has no age-assurance mechanism. Last known reviewed iOS build was 1.0 (10).
-- Earlier blog CMS work added public `/blog`, writer-restricted Markdown editor, media upload/embedding, autosaved private drafts, and direct publishing. It was not deployed or end-to-end tested. Web blog/admin design baseline still needs a user decision because `#6B46C1` and `#6C3BFF` coexist.
+- Latest full backend suite after location changes: 127 tests passed, including three public-profile location/university tests.
+- Six web history/profile-label tests and four Google-deletion component tests passed. Latest parity work passed two API regression tests and one real headless-browser test of both profile surfaces. Web TypeScript checks passed. New parity files have no lint errors; the shared header has one Next.js img-optimization warning.
+- The browser test bundles real page/modal components and real Radix dialogs with mocked profile/auth/API dependencies. It checks the same location, university and biography, clicks both Hire buttons, and reaches Choose Existing Task. This is not live invitation/payment verification. Run it with `node --test tests/profile-parity.browser.test.mjs`; it uses installed Chrome by default and supports PLAYWRIGHT_CHANNEL override. The default Playwright-managed browser binaries were unavailable on this host.
+- No production deployment or real account deletion was performed by this agent. Live Google reauthentication, account deletion, hire submission/payment, reports, and deadline transitions remain unverified.
+- At this memory save, web and backend working trees are clean. Changes were local earlier but may have been committed externally; inspect current commits and deployment state before assuming they remain uncommitted or recreating them. This agent did not push or deploy.
+- Mobile repo retains pre-existing changes in `app/deactivate-account.tsx`, `app/tasker-profile.tsx`, `lib/api/tasks.ts`, and `ui-registry.md`. Preserve them. Latest work above targeted web/backend, not mobile.
 
 ## Next session starts with
 
-1. Fix closed-task pagination on mobile and web, then transactionalize invite/hire creation at the bidding cutoff. Re-run all checks.
-2. Test no-deadline, expired-zero-bid refund, expired-with-bid no-close, last-bid withdrawal, reopen with enough/insufficient wallet balance, and delete-closed flows on a safe MongoDB replica-set staging backend. Do not use real funds without explicit coordination.
-3. Only after those checks, deploy backend and web changes, produce a new mobile build, and ask testers to exercise the prepared WhatsApp checklist.
-4. Separately resolve Google OAuth signer configuration, real-device Apple sign-in, App Store age-rating metadata, and blog CMS deployment verification.
+1. Inspect the current web/backend commits and deployment state to locate the completed changes.
+2. On an authorized test deployment, compare the home Tasker modal with the full profile for a campus tasker and a non-campus tasker; verify locations and full university names. Test both Hire entry points through invitation submission using safe accounts.
+3. Verify an expired no-bid task appears only in Closed, and verify Google sign-in is offered immediately in the deletion modal without a preliminary delete request. Use a disposable account for any destructive end-to-end test.
+4. Review/push/deploy only within the user's authorization; no deployment was performed during this work.
 
 ## Open questions
 
-- Is a safe staging backend available for transaction and wallet lifecycle tests, or will a dedicated test database be required?
-- Which Android distribution produced the photographed Google error: Play Store, internal sharing, EAS preview, or local debug build?
-- Have the prior web/mobile/backend fixes and blog CMS been deployed, and has Apple sign-in succeeded on a real iPhone?
+- Which of the completed changes have been deployed, and do the reported problems still reproduce on the latest live build?
+- Have Google deletion, automatic deadline closure, and actual hire submission/payment been exercised end to end on safe accounts?
+
+## Earlier fixes to preserve
+
+- Hiring eligibility is enforced by `utils/hiringEligibility.js` and `controllers/bid-controller.js`; invitations use only the client's matching tasks. Invitation errors are surfaced. Owner revocation uses a dedicated endpoint, persists cancelled state, and excludes cancelled invitations from task bids.
+- Notification dropdown closes on its actions and includes Mark all as read; chat no longer fabricates a submitted-bid notice for client invitations; bid prices occupy their own row.
+- `services/accountDeletionService.js` uses MongoDB transaction retry handling and narrows saved-tasker cleanup rather than touching every user.
+- Admin reports were repaired in `controllers/adminReportController.js` and `services/adminReportService.js`, with six tests in `tests/adminReports.test.js`. Reports use targetType/targetId, not nonexistent reportedUser/task schema references; targets/reporters resolve in batches, missing accounts do not hide reports, and admin list/detail response fields and pagination are supplied. No data migration was required.

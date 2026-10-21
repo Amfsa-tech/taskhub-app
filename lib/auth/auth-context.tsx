@@ -48,6 +48,7 @@ import {
 } from './storage';
 import type { AccountType, AppleProfile, AuthUser, GoogleCompleteSignupPayload, GoogleProfile, LinkedRolePayload, LoginPayload, SocialCompleteSignupPayload } from './types';
 import type { SwitchModeResponse } from './auth-api';
+import { acceptCreatedRole } from './role-session';
 
 /** Result of a Google sign-in attempt: either signed in, or needs Phase-2 completion. */
 export type GoogleSignInOutcome =
@@ -59,7 +60,7 @@ export type AppleSignInOutcome =
   | { kind: 'needs-signup'; signupToken: string; profile: AppleProfile };
 
 export type SwitchModeOutcome = {
-  kind: 'switched' | 'onboarding-required';
+  kind: 'switched' | 'onboarding-required' | 'role-creation-required';
   accountType: AccountType;
   accountId?: string;
   user: AuthUser | null;
@@ -365,9 +366,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const switchMode = useCallback(async (): Promise<SwitchModeOutcome> => {
     let res: SwitchModeResponse;
+    await queryClient.cancelQueries();
     try {
       res = await switchAccountMode();
     } catch (error) {
+      if (error instanceof ApiError && error.status === 404 && error.code === 'counterpart_not_found' && accountTypeRef.current === 'user') {
+        const { user: currentUser } = await getProfile('user');
+        if (!Array.isArray(currentUser.roleCreation?.missingFields)) throw new Error('Could not load Tasker setup requirements. Please try again.');
+        setUser(currentUser);
+        await saveUser(currentUser);
+        return { kind: 'role-creation-required', accountType: 'tasker', user: currentUser, missingFields: currentUser.roleCreation.missingFields, profileUnavailable: false };
+      }
       // During rollout, some backends return onboarding as non-2xx while still
       // including the destination-role credentials in the response body.
       const body = error instanceof ApiError ? error.body as SwitchModeResponse | undefined : undefined;
@@ -394,6 +403,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const nextType: AccountType =
       returnedType === 'user' || returnedType === 'tasker' ? returnedType : fallbackType;
 
+    res.token = res.accessToken || res.token;
     if (!res.token) {
       throw new Error(
         onboardingRequired
@@ -467,13 +477,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [applySession]);
 
   const createRoleAndSwitch = useCallback(async (payload: LinkedRolePayload) => {
+    await queryClient.cancelQueries();
     const res = await createLinkedRole(payload);
-    setApiToken(res.token);
-    const { user: nextUser } = await getProfile(res.user_type);
-    applySession(res.user_type, res.token, nextUser);
-    await saveSession({ token: res.token, refreshToken: res.refreshToken, accountType: res.user_type, user: nextUser });
-    queryClient.removeQueries();
-    return nextUser;
+    return acceptCreatedRole(res, payload.user_type, {
+      persist: async (session) => {
+        try { await saveSession(session); }
+        catch {
+          await clearSession().catch(() => undefined);
+          setApiToken(null); setToken(null); setAccountType(null); setUser(null);
+          queryClient.removeQueries();
+          throw new Error('The new role was authorized, but this device could not save it. Please sign in again.');
+        }
+      },
+      activate: applySession,
+      discardRoleCache: () => queryClient.removeQueries(),
+      fetchProfile: getProfile,
+      persistUser: saveUser,
+    });
   }, [applySession]);
 
   const value = useMemo<AuthContextValue>(

@@ -2,7 +2,7 @@ import { useMutation } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
@@ -23,6 +23,7 @@ export default function DeleteAccountScreen() {
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [blockers, setBlockers] = useState<Blocker[]>([]);
+  const [dialog, setDialog] = useState<{ kind: 'confirm' | 'error'; message: string } | null>(null);
   const mutation = useMutation({
     mutationFn: async () => {
       try {
@@ -50,19 +51,15 @@ export default function DeleteAccountScreen() {
     onError: (error) => {
       const body = error instanceof ApiError ? error.body as { blockers?: Blocker[] } : undefined;
       setBlockers(body?.blockers || []);
-      Alert.alert('Could not delete account', error instanceof Error ? error.message : 'Please try again.');
+      setDialog({ kind: 'error', message: error instanceof Error ? error.message : 'Please try again.' });
     },
   });
 
   const confirmed = confirmation.trim().toUpperCase() === 'DELETE';
-  const confirmDeletion = () => Alert.alert(
-    'Permanently delete your account?',
-    'This deletes both your client and tasker profiles, signs out every device, and cannot be undone.',
-    [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete forever', style: 'destructive', onPress: () => mutation.mutate() },
-    ],
-  );
+  const confirmDeletion = () => setDialog({
+    kind: 'confirm',
+    message: 'This deletes both your client and tasker profiles, signs out every device, and cannot be undone.',
+  });
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -96,6 +93,24 @@ export default function DeleteAccountScreen() {
           {mutation.isPending ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.buttonText}>Permanently delete account</Text>}
         </Pressable>
       </KeyboardAwareScrollView>
+      <Modal transparent visible={dialog !== null} animationType="fade" onRequestClose={() => setDialog(null)}>
+        <View style={styles.dialogBackdrop}>
+          <View style={styles.dialogCard} accessibilityViewIsModal>
+            <Text style={styles.dialogTitle}>{dialog?.kind === 'confirm' ? 'Permanently delete your account?' : 'Could not delete account'}</Text>
+            <Text style={styles.body}>{dialog?.message}</Text>
+            <View style={styles.dialogActions}>
+              <Pressable style={styles.dialogCancel} onPress={() => setDialog(null)} accessibilityRole="button">
+                <Text style={styles.dialogCancelText}>{dialog?.kind === 'confirm' ? 'Cancel' : 'Close'}</Text>
+              </Pressable>
+              {dialog?.kind === 'confirm' && (
+                <Pressable style={styles.dialogDelete} onPress={() => { setDialog(null); mutation.mutate(); }} accessibilityRole="button">
+                  <Text style={styles.buttonText}>Delete forever</Text>
+                </Pressable>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -119,4 +134,11 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.5 },
   pressed: { opacity: 0.9 },
   buttonText: { fontFamily: 'Geist_600SemiBold', fontSize: 17, color: '#ffffff' },
+  dialogBackdrop: { flex: 1, backgroundColor: 'rgba(17,17,34,0.55)', justifyContent: 'center', padding: 24 },
+  dialogCard: { backgroundColor: COLORS.surface, borderRadius: 20, padding: 24, gap: 16 },
+  dialogTitle: { fontFamily: 'Geist_600SemiBold', fontSize: 20, color: COLORS.text },
+  dialogActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 8 },
+  dialogCancel: { minHeight: 44, paddingHorizontal: 16, justifyContent: 'center', borderRadius: 10, borderWidth: 1, borderColor: COLORS.border },
+  dialogCancelText: { fontFamily: 'Geist_600SemiBold', fontSize: 15, color: COLORS.text },
+  dialogDelete: { minHeight: 44, paddingHorizontal: 16, justifyContent: 'center', borderRadius: 10, backgroundColor: COLORS.danger },
 });
