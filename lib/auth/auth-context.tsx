@@ -371,11 +371,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       res = await switchAccountMode();
     } catch (error) {
       if (error instanceof ApiError && error.status === 404 && error.code === 'counterpart_not_found' && accountTypeRef.current === 'user') {
-        const { user: currentUser } = await getProfile('user');
-        if (!Array.isArray(currentUser.roleCreation?.missingFields)) throw new Error('Could not load Tasker setup requirements. Please try again.');
-        setUser(currentUser);
-        await saveUser(currentUser);
-        return { kind: 'role-creation-required', accountType: 'tasker', user: currentUser, missingFields: currentUser.roleCreation.missingFields, profileUnavailable: false };
+        // Offer linking as well as creation. Load requirements only when the
+        // person chooses onboarding, so a metadata failure cannot block linking.
+        return { kind: 'role-creation-required', accountType: 'tasker', user: null, missingFields: [], profileUnavailable: false };
       }
       // During rollout, some backends return onboarding as non-2xx while still
       // including the destination-role credentials in the response body.
@@ -399,9 +397,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       res.onboardingRequired
     );
     const fallbackType: AccountType = accountTypeRef.current === 'user' ? 'tasker' : 'user';
-    const returnedType = String(res.user_type ?? res.role ?? '').toLowerCase();
+    const returnedType = String(res.user_type ?? res.userType ?? res.role ?? '').toLowerCase();
     const nextType: AccountType =
       returnedType === 'user' || returnedType === 'tasker' ? returnedType : fallbackType;
+    if (nextType !== fallbackType) throw new Error('The server did not return the selected role. Please try again.');
 
     res.token = res.accessToken || res.token;
     if (!res.token) {
@@ -466,20 +465,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [applySession]);
 
-  const linkRoleAndSwitch = useCallback(async (email: string, password: string) => {
-    const res = await linkAccountAndSwitch(email.trim().toLowerCase(), password);
-    setApiToken(res.token);
-    const { user: nextUser } = await getProfile(res.user_type);
-    applySession(res.user_type, res.token, nextUser);
-    await saveSession({ token: res.token, refreshToken: res.refreshToken, accountType: res.user_type, user: nextUser });
-    queryClient.removeQueries();
-    return nextUser;
-  }, [applySession]);
-
-  const createRoleAndSwitch = useCallback(async (payload: LinkedRolePayload) => {
-    await queryClient.cancelQueries();
-    const res = await createLinkedRole(payload);
-    return acceptCreatedRole(res, payload.user_type, {
+  const acceptRoleSession = useCallback(async (res: Parameters<typeof acceptCreatedRole>[0], expectedRole: AccountType) => {
+    return acceptCreatedRole(res, expectedRole, {
       persist: async (session) => {
         try { await saveSession(session); }
         catch {
@@ -495,6 +482,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       persistUser: saveUser,
     });
   }, [applySession]);
+
+  const linkRoleAndSwitch = useCallback(async (email: string, password: string) => {
+    const expectedRole = accountTypeRef.current === 'user' ? 'tasker' : 'user';
+    await queryClient.cancelQueries();
+    const res = await linkAccountAndSwitch(email.trim().toLowerCase(), password);
+    return acceptRoleSession(res, expectedRole);
+  }, [acceptRoleSession]);
+
+  const createRoleAndSwitch = useCallback(async (payload: LinkedRolePayload) => {
+    await queryClient.cancelQueries();
+    const res = await createLinkedRole(payload);
+    return acceptRoleSession(res, payload.user_type);
+  }, [acceptRoleSession]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { ScreenHeader } from '@/components/taskhub/screen-header';
 import { getFaqs, getSupportContact } from '@/lib/api/support';
+import { SUPPORT_PHONE_NUMBERS } from '@/lib/support-contact';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -53,8 +54,6 @@ export default function HelpSupportScreen() {
     }));
   };
 
-  // The only real support channels: the in-app report form (POST /api/support)
-  // and the support inbox. Live chat / phone lines don't exist yet.
   const handleEmail = () => {
     if (!contact?.email) {
       Alert.alert('Email unavailable', 'Use Report an issue and we’ll route your message to support.');
@@ -109,6 +108,26 @@ export default function HelpSupportScreen() {
               <Text style={styles.supportLabel}>Live Chat</Text>
             </Pressable>
           ) : null}
+        </View>
+
+        <Text style={styles.sectionHeader}>CALL SUPPORT</Text>
+        <View style={styles.faqCard}>
+          {SUPPORT_PHONE_NUMBERS.map((phone, index) => (
+            <View key={phone.href}>
+              {index > 0 && <View style={styles.divider} />}
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel={`Call support on ${phone.label}`}
+                style={({ pressed }) => [styles.faqRow, pressed && styles.pressed]}
+                onPress={() => Linking.openURL(phone.href).catch(() =>
+                  Alert.alert('Call support', `You can call us on ${phone.label}`),
+                )}>
+                <Ionicons name="call-outline" size={22} color={COLORS.brand} />
+                <Text style={styles.faqQuestion}>{phone.label}</Text>
+                <Ionicons name="chevron-forward-outline" size={18} color={COLORS.textSecondary} />
+              </Pressable>
+            </View>
+          ))}
         </View>
 
         {/* FAQs */}

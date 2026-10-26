@@ -238,6 +238,7 @@ export function linkAppleProvider(payload: Omit<AppleAuthPayload, 'user_type'>) 
 
 export interface RoleSessionResponse {
   accessToken?: string;
+  userType?: AccountType;
   status: string;
   message: string;
   token: string;
@@ -249,6 +250,7 @@ export interface RoleSessionResponse {
 }
 
 export interface SwitchModeResponse {
+  userType?: AccountType;
   accessToken?: string;
   status: string;
   message: string;

@@ -236,7 +236,11 @@ export default function ProfileScreen() {
     mutationFn: switchMode,
     onSuccess: (outcome) => {
       if (outcome.kind === 'role-creation-required') {
-        router.replace({ pathname: '/tasker-services', params: { creation: 'tasker' } });
+        Alert.alert('Tasker account needed', 'Create a Tasker profile or link an existing one.', [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Link existing', onPress: () => router.push('/link-role-account') },
+          { text: 'Start onboarding', onPress: () => router.push({ pathname: '/tasker-services', params: { creation: 'tasker' } }) },
+        ]);
         return;
       }
       if (outcome.kind === 'onboarding-required') {
@@ -278,7 +282,7 @@ export default function ProfileScreen() {
       router.replace('/(main)/home');
     },
     onError: (error) => {
-      if (error instanceof ApiError && error.status === 404) {
+      if (error instanceof ApiError && error.status === 404 && error.code === 'counterpart_not_found') {
         const toTasker = accountType === 'user';
         Alert.alert(
           `${toTasker ? 'Tasker' : 'User'} account needed`,
@@ -290,7 +294,7 @@ export default function ProfileScreen() {
               onPress: () => router.push('/link-role-account' as any),
             },
             {
-              text: 'Continue',
+              text: 'Start onboarding',
               onPress: () =>
                 router.push({
                   pathname: '/create-account',

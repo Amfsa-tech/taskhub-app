@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -26,7 +26,7 @@ import { Headset } from '@/components/icons/headset';
 import { signupAgeError } from '@/lib/auth/age';
 import { registerUser } from '@/lib/auth/auth-api';
 import { useAuth } from '@/lib/auth/auth-context';
-import { useSelectedCountry } from '@/lib/onboarding/country';
+import { COUNTRIES, setSelectedCountry, useSelectedCountry } from '@/lib/onboarding/country';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -96,14 +96,14 @@ export default function CreateAccountScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { type } = useLocalSearchParams<{ type?: string }>();
-  const { accountType, createRoleAndSwitch, isAuthenticated, user } = useAuth();
+  const { accountType, createRoleAndSwitch, refreshProfile, isAuthenticated, user } = useAuth();
   // Tasker signup runs in two steps: this screen collects the account basics,
   // then /tasker-details gathers the rest of what `tasker-register` requires
   // (phone, DOB, states, address) — the endpoint 400s without all ten fields.
   const isTasker = type === 'tasker';
   const targetType = isTasker ? 'tasker' : 'user';
-  const isLinkedRoleCreation = isAuthenticated && accountType !== targetType;
-  const [fullName, setFullName] = useState('');
+  const [isLinkedRoleCreation] = useState(() => isAuthenticated && accountType !== targetType);
+  const [fullName, setFullName] = useState(() => user?.fullName || [user?.firstName, user?.lastName].filter(Boolean).join(' '));
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -111,11 +111,19 @@ export default function CreateAccountScreen() {
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [agreed, setAgreed] = useState(false);
   const country = useSelectedCountry();
+  const countryInitialized = useRef(false);
+  useEffect(() => {
+    if (!isLinkedRoleCreation || countryInitialized.current || !user?.country) return;
+    const inheritedCountry = COUNTRIES.find((value) => value === user.country);
+    if (inheritedCountry) setSelectedCountry(inheritedCountry);
+    countryInitialized.current = true;
+  }, [isLinkedRoleCreation, user?.country]);
+  const needsProfileRetry = isLinkedRoleCreation && accountType === targetType;
   const [error, setError] = useState<string | null>(null);
 
   const registerMutation = useMutation<unknown, Error, void>({
     mutationFn: () => isLinkedRoleCreation
-      ? createRoleAndSwitch({ user_type: 'user', fullName: fullName.trim(), country })
+      ? accountType === targetType ? refreshProfile() : createRoleAndSwitch({ user_type: 'user', fullName: fullName.trim(), country })
       : registerUser({
         fullName: fullName.trim(),
         emailAddress: email.trim().toLowerCase(),
@@ -140,6 +148,11 @@ export default function CreateAccountScreen() {
 
   const submit = () => {
     setError(null);
+    if (isLinkedRoleCreation && isTasker) {
+      router.replace({ pathname: '/tasker-services', params: { creation: 'tasker' } });
+      return;
+    }
+    if (isLinkedRoleCreation && accountType === targetType) { registerMutation.mutate(); return; }
     const nameMissing = isTasker ? !firstName.trim() || !lastName.trim() : !fullName.trim();
     if (nameMissing || (!isLinkedRoleCreation && (!email.trim() || !password))) {
       setError(isLinkedRoleCreation ? 'Please fill in your name.' : 'Please fill in your name, email, and password.');
@@ -294,15 +307,15 @@ export default function CreateAccountScreen() {
             style={({ pressed }) => [
               styles.button,
               pressed && styles.buttonPressed,
-              (isSubmitting || !agreed) && styles.buttonDisabled,
+              (isSubmitting || (!agreed && !needsProfileRetry)) && styles.buttonDisabled,
             ]}
             onPress={submit}
-            disabled={isSubmitting || !agreed}>
+            disabled={isSubmitting || (!agreed && !needsProfileRetry)}>
             {isSubmitting ? (
               <ActivityIndicator color={COLORS.onBrand} />
             ) : (
               <>
-                <Text style={styles.buttonLabel}>{isTasker ? 'Continue' : 'Create Account'}</Text>
+                <Text style={styles.buttonLabel}>{needsProfileRetry ? 'Retry loading profile' : isTasker ? 'Continue' : isLinkedRoleCreation ? 'Create & switch' : 'Create Account'}</Text>
                 <ArrowRight size={18} color={COLORS.onBrand} />
               </>
             )}

@@ -70,6 +70,7 @@ export default function TaskerServicesScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { user, accountType, refreshProfile, createRoleAndSwitch } = useAuth();
+  const [isAddingRole] = useState(() => accountType === 'user');
   const isRoleCreation = accountType === 'user';
   const roleProfile = useQuery({ queryKey: ['role-creation', user?._id], queryFn: () => getProfile('user'), enabled: isRoleCreation && !user?.roleCreation });
   const requirements = roleProfile.data?.user.roleCreation || user?.roleCreation;
@@ -114,6 +115,10 @@ export default function TaskerServicesScreen() {
   const requiresUniversity = groups.some((group) => selectedCategories.has(group.main._id) && group.main.name.toLowerCase().includes('campus'));
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (isAddingRole && accountType === 'tasker') {
+        await refreshProfile();
+        return { created: true };
+      }
       const incomplete = personalFields.filter((field) => !personalDraft[field]?.trim());
       setFieldErrors(incomplete);
       if (incomplete.length) throw new Error('Fill in the highlighted fields.');

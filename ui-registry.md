@@ -497,6 +497,14 @@ Last updated: 2026-10-17
 **Pattern notes:** Read populated `subCategories` from the public tasker detail API, using `services` only as a legacy fallback. Never display raw MongoDB IDs as service names.
 
 
+### Support Phone Links — 2026-10-26
+
+`app/help-support.tsx` displays the two support lines from `lib/support-contact.ts` independently of contact API loading. Reuse the white `faqCard` surface, 16px radius, divider, and 16px vertical row padding; Geist 600 phone labels use `#111122` and call icons use `#6c3bff`. Each full row is an accessible link with pressed opacity and opens its own `tel:` destination. On failure, show the readable number in an alert.
+
 ### Linked Tasker Creation — 2026-10-21
 
 In `app/tasker-services.tsx`, reuse the services screen palette and spacing for the server-declared missing personal fields. Labels use the existing section style; inputs have 48-point minimum height, 8-point radius, and border color `COLORS.border`, changing to red for field errors. Preserve all drafts on failure. Campus university search uses public university names with 48-point option targets. Role creation uses POST /roles with missing details and services in one request while still authenticated as User; persist and activate the returned Tasker session before fetching the Tasker profile. PUT /categories is only for existing Tasker roles.
+
+### Role Switching and Linking — 2026-10-26
+
+Both missing-role prompts offer Start onboarding and Link existing. The link screen keeps its original target role throughout session activation; disable credential editing once linked and offer Retry loading profile after a hydration error. Linked User creation reuses the existing white form, 48-point inputs, and purple primary button, prefilling name and supported country from the current profile. Keep the initial creation intent across role changes so retries refresh the profile instead of registering a separate account. Tasker service creation retries also hydrate the new profile without sending another creation/category update.

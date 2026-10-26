@@ -6,6 +6,7 @@ interface CreatedRoleSession {
   refreshToken?: string;
   user_type?: AccountType;
   role?: AccountType;
+  userType?: AccountType;
 }
 
 interface HandoffDependencies {
@@ -19,7 +20,7 @@ interface HandoffDependencies {
 /** Never issue a destination-role request until its credentials are durable and active. */
 export async function acceptCreatedRole(session: CreatedRoleSession, expectedRole: AccountType, dependencies: HandoffDependencies): Promise<AuthUser> {
   const token = session.accessToken || session.token;
-  const role = session.user_type || session.role;
+  const role = session.user_type || session.userType || session.role;
   if (typeof token !== 'string' || !token || role !== expectedRole) throw new Error('The server did not return a valid session for the new role.');
   await dependencies.persist({ token, refreshToken: session.refreshToken, accountType: role, user: null });
   dependencies.activate(role, token, null);
