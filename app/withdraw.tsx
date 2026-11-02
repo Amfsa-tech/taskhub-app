@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { ScreenHeader } from '@/components/taskhub/screen-header';
+import { SupportContactButton } from '@/components/taskhub/support-contact';
 import { useSavedBankAccounts, useTaskerBalance, useTaskerBankAccount } from '@/lib/api/queries';
 import { formatNaira } from '@/lib/api/tasks';
 import { requestWithdrawal } from '@/lib/api/wallet';
@@ -272,7 +273,10 @@ export default function WithdrawScreen() {
 
             {/* Footer */}
             <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-              {error ? <Text style={styles.error}>{error}</Text> : null}
+              {error ? <View style={{ gap: 12 }}>
+                <Text style={styles.error}>{error}</Text>
+                <SupportContactButton message={`Hello TaskHub support, I need help with a withdrawal. ${error}`} />
+              </View> : null}
               <Pressable
                 style={({ pressed }) => [
                   styles.button,

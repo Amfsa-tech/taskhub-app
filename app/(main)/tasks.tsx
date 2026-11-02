@@ -232,7 +232,7 @@ export default function TasksScreen() {
         style={styles.flex}>
         <ScrollView
           style={{ width: SCREEN_WIDTH }}
-          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
+          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 180 }]}
           showsVerticalScrollIndicator={false}
           refreshControl={refreshControl(posted.refetch, posted.isRefetching)}>
           {posted.isLoading ? (
@@ -250,7 +250,7 @@ export default function TasksScreen() {
 
         <ScrollView
           style={{ width: SCREEN_WIDTH }}
-          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
+          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 180 }]}
           showsVerticalScrollIndicator={false}
           refreshControl={refreshControl(inProgress.refetch, inProgress.isRefetching)}>
           {inProgress.isLoading ? (
@@ -276,7 +276,7 @@ export default function TasksScreen() {
 
         <ScrollView
           style={{ width: SCREEN_WIDTH }}
-          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
+          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 180 }]}
           showsVerticalScrollIndicator={false}
           refreshControl={refreshControl(completed.refetch, completed.isRefetching)}>
           {completed.isLoading ? (
@@ -314,7 +314,7 @@ export default function TasksScreen() {
           )}
         </ScrollView>
         <ScrollView style={{ width: SCREEN_WIDTH }}
-          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
+          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 180 }]}
           refreshControl={refreshControl(closed.refetch, closed.isRefetching)}>
           {closed.isLoading ? <StateView mode="loading" /> : closed.isError ? (
             <StateView mode="error" onRetry={closed.refetch} isRetrying={closed.isRefetching} />
@@ -325,7 +325,7 @@ export default function TasksScreen() {
           ))}
         </ScrollView>
         <ScrollView style={{ width: SCREEN_WIDTH }}
-          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
+          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 180 }]}
           refreshControl={refreshControl(cancelled.refetch, cancelled.isRefetching)}>
           {cancelled.isError && (cancelled.data?.tasks ?? []).length > 0 ? (
             <Pressable accessibilityRole="button" onPress={() => cancelled.refetch()}>
@@ -1709,7 +1709,7 @@ function TaskerJobsView({ insets, router }: { insets: any; router: any }) {
       <FlatList<TaskerJob>
         data={filteredJobs}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={[styles.taskerListScroll, { paddingBottom: insets.bottom + 120 }]}
+        contentContainerStyle={[styles.taskerListScroll, { paddingBottom: insets.bottom + 180 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl

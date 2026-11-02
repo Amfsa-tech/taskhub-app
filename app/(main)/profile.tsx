@@ -79,7 +79,7 @@ const MENU_GROUP_ACCOUNT: MenuItem[] = [
   },
   {
     key: 'wallet-payment',
-    label: 'Wallet Payment',
+    label: 'Wallet',
     iconBg: COLORS.successBg,
     icon: <Wallet width={18} height={18} />,
   },
@@ -425,7 +425,7 @@ export default function ProfileScreen() {
 
       <ScrollView
         style={styles.flex}
-        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 180 }]}
         showsVerticalScrollIndicator={false}>
         {/* Profile details */}
         <View style={styles.profileRow}>

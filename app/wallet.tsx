@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FundWalletModal } from '@/components/taskhub/fund-wallet-modal';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
+import { SupportContactModal } from '@/components/taskhub/support-contact';
 import {
   useTaskerBalance,
   useTaskerTransactions,
@@ -91,6 +92,7 @@ export default function WalletScreen() {
   const balanceQ = isTasker ? taskerBalanceQ : userBalanceQ;
   const txQ = isTasker ? taskerTxQ : userTxQ;
 
+  const [supportMessage, setSupportMessage] = useState<string | null>(null);
   const [fundOpen, setFundOpen] = useState(false);
   const [funding, setFunding] = useState(false);
   const [pendingFunding, setPendingFunding] = useState<PendingFunding | null>(null);
@@ -149,7 +151,10 @@ export default function WalletScreen() {
           if (status === 'success') {
             Alert.alert('Wallet funded', `${formatNaira(payment.amount)} was added to your wallet.`);
           } else if (status === 'failed') {
-            Alert.alert('Payment not completed', 'Flutterwave reported that this payment did not go through.');
+            Alert.alert('Payment not completed', 'Flutterwave reported that this payment did not go through.', [
+              { text: 'Close', style: 'cancel' },
+              { text: 'Contact Support', onPress: () => setSupportMessage(`Hello TaskHub support, I need help with a failed wallet payment. Payment reference: ${payment.reference}`) },
+            ]);
           } else {
             Alert.alert(
               'Payment still pending',
@@ -162,6 +167,10 @@ export default function WalletScreen() {
           Alert.alert(
             'Could not check payment',
             error instanceof Error ? error.message : 'Please check your connection and try again.',
+            [
+              { text: 'Close', style: 'cancel' },
+              { text: 'Contact Support', onPress: () => setSupportMessage(`Hello TaskHub support, I could not check my wallet payment. Payment reference: ${payment.reference}`) },
+            ],
           );
         }
       } finally {
@@ -210,7 +219,10 @@ export default function WalletScreen() {
       setFundOpen(false);
       await openFundingCheckout(payment);
     } catch (err) {
-      Alert.alert('Funding failed', err instanceof Error ? err.message : 'Please try again.');
+      Alert.alert('Funding failed', err instanceof Error ? err.message : 'Please try again.', [
+        { text: 'Close', style: 'cancel' },
+        { text: 'Contact Support', onPress: () => { setFundOpen(false); setSupportMessage('Hello TaskHub support, I need help funding my wallet.'); } },
+      ]);
     } finally {
       setFunding(false);
     }
@@ -223,7 +235,7 @@ export default function WalletScreen() {
 
       <ScrollView
         style={styles.flex}
-        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 24 }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}>
         {/* Balance card */}
         <View style={styles.balanceCard}>
@@ -322,6 +334,7 @@ export default function WalletScreen() {
         )}
       </ScrollView>
 
+      <SupportContactModal visible={supportMessage !== null} onClose={() => setSupportMessage(null)} message={supportMessage ?? undefined} />
       <FundWalletModal
         visible={fundOpen}
         pending={funding}

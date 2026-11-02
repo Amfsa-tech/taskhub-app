@@ -289,7 +289,7 @@ export default function DiscoverScreen() {
       <FlatList
         data={tasks}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={[styles.listContainer, { paddingBottom: insets.bottom + 120 }]}
+        contentContainerStyle={[styles.listContainer, { paddingBottom: insets.bottom + 180 }]}
         showsVerticalScrollIndicator={false}
         refreshing={tasksQ.isRefetching}
         onRefresh={() => tasksQ.refetch()}

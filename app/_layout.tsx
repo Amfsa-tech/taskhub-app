@@ -24,6 +24,7 @@ import { queryClient } from '@/lib/query-client';
 
 import { LocationProvider } from '@/context/LocationContext';
 import { PostTaskProvider } from '@/context/PostTaskContext';
+import { SupportWidget } from '@/components/taskhub/support-widget';
 
 // The app shell is the anchor, so popping back from a pushed screen lands in
 // the tabs — not on a stray intro route.
@@ -192,6 +193,7 @@ function RootNavigator() {
                     <Stack.Screen name="bank-account" options={{ headerShown: false }} />
                     <Stack.Screen name="(main)" options={{ headerShown: false }} />
       </Stack>
+      <SupportWidget />
       <StatusBar style="auto" />
     </ThemeProvider>
   );

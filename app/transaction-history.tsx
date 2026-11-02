@@ -120,7 +120,7 @@ export default function TransactionHistoryScreen() {
       <FlatList
         data={transactions}
         keyExtractor={(item) => item._id}
-        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 20 }]}
+        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
         refreshing={(txQ.isRefetching || withdrawalsQ.isRefetching) && !txQ.isFetchingNextPage}
         onRefresh={() => Promise.all([txQ.refetch(), withdrawalsQ.refetch()])}

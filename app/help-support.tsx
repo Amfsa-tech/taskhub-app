@@ -64,13 +64,6 @@ export default function HelpSupportScreen() {
     );
   };
 
-  const handleLiveChat = () => {
-    if (!contact?.liveChatUrl) return;
-    Linking.openURL(contact.liveChatUrl).catch(() =>
-      Alert.alert('Live chat unavailable', 'Please try again later.'),
-    );
-  };
-
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
@@ -79,7 +72,7 @@ export default function HelpSupportScreen() {
 
       <ScrollView
         style={styles.flex}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 40 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}>
         
         {/* Support Grid — only channels that actually exist */}
@@ -99,31 +92,22 @@ export default function HelpSupportScreen() {
             </View>
             <Text style={styles.supportLabel}>Email Us</Text>
           </Pressable>
-
-          {contact?.liveChatEnabled && contact.liveChatUrl ? (
-            <Pressable style={styles.supportCard} onPress={handleLiveChat}>
-              <View style={[styles.iconBox, { backgroundColor: COLORS.successLight }]}>
-                <Ionicons name="chatbubble-ellipses-outline" size={22} color={COLORS.success} />
-              </View>
-              <Text style={styles.supportLabel}>Live Chat</Text>
-            </Pressable>
-          ) : null}
         </View>
 
-        <Text style={styles.sectionHeader}>CALL SUPPORT</Text>
+        <Text style={styles.sectionHeader}>CONTACT SUPPORT</Text>
         <View style={styles.faqCard}>
           {SUPPORT_PHONE_NUMBERS.map((phone, index) => (
             <View key={phone.href}>
               {index > 0 && <View style={styles.divider} />}
               <Pressable
                 accessibilityRole="link"
-                accessibilityLabel={`Call support on ${phone.label}`}
+                accessibilityLabel={`${phone.actionLabel}, ${phone.label}`}
                 style={({ pressed }) => [styles.faqRow, pressed && styles.pressed]}
                 onPress={() => Linking.openURL(phone.href).catch(() =>
-                  Alert.alert('Call support', `You can call us on ${phone.label}`),
+                  Alert.alert(phone.actionLabel, `Contact support using ${phone.label}`),
                 )}>
-                <Ionicons name="call-outline" size={22} color={COLORS.brand} />
-                <Text style={styles.faqQuestion}>{phone.label}</Text>
+                <Ionicons name={phone.kind === "whatsapp" ? "logo-whatsapp" : "call-outline"} size={22} color={COLORS.brand} />
+                <View style={{ flex: 1, gap: 4 }}><Text style={[styles.faqQuestion, { flex: 0 }]}>{phone.actionLabel}</Text><Text style={styles.faqAnswer}>{phone.label}</Text></View>
                 <Ionicons name="chevron-forward-outline" size={18} color={COLORS.textSecondary} />
               </Pressable>
             </View>

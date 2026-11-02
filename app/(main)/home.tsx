@@ -33,6 +33,7 @@ import { ActiveTasks } from '@/components/taskhub/active-tasks';
 import { useNewPost } from '@/hooks/use-new-post';
 import {
   queryKeys,
+  useCategories,
   useNearbyTaskers,
   useNotifications,
   useTaskerBalance,
@@ -160,6 +161,7 @@ export default function HomeScreen() {
 
   const isTasker = accountType === 'tasker';
 
+  const categories = useCategories();
   const nearby = useNearbyTaskers();
   const topTaskers = (nearby.data?.data ?? []).map(taskerToVM);
 
@@ -173,6 +175,7 @@ export default function HomeScreen() {
     try {
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ['tasks'] }),
+        queryClient.refetchQueries({ queryKey: ['categories'] }),
         queryClient.refetchQueries({ queryKey: queryKeys.notifications() }),
         queryClient.refetchQueries({ queryKey: queryKeys.nearbyTaskers() }),
       ]);
@@ -218,17 +221,24 @@ export default function HomeScreen() {
             </Pressable>
           </View>
         </View>
-        <Pressable
-          style={styles.bellButton}
-          hitSlop={8}
-          onPress={() => router.push('/notifications')}>
-          <Bell width={20} height={20} />
-          {unreadCount > 0 ? (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
-            </View>
-          ) : null}
-        </Pressable>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {!isTasker && <Pressable accessibilityRole="button" accessibilityLabel="Open Wallet" onPress={() => router.push('/wallet')}
+            style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 4, minHeight: 44, paddingHorizontal: 8 }, pressed && { opacity: 0.7 }]}>
+            <Wallet width={20} height={20} />
+            <Text style={{ fontFamily: 'Geist_600SemiBold', fontSize: 13, color: COLORS.brand }}>Wallet</Text>
+          </Pressable>}
+          <Pressable
+            style={styles.bellButton}
+            hitSlop={8}
+            onPress={() => router.push('/notifications')}>
+            <Bell width={20} height={20} />
+            {unreadCount > 0 ? (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+              </View>
+            ) : null}
+          </Pressable>
+        </View>
       </View>
 
       {user?.isEmailVerified === false ? (
@@ -259,7 +269,7 @@ export default function HomeScreen() {
       ) : (
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
+          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 180 }]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
@@ -273,13 +283,23 @@ export default function HomeScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Quick Category</Text>
             <View style={styles.categoryCard}>
-              {CATEGORIES.map((cat) => (
-                <Pressable key={cat.key} style={styles.categoryItem} onPress={() => startNewPost()}>
+              {CATEGORIES.map((cat) => {
+                const terms = cat.key === 'remote' ? ['remote', 'digital'] : cat.key === 'errands' ? ['errand', 'deliver'] : [cat.key];
+                const mainCategory = categories.data?.categories.find((main) => !main.parentCategory &&
+                  terms.some((term) => `${main.name} ${main.displayName}`.toLowerCase().includes(term)));
+                return <Pressable key={cat.key} accessibilityRole="button" accessibilityLabel={`Post a ${cat.label} task`}
+                  disabled={!mainCategory} accessibilityState={{ disabled: !mainCategory }}
+                  style={[styles.categoryItem, !mainCategory && { opacity: 0.5 }]}
+                  onPress={() => mainCategory && startNewPost({ mainCategory })}>
                   <View style={[styles.categoryIcon, { backgroundColor: cat.bg }]}>{cat.icon}</View>
                   <Text style={styles.categoryLabel}>{cat.label}</Text>
-                </Pressable>
-              ))}
+                </Pressable>;
+              })}
             </View>
+            {categories.isLoading && <ActivityIndicator color={COLORS.brand} accessibilityLabel="Loading categories" />}
+            {categories.isError && <Pressable accessibilityRole="button" onPress={() => categories.refetch()}>
+              <Text style={styles.seeAll}>Could not load categories. Tap to retry.</Text>
+            </Pressable>}
           </View>
 
           {/* Top Taskers */}
@@ -892,7 +912,7 @@ function TaskerHomeView({ refreshing, onRefresh, insets, user, router }: TaskerH
   return (
     <ScrollView
       style={styles.flex}
-      contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
+      contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 180 }]}
       showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl
