@@ -1,3 +1,5 @@
+import { useLayoutEffect } from 'react';
+import { setSupportScope, supportScope } from '@/lib/support-context';
 import { usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -10,6 +12,9 @@ export function SupportWidget() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  useLayoutEffect(() => {
+    setSupportScope(supportScope(user?._id, pathname));
+  }, [user?._id, pathname]);
   if (!user || !SUPPORT_ROUTES.includes(pathname)) return null;
   return <SupportContactButton key={pathname} label="Need help?" style={{ position: 'absolute', right: 16, bottom: insets.bottom + (TAB_ROUTES.includes(pathname) ? 96 : 24), borderRadius: 24, borderColor: '#15803d' }} />;
 }

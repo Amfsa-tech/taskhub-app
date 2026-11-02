@@ -1,3 +1,4 @@
+import { makeSupportIssue } from '@/lib/support-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
@@ -275,7 +276,7 @@ export default function WithdrawScreen() {
             <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
               {error ? <View style={{ gap: 12 }}>
                 <Text style={styles.error}>{error}</Text>
-                <SupportContactButton message={`Hello TaskHub support, I need help with a withdrawal. ${error}`} />
+                <SupportContactButton issue={makeSupportIssue("withdrawal", error)} />
               </View> : null}
               <Pressable
                 style={({ pressed }) => [

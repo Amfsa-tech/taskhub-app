@@ -8,7 +8,8 @@ import { useQuery } from '@tanstack/react-query';
 
 import { ScreenHeader } from '@/components/taskhub/screen-header';
 import { getFaqs, getSupportContact } from '@/lib/api/support';
-import { SUPPORT_PHONE_NUMBERS } from '@/lib/support-contact';
+import { useSupportMessage } from '@/hooks/use-support-message';
+import { SUPPORT_PHONE_NUMBERS, getSupportContactUrl } from '@/lib/support-contact';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -30,6 +31,7 @@ const COLORS = {
 };
 
 export default function HelpSupportScreen() {
+  const supportMessage = useSupportMessage();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const contactQ = useQuery({
@@ -103,7 +105,7 @@ export default function HelpSupportScreen() {
                 accessibilityRole="link"
                 accessibilityLabel={`${phone.actionLabel}, ${phone.label}`}
                 style={({ pressed }) => [styles.faqRow, pressed && styles.pressed]}
-                onPress={() => Linking.openURL(phone.href).catch(() =>
+                onPress={() => Linking.openURL(getSupportContactUrl(phone, supportMessage)).catch(() =>
                   Alert.alert(phone.actionLabel, `Contact support using ${phone.label}`),
                 )}>
                 <Ionicons name={phone.kind === "whatsapp" ? "logo-whatsapp" : "call-outline"} size={22} color={COLORS.brand} />

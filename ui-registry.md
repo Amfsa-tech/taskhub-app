@@ -523,3 +523,7 @@ Files: `components/taskhub/support-contact.tsx`, `components/taskhub/support-wid
 | Wallet shortcut | Geist 600, 13 points, brand purple, 44-point minimum tap height |
 
 **Pattern notes:** Help, payment failures, and the floating Need help action share one chooser with both configured phone numbers. Label +234 912 463 8396 **Chat with Us** and open WhatsApp with the payment reference in a draft message. Label +234 707 597 9682 **Call Us** and open only the dialer. Keep the chooser open with a readable fallback if linking fails. Place floating help above the tab bar and away from chat, auth, and capture screens. Category shortcuts reset the old draft, select the actual API category, and go directly to services; generic Post retains category selection.
+
+### Personalized Support Drafts — 2026-11-02
+
+Channel 1 is **Chat with Us**, +234 912 463 8396, and opens WhatsApp with a draft containing the current account's full name (or first and last names), email, a readable description of the failed action, and a labeled payment reference when available. Channel 2 is **Call Us**, +234 707 597 9682, and opens only the dialer. Use the shared support-context builder; never concatenate raw backend errors, error codes, or credentials into a draft. Floating help uses the current screen/account's recent failure; matching successful retries, navigation, and account changes clear stale context. Public visitors without profile details get no invented name or email. Keep the existing modal surfaces, spacing, and action colors.

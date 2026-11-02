@@ -32,6 +32,7 @@ function harness() {
   const alerts = [];
   const routes = [];
   const storage = new Map();
+  const auth = { accountType: 'user', user: { _id: 'test-user', fullName: 'Test Person', emailAddress: 'test@example.invalid', isEmailVerified: true } };
   let rejectLink = false;
   const router = { push: value => routes.push(['push', value]), replace: value => routes.push(['replace', value]) };
   const queryClient = { refetchQueries: async () => {}, invalidateQueries: async () => {} };
@@ -42,7 +43,7 @@ function harness() {
     'react-native': { View: 'View', Text: 'Text', Pressable: 'Pressable', ScrollView: 'ScrollView', Modal: 'Modal', RefreshControl: 'RefreshControl', ActivityIndicator: 'ActivityIndicator',
       Platform: { OS: 'android' }, AppState: { addEventListener: () => ({ remove() {} }) }, StyleSheet: { create: value => value },
       Alert: { alert: (...args) => alerts.push(args) }, Linking: { openURL: async url => { links.push(url); if (rejectLink) throw new Error('Unavailable'); } } },
-    'expo-router': { useRouter: () => router },
+    'expo-router': { useRouter: () => router, usePathname: () => '/wallet' },
     'expo-status-bar': { StatusBar: 'StatusBar' },
     'expo-image': { Image: 'Image' },
     'expo-web-browser': {},
@@ -50,7 +51,7 @@ function harness() {
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
     '@tanstack/react-query': { useQueryClient: () => queryClient },
     '@react-native-async-storage/async-storage': { __esModule: true, default: { getItem: async key => storage.get(key) ?? null, removeItem: async key => storage.delete(key) } },
-    '@/lib/auth/auth-context': { useAuth: () => ({ accountType: 'user', user: { _id: 'test-user', fullName: 'Test Person', isEmailVerified: true } }) },
+    '@/lib/auth/auth-context': { useAuth: () => auth },
     '@/lib/api/queries': { useNotifications: () => ({}), useNearbyTaskers: () => ({}), useCategories: () => categoriesQuery,
       useWalletBalance: () => balanceQuery, useWalletTransactions: () => balanceQuery, useTaskerBalance: () => balanceQuery, useTaskerTransactions: () => balanceQuery },
     '@/lib/api/tasks': { formatNaira: value => `N${value}`, formatShortDate: () => '', formatRelativeTime: () => '', locationLabel: () => '' },
@@ -61,14 +62,14 @@ function harness() {
     '@/components/taskhub/fund-wallet-modal': { FundWalletModal: () => null },
   };
   const cache = new Map();
-  return { links, alerts, routes, storage, categories, categoriesQuery, load: file => load(file, mocks, cache), failLink: value => { rejectLink = value; } };
+  return { links, alerts, routes, storage, auth, categories, categoriesQuery, load: file => load(file, mocks, cache), failLink: value => { rejectLink = value; } };
 }
 
 test('support chooser routes Chat with Us to WhatsApp and Call Us to the dialer, with retry and payment context', async () => {
   const h = harness();
   const { SupportContactButton } = h.load('components/taskhub/support-contact.tsx');
   let renderer;
-  await act(async () => { renderer = create(React.createElement(SupportContactButton, { message: 'Payment reference: test-ref & retry' })); });
+  await act(async () => { renderer = create(React.createElement(SupportContactButton, { issue: h.load('lib/support-context.ts').makeSupportIssue('check-payment', new Error('NETWORK_ERROR'), 'test-ref & retry') })); });
   const trigger = () => renderer.root.findByProps({ accessibilityLabel: 'Contact Support' });
   const modal = () => renderer.root.findByType('Modal');
   const options = () => renderer.root.findAllByProps({ accessibilityRole: 'link' });
@@ -86,7 +87,14 @@ test('support chooser routes Chat with Us to WhatsApp and Call Us to the dialer,
   assert.equal(modal().props.visible, false);
   assert.deepEqual(h.links.slice(0, 2).map(url => new URL(url).pathname), ['/2349124638396', '/2349124638396']);
   assert.equal(h.links[2], 'tel:+2347075979682');
-  assert.ok(h.links.slice(0, 2).every(url => new URL(url).searchParams.get('text') === 'Payment reference: test-ref & retry'));
+  for (const url of h.links.slice(0, 2)) {
+    const message = new URL(url).searchParams.get('text');
+    assert.match(message, /Hi, my name is Test Person/);
+    assert.match(message, /My email is test@example.invalid/);
+    assert.match(message, /payment status could not be retrieved/);
+    assert.match(message, /Payment reference: test-ref & retry/);
+    assert.doesNotMatch(message, /NETWORK_ERROR|Something went wrong/);
+  }
   assert.equal(new URL(h.links[2]).search, '');
   await act(async () => trigger().props.onPress());
   await act(async () => modal().props.onRequestClose());
@@ -159,4 +167,61 @@ test('all app support links obey the designated chat and call numbers', () => {
     }
   }
   for (const directory of ['app', 'components', 'lib']) check(path.join(root, directory));
+});
+
+
+test('floating help drafts follow current readable errors and clear on retry or account/screen change', async () => {
+  const h = harness();
+  const context = h.load('lib/support-context.ts');
+  const { SupportContactButton } = h.load('components/taskhub/support-contact.tsx');
+  const scope = context.supportScope('test-user', '/wallet');
+  context.setSupportScope(scope);
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(SupportContactButton, { label: 'Need help?' })); });
+  await act(async () => context.captureSupportRequest('/api/wallet/withdraw', 'POST', new Error('INSUFFICIENT_FUNDS'), scope));
+  await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Need help?' }).props.onPress());
+  await act(async () => renderer.root.findAllByProps({ accessibilityRole: 'link' })[0].props.onPress());
+  const message = new URL(h.links.at(-1)).searchParams.get('text');
+  assert.match(message, /my name is Test Person/);
+  assert.match(message, /submit a withdrawal/);
+  assert.match(message, /balance was too low/);
+  assert.doesNotMatch(message, /INSUFFICIENT_FUNDS/);
+  await act(async () => context.clearSupportIssue('POST:/api/wallet/withdraw', scope));
+  assert.equal(context.getSupportSnapshot(), null);
+  context.setSupportScope('other-user:/profile');
+  context.captureSupportRequest('/api/wallet/withdraw', 'POST', new Error('late old request'), scope);
+  assert.equal(context.getSupportSnapshot(), null);
+  await act(async () => renderer.unmount());
+});
+
+test('support identity handles Tasker names and anonymous visitors without raw technical errors', () => {
+  const { buildSupportMessage, makeSupportIssue } = harness().load('lib/support-context.ts');
+  const issue = makeSupportIssue('fund-wallet', new Error('INTERNAL_SERVER_ERROR {token: secret} Something went wrong'));
+  const message = buildSupportMessage({ firstName: 'Ada', lastName: 'Okafor', emailAddress: 'ada@example.invalid' }, issue);
+  assert.match(message, /Hi, my name is Ada Okafor/);
+  assert.match(message, /My email is ada@example.invalid/);
+  assert.match(message, /payment checkout could not be started/);
+  assert.doesNotMatch(message, /secret|INTERNAL_SERVER_ERROR|Something went wrong|token/);
+  const anonymous = buildSupportMessage(undefined, issue);
+  assert.doesNotMatch(anonymous, /undefined|null|my name is|My email is/);
+});
+
+
+test('an explicit old-account payment issue is not included after the account changes', async () => {
+  const h = harness();
+  const context = h.load('lib/support-context.ts');
+  context.setSupportScope('test-user:/wallet');
+  const issue = context.makeSupportIssue('payment-failed', undefined, 'old-account-payment', context.getSupportScope());
+  const { SupportContactButton } = h.load('components/taskhub/support-contact.tsx');
+  h.auth.user = { _id: 'other-user', fullName: 'Another Person', emailAddress: 'another@example.invalid' };
+  context.setSupportScope('other-user:/wallet');
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(SupportContactButton, { issue })); });
+  await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Contact Support' }).props.onPress());
+  await act(async () => renderer.root.findAllByProps({ accessibilityRole: 'link' })[0].props.onPress());
+  const message = new URL(h.links[0]).searchParams.get('text');
+  assert.match(message, /Another Person/);
+  assert.match(message, /another@example.invalid/);
+  assert.doesNotMatch(message, /old-account-payment|provider reported/);
+  await act(async () => renderer.unmount());
 });

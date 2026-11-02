@@ -1,10 +1,13 @@
 import { useState } from 'react';
+import { useSupportMessage } from '@/hooks/use-support-message';
+import type { SupportIssue } from '@/lib/support-context';
 import { Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SUPPORT_PHONE_NUMBERS, getSupportContactUrl } from '@/lib/support-contact';
 
-export function SupportContactModal({ visible, onClose, message }: { visible: boolean; onClose: () => void; message?: string }) {
+export function SupportContactModal({ visible, onClose, issue }: { visible: boolean; onClose: () => void; issue?: SupportIssue }) {
   const [opening, setOpening] = useState(false);
+  const message = useSupportMessage(issue);
   const openContact = async (contact: typeof SUPPORT_PHONE_NUMBERS[number]) => {
     if (opening) return;
     setOpening(true);
@@ -29,13 +32,13 @@ export function SupportContactModal({ visible, onClose, message }: { visible: bo
           </View>
           <Text style={styles.description}>Choose WhatsApp chat or a phone call.</Text>
           <ScrollView contentContainerStyle={styles.options}>
-            {SUPPORT_PHONE_NUMBERS.map((contact) => (
-              <Pressable key={contact.href} accessibilityRole="link" accessibilityLabel={`${contact.actionLabel}, ${contact.label}`}
+            {SUPPORT_PHONE_NUMBERS.map((contact, index) => (
+              <Pressable key={contact.href} accessibilityRole="link" accessibilityLabel={`Channel ${index + 1}, ${contact.actionLabel}, ${contact.label}`}
                 disabled={opening} accessibilityState={{ disabled: opening }}
                 onPress={() => void openContact(contact)} style={({ pressed }) => [styles.option, (pressed || opening) && styles.pressed]}>
                 <Ionicons name={contact.kind === "whatsapp" ? "logo-whatsapp" : "call-outline"} size={24} color="#15803d" />
                 <View style={styles.copy}>
-                  <Text style={styles.channel}>{contact.actionLabel}</Text>
+                  <Text style={styles.channel}>Channel {index + 1} — {contact.actionLabel}</Text>
                   <Text style={styles.description}>{contact.label}</Text>
                 </View>
                 <Ionicons name="open-outline" size={18} color="#5a5a70" />
@@ -48,14 +51,14 @@ export function SupportContactModal({ visible, onClose, message }: { visible: bo
   );
 }
 
-export function SupportContactButton({ label = 'Contact Support', message, style }: { label?: string; message?: string; style?: StyleProp<ViewStyle> }) {
+export function SupportContactButton({ label = 'Contact Support', issue, style }: { label?: string; issue?: SupportIssue; style?: StyleProp<ViewStyle> }) {
   const [visible, setVisible] = useState(false);
   return <>
     <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={() => setVisible(true)} style={({ pressed }) => [styles.trigger, style, pressed && styles.pressed]}>
       <Ionicons name="help-buoy-outline" size={20} color="#15803d" />
       <Text style={styles.triggerLabel}>{label}</Text>
     </Pressable>
-    <SupportContactModal visible={visible} onClose={() => setVisible(false)} message={message} />
+    <SupportContactModal visible={visible} onClose={() => setVisible(false)} issue={issue} />
   </>;
 }
 

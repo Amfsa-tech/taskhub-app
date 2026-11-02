@@ -1,3 +1,4 @@
+import { captureSupportRequest, clearSupportIssue, getSupportScope } from '@/lib/support-context';
 // Thin typed fetch wrapper around the TaskHub backend.
 //
 // Responsibilities:
@@ -101,7 +102,7 @@ export interface RequestOptions {
   afterSuccessfulRefresh?: boolean;
 }
 
-export async function apiRequest<T = unknown>(
+async function requestApiData<T = unknown>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
@@ -180,7 +181,7 @@ export async function apiRequest<T = unknown>(
     }
     const refreshedToken = await refreshPromise;
     if (refreshedToken) {
-      return apiRequest<T>(path, {
+      return requestApiData<T>(path, {
         ...options,
         token: refreshedToken,
         skipAuthRefresh: true,
@@ -209,6 +210,19 @@ export async function apiRequest<T = unknown>(
   }
 
   return data as T;
+}
+
+export async function apiRequest<T = unknown>(path: string, options: RequestOptions = {}): Promise<T> {
+  const requestScope = getSupportScope();
+  const method = options.method || 'GET';
+  try {
+    const data = await requestApiData<T>(path, options);
+    clearSupportIssue(`${method}:${path}`, requestScope);
+    return data;
+  } catch (error) {
+    if (!options.signal?.aborted) captureSupportRequest(path, method, error, requestScope);
+    throw error;
+  }
 }
 
 export const api = {

@@ -1,3 +1,4 @@
+import { clearSupportIssue, getSupportScope, makeSupportIssue, recordSupportIssue, type SupportIssue } from '@/lib/support-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
@@ -92,7 +93,7 @@ export default function WalletScreen() {
   const balanceQ = isTasker ? taskerBalanceQ : userBalanceQ;
   const txQ = isTasker ? taskerTxQ : userTxQ;
 
-  const [supportMessage, setSupportMessage] = useState<string | null>(null);
+  const [supportIssue, setSupportIssue] = useState<SupportIssue | null>(null);
   const [fundOpen, setFundOpen] = useState(false);
   const [funding, setFunding] = useState(false);
   const [pendingFunding, setPendingFunding] = useState<PendingFunding | null>(null);
@@ -135,11 +136,16 @@ export default function WalletScreen() {
   const checkFundingStatus = useCallback(
     async (payment: PendingFunding, notify = true) => {
       if (checkingRef.current || !pendingKey) return;
+      const requestScope = getSupportScope();
       checkingRef.current = true;
       setCheckingFunding(true);
       try {
         const result = await verifyFunding(payment.reference);
         const status = result.data.transactionStatus;
+        const issue = status === 'failed' ? makeSupportIssue('payment-failed', undefined, payment.reference, requestScope)
+          : status === 'pending' ? makeSupportIssue('payment-pending', undefined, payment.reference, requestScope) : undefined;
+        if (issue) recordSupportIssue(issue, `payment:${payment.reference}`, requestScope);
+        else if (status === 'success') clearSupportIssue(`payment:${payment.reference}`, requestScope);
         await queryClient.invalidateQueries({ queryKey: ['wallet'] });
 
         if (status === 'success' || status === 'failed') {
@@ -147,13 +153,13 @@ export default function WalletScreen() {
           setPendingFunding(null);
         }
 
-        if (notify) {
+        if (notify && requestScope === getSupportScope()) {
           if (status === 'success') {
             Alert.alert('Wallet funded', `${formatNaira(payment.amount)} was added to your wallet.`);
           } else if (status === 'failed') {
             Alert.alert('Payment not completed', 'Flutterwave reported that this payment did not go through.', [
               { text: 'Close', style: 'cancel' },
-              { text: 'Contact Support', onPress: () => setSupportMessage(`Hello TaskHub support, I need help with a failed wallet payment. Payment reference: ${payment.reference}`) },
+              { text: 'Contact Support', onPress: () => setSupportIssue(issue || makeSupportIssue("payment-failed", undefined, payment.reference)) },
             ]);
           } else {
             Alert.alert(
@@ -163,13 +169,15 @@ export default function WalletScreen() {
           }
         }
       } catch (error) {
-        if (notify) {
+        const issue = makeSupportIssue('check-payment', error, payment.reference, requestScope);
+        recordSupportIssue(issue, `payment:${payment.reference}`, requestScope);
+        if (notify && requestScope === getSupportScope()) {
           Alert.alert(
             'Could not check payment',
             error instanceof Error ? error.message : 'Please check your connection and try again.',
             [
               { text: 'Close', style: 'cancel' },
-              { text: 'Contact Support', onPress: () => setSupportMessage(`Hello TaskHub support, I could not check my wallet payment. Payment reference: ${payment.reference}`) },
+              { text: 'Contact Support', onPress: () => setSupportIssue(issue) },
             ],
           );
         }
@@ -202,6 +210,7 @@ export default function WalletScreen() {
   }, [checkFundingStatus]);
 
   const startFunding = async (amount: number) => {
+    const requestScope = getSupportScope();
     setFunding(true);
     try {
       const init = await initializeFunding(amount);
@@ -218,10 +227,14 @@ export default function WalletScreen() {
       setPendingFunding(payment);
       setFundOpen(false);
       await openFundingCheckout(payment);
+      clearSupportIssue("funding", requestScope);
     } catch (err) {
+      const issue = makeSupportIssue('fund-wallet', err, undefined, requestScope);
+      recordSupportIssue(issue, 'funding', requestScope);
+      if (requestScope !== getSupportScope()) return;
       Alert.alert('Funding failed', err instanceof Error ? err.message : 'Please try again.', [
         { text: 'Close', style: 'cancel' },
-        { text: 'Contact Support', onPress: () => { setFundOpen(false); setSupportMessage('Hello TaskHub support, I need help funding my wallet.'); } },
+        { text: 'Contact Support', onPress: () => { setFundOpen(false); setSupportIssue(issue); } },
       ]);
     } finally {
       setFunding(false);
@@ -334,7 +347,7 @@ export default function WalletScreen() {
         )}
       </ScrollView>
 
-      <SupportContactModal visible={supportMessage !== null} onClose={() => setSupportMessage(null)} message={supportMessage ?? undefined} />
+      <SupportContactModal visible={supportIssue !== null} onClose={() => setSupportIssue(null)} issue={supportIssue ?? undefined} />
       <FundWalletModal
         visible={fundOpen}
         pending={funding}
