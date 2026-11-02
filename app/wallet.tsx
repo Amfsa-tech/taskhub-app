@@ -244,7 +244,7 @@ export default function WalletScreen() {
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
-      <ScreenHeader title="Wallet" />
+      <ScreenHeader title="Wallet" onBack={() => router.canGoBack() ? router.back() : router.replace('/(main)/home')} />
 
       <ScrollView
         style={styles.flex}
@@ -254,7 +254,10 @@ export default function WalletScreen() {
         <View style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>Available balance</Text>
           {balanceQ.isLoading ? (
-            <ActivityIndicator color={COLORS.onBrand} style={styles.balanceLoading} />
+            <View accessibilityRole="progressbar" accessibilityLabel="Loading wallet balances" style={styles.balanceLoading}>
+              <View style={styles.balanceSkeleton} />
+              <View style={styles.escrowSkeleton} />
+            </View>
           ) : balanceQ.isError ? (
             <Text style={styles.balanceError}>Couldn’t load balance</Text>
           ) : (
@@ -389,6 +392,8 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     marginVertical: 8,
   },
+  balanceSkeleton: { width: 170, height: 40, borderRadius: 8, backgroundColor: '#ffffff40' },
+  escrowSkeleton: { width: 125, height: 16, borderRadius: 4, backgroundColor: '#ffffff40', marginTop: 8 },
   balanceError: {
     fontFamily: 'Geist_500Medium',
     fontSize: 17,

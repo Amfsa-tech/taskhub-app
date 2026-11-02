@@ -34,7 +34,7 @@ function harness() {
   const storage = new Map();
   const auth = { accountType: 'user', user: { _id: 'test-user', fullName: 'Test Person', emailAddress: 'test@example.invalid', isEmailVerified: true } };
   let rejectLink = false;
-  const router = { push: value => routes.push(['push', value]), replace: value => routes.push(['replace', value]) };
+  const router = { canGoBack: () => true, back: () => routes.push(['back']), push: value => routes.push(['push', value]), replace: value => routes.push(['replace', value]) };
   const queryClient = { refetchQueries: async () => {}, invalidateQueries: async () => {} };
   const categories = ['campus_tasks', 'local_services', 'errands_deliveries', 'digital_remote'].map((name, index) => ({ _id: `category-${index}`, name, displayName: name }));
   const categoriesQuery = { data: { categories }, isError: false, isLoading: false };
@@ -58,11 +58,11 @@ function harness() {
     '@/lib/api/wallet': { verifyFunding: async () => ({ data: { transactionStatus: 'failed' } }) },
     '@/lib/config': { STELLAR_WALLET_ENABLED: false },
     '@/components/taskhub/active-tasks': { ActiveTasks: () => null },
-    '@/components/taskhub/screen-header': { ScreenHeader: () => null },
+    '@/components/taskhub/screen-header': { ScreenHeader: props => React.createElement('ScreenHeader', props) },
     '@/components/taskhub/fund-wallet-modal': { FundWalletModal: () => null },
   };
   const cache = new Map();
-  return { links, alerts, routes, storage, auth, categories, categoriesQuery, load: file => load(file, mocks, cache), failLink: value => { rejectLink = value; } };
+  return { links, alerts, routes, storage, auth, categories, categoriesQuery, balanceQuery, router, load: file => load(file, mocks, cache), failLink: value => { rejectLink = value; } };
 }
 
 test('support chooser routes Chat with Us to WhatsApp and Call Us to the dialer, with retry and payment context', async () => {
@@ -86,7 +86,8 @@ test('support chooser routes Chat with Us to WhatsApp and Call Us to the dialer,
   await act(async () => options()[1].props.onPress());
   assert.equal(modal().props.visible, false);
   assert.deepEqual(h.links.slice(0, 2).map(url => new URL(url).pathname), ['/2349124638396', '/2349124638396']);
-  assert.equal(h.links[2], 'tel:+2347075979682');
+  assert.doesNotMatch(renderer.root.findAllByType('Text').map(node => node.props.children).join(' '), /—/);
+  assert.equal(h.links[2], 'tel:+2349135308859');
   for (const url of h.links.slice(0, 2)) {
     const message = new URL(url).searchParams.get('text');
     assert.match(message, /Hi, my name is Test Person/);
@@ -158,12 +159,12 @@ test('all app support links obey the designated chat and call numbers', () => {
   assert.equal(SUPPORT_PHONE_NUMBERS[0].actionLabel, 'Chat with Us');
   assert.equal(getSupportContactUrl(SUPPORT_PHONE_NUMBERS[0]).split('?')[0], 'https://wa.me/2349124638396');
   assert.equal(SUPPORT_PHONE_NUMBERS[1].actionLabel, 'Call Us');
-  assert.equal(getSupportContactUrl(SUPPORT_PHONE_NUMBERS[1], 'Payment issue'), 'tel:+2347075979682');
+  assert.equal(getSupportContactUrl(SUPPORT_PHONE_NUMBERS[1], 'Payment issue'), 'tel:+2349135308859');
   function check(directory) {
     for (const item of readdirSync(directory, { withFileTypes: true })) {
       const file = path.join(directory, item.name);
       if (item.isDirectory()) check(file);
-      else if (/\.tsx?$/.test(file)) assert.doesNotMatch(readFileSync(file, 'utf8'), /tel:\+?2349124638396|wa\.me\/2347075979682/, file);
+      else if (/\.tsx?$/.test(file)) assert.doesNotMatch(readFileSync(file, 'utf8'), /tel:\+?2349124638396|wa\.me\/2349135308859/, file);
     }
   }
   for (const directory of ['app', 'components', 'lib']) check(path.join(root, directory));
@@ -223,5 +224,28 @@ test('an explicit old-account payment issue is not included after the account ch
   assert.match(message, /Another Person/);
   assert.match(message, /another@example.invalid/);
   assert.doesNotMatch(message, /old-account-payment|provider reported/);
+  await act(async () => renderer.unmount());
+});
+
+
+test('wallet skeleton resolves to real balances or an error and back preserves origin with a Home fallback', async () => {
+  const h = harness();
+  const Wallet = h.load('app/wallet.tsx').default;
+  h.balanceQuery.isLoading = true;
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(Wallet)); });
+  assert.equal(renderer.root.findAllByProps({ accessibilityLabel: 'Loading wallet balances' }).length, 1);
+  await act(async () => renderer.root.findByType('ScreenHeader').props.onBack());
+  assert.deepEqual(h.routes.at(-1), ['back']);
+  h.router.canGoBack = () => false;
+  await act(async () => renderer.root.findByType('ScreenHeader').props.onBack());
+  assert.deepEqual(h.routes.at(-1), ['replace', '/(main)/home']);
+  h.balanceQuery.isLoading = false;
+  await act(async () => renderer.update(React.createElement(Wallet)));
+  assert.equal(renderer.root.findAllByProps({ accessibilityLabel: 'Loading wallet balances' }).length, 0);
+  assert.ok(renderer.root.findAllByType('Text').some(node => node.props.children === 'N1000'));
+  h.balanceQuery.isError = true;
+  await act(async () => renderer.update(React.createElement(Wallet)));
+  assert.ok(renderer.root.findAllByType('Text').some(node => node.props.children === 'Couldn’t load balance'));
   await act(async () => renderer.unmount());
 });

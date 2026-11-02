@@ -38,7 +38,7 @@ export function SupportContactModal({ visible, onClose, issue }: { visible: bool
                 onPress={() => void openContact(contact)} style={({ pressed }) => [styles.option, (pressed || opening) && styles.pressed]}>
                 <Ionicons name={contact.kind === "whatsapp" ? "logo-whatsapp" : "call-outline"} size={24} color="#15803d" />
                 <View style={styles.copy}>
-                  <Text style={styles.channel}>Channel {index + 1} — {contact.actionLabel}</Text>
+                  <Text style={styles.channel}>Channel {index + 1} {contact.actionLabel}</Text>
                   <Text style={styles.description}>{contact.label}</Text>
                 </View>
                 <Ionicons name="open-outline" size={18} color="#5a5a70" />

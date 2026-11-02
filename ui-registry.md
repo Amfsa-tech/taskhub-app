@@ -499,7 +499,7 @@ Last updated: 2026-10-17
 
 ### Support Phone Links — 2026-10-26
 
-`app/help-support.tsx` displays the two support lines from `lib/support-contact.ts` independently of contact API loading. Reuse the white `faqCard` surface, 16px radius, divider, and 16px vertical row padding; Geist 600 phone labels use `#111122` and call icons use `#6c3bff`. Each full row is an accessible link with pressed opacity. Label +234 912 463 8396 **Chat with Us** and open its `wa.me` chat; label +234 707 597 9682 **Call Us** and open its `tel:` destination. On failure, show the readable number in an alert.
+`app/help-support.tsx` displays the two support lines from `lib/support-contact.ts` independently of contact API loading. Reuse the white `faqCard` surface, 16px radius, divider, and 16px vertical row padding; Geist 600 phone labels use `#111122` and call icons use `#6c3bff`. Each full row is an accessible link with pressed opacity. Label +234 912 463 8396 **Chat with Us** and open its `wa.me` chat; label +234 913 530 8859 **Call Us** and open its `tel:` destination. On failure, show the readable number in an alert.
 
 ### Linked Tasker Creation — 2026-10-21
 
@@ -522,8 +522,12 @@ Files: `components/taskhub/support-contact.tsx`, `components/taskhub/support-wid
 | Touch targets | At least 48 points for triggers and 64 points for channel rows |
 | Wallet shortcut | Geist 600, 13 points, brand purple, 44-point minimum tap height |
 
-**Pattern notes:** Help, payment failures, and the floating Need help action share one chooser with both configured phone numbers. Label +234 912 463 8396 **Chat with Us** and open WhatsApp with the payment reference in a draft message. Label +234 707 597 9682 **Call Us** and open only the dialer. Keep the chooser open with a readable fallback if linking fails. Place floating help above the tab bar and away from chat, auth, and capture screens. Category shortcuts reset the old draft, select the actual API category, and go directly to services; generic Post retains category selection.
+**Pattern notes:** Help, payment failures, and the floating Need help action share one chooser with both configured phone numbers. Label +234 912 463 8396 **Chat with Us** and open WhatsApp with the payment reference in a draft message. Label +234 913 530 8859 **Call Us** and open only the dialer. Keep the chooser open with a readable fallback if linking fails. Place floating help above the tab bar and away from chat, auth, and capture screens. Category shortcuts reset the old draft, select the actual API category, and go directly to services; generic Post retains category selection.
 
 ### Personalized Support Drafts — 2026-11-02
 
-Channel 1 is **Chat with Us**, +234 912 463 8396, and opens WhatsApp with a draft containing the current account's full name (or first and last names), email, a readable description of the failed action, and a labeled payment reference when available. Channel 2 is **Call Us**, +234 707 597 9682, and opens only the dialer. Use the shared support-context builder; never concatenate raw backend errors, error codes, or credentials into a draft. Floating help uses the current screen/account's recent failure; matching successful retries, navigation, and account changes clear stale context. Public visitors without profile details get no invented name or email. Keep the existing modal surfaces, spacing, and action colors.
+Channel 1 is **Chat with Us**, +234 912 463 8396, and opens WhatsApp with a draft containing the current account's full name (or first and last names), email, a readable description of the failed action, and a labeled payment reference when available. Channel 2 is **Call Us**, +234 913 530 8859, and opens only the dialer. Use the shared support-context builder; never concatenate raw backend errors, error codes, or credentials into a draft. Floating help uses the current screen/account's recent failure; matching successful retries, navigation, and account changes clear stale context. Public visitors without profile details get no invented name or email. Keep the existing modal surfaces, spacing, and action colors.
+
+### Wallet Balance Loading — 2026-11-02
+
+Use two rounded skeleton bars for the main balance and secondary balance while their query is pending. Keep the existing card surface; use gray-200 on white web cards and translucent white on purple cards. Label the group “Loading wallet balances” for accessibility. Show actual failure states after loading ends. Support channel titles use a space between the channel number and action, without a dash.

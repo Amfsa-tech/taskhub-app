@@ -1,6 +1,6 @@
 export const SUPPORT_PHONE_NUMBERS = [
   { label: '+234 912 463 8396', actionLabel: 'Chat with Us', kind: 'whatsapp', href: 'https://wa.me/2349124638396' },
-  { label: '+234 707 597 9682', actionLabel: 'Call Us', kind: 'call', href: 'tel:+2347075979682' },
+  { label: '+234 913 530 8859', actionLabel: 'Call Us', kind: 'call', href: 'tel:+2349135308859' },
 ] as const;
 
 export const SUPPORT_CHAT_CONTACT = SUPPORT_PHONE_NUMBERS[0];
