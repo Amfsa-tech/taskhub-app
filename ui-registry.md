@@ -531,3 +531,7 @@ Channel 1 is **Chat with Us**, +234 912 463 8396, and opens WhatsApp with a draf
 ### Wallet Balance Loading — 2026-11-02
 
 Use two rounded skeleton bars for the main balance and secondary balance while their query is pending. Keep the existing card surface; use gray-200 on white web cards and translucent white on purple cards. Label the group “Loading wallet balances” for accessibility. Show actual failure states after loading ends. Support channel titles use a space between the channel number and action, without a dash.
+
+### Verification Decisions and Campaign Universities — 2026-11-04
+
+Display terminal duplicate-identity messages in error red (`#dc2626`) with an accessible alert and the shared support chooser. Hide verification launch actions until the backend explicitly permits resubmission; refresh status remains available. Verification polling stops on duplicate/fraud decisions. Brand Campaign is a Settings row using the existing native row and purple accent, opening the full web campaign form in the in-app browser.

@@ -16,6 +16,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { isDuplicateIdentity, verificationRetryBlocked, verificationMessage } from '@/lib/verification-status';
+import { SupportContactButton } from '@/components/taskhub/support-contact';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
 import { createDiditKycSession } from '@/lib/api/kyc';
 import { useKycStatus, useVerificationStatus } from '@/lib/api/queries';
@@ -52,15 +54,18 @@ export default function NinVerificationScreen() {
   // Account flag — provider-agnostic, the real answer to "am I verified?".
   const accountQ = useVerificationStatus();
   // Didit record detail — rejection reasons and masked NIN, when present.
-  const recordQ = useKycStatus();
+  const recordQ = useKycStatus(isDuplicateIdentity(accountQ.data?.data) || accountQ.data?.data.isFraudFlagged === true);
   const refetchAccount = accountQ.refetch;
   const refetchRecord = recordQ.refetch;
 
   const record = recordQ.data?.data;
-  const isVerified = accountQ.data?.data.isVerified === true || record?.status === 'approved';
+  const decision = isDuplicateIdentity(accountQ.data?.data) || accountQ.data?.data.isFraudFlagged ? accountQ.data?.data : record;
+  const duplicate = isDuplicateIdentity(decision) || decision?.isFraudFlagged === true;
+  const retryBlocked = verificationRetryBlocked(decision);
+  const isVerified = !duplicate && (accountQ.data?.data.isVerified === true || record?.status === 'approved');
   const rejectionReasons = record?.rejectionReasons ?? [];
   const isRejected = record?.status === 'rejected';
-  const isPending = record?.status === 'under_review';
+  const isPending = !duplicate && record?.status === 'under_review';
   const isResumable = record?.status === 'in_progress' || record?.status === 'not_started';
 
   const refresh = () => {
@@ -81,10 +86,15 @@ export default function NinVerificationScreen() {
   // The backend only issues sessions to taskers (identity verification is a
   // tasker requirement), so the start button is tasker-only too.
   const canStart = accountType === 'tasker' && !isVerified && !isPending
-    && !accountQ.isLoading && !recordQ.isLoading && !accountQ.isError && !recordQ.isError;
+    && !retryBlocked && !accountQ.isLoading && !recordQ.isLoading && !accountQ.isError && !recordQ.isError;
 
   const startMutation = useMutation({
-    mutationFn: () => createDiditKycSession(),
+    mutationFn: async () => {
+      const latest = await refetchAccount();
+      if (latest.error) throw latest.error;
+      if (verificationRetryBlocked(latest.data?.data)) throw new Error(verificationMessage(latest.data?.data));
+      return createDiditKycSession();
+    },
     onSuccess: async (res) => {
       if (!res.data.url) {
         Alert.alert('Verification is preparing', 'Please try again shortly.');
@@ -111,7 +121,14 @@ export default function NinVerificationScreen() {
         style={styles.flex}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 20 }]}
         showsVerticalScrollIndicator={false}>
-        {accountQ.isLoading || recordQ.isLoading ? (
+        {duplicate ? (
+          <View style={styles.formContainer}>
+            <Text accessibilityRole="alert" style={styles.errorText}>{verificationMessage(decision)}</Text>
+            <SupportContactButton issue={{ action: 'verification', explanation: verificationMessage(decision) }} />
+            {canStart && <Pressable style={styles.btn} disabled={startMutation.isPending} onPress={() => startMutation.mutate()}><Text style={styles.btnText}>Try again</Text></Pressable>}
+            <Pressable style={styles.btnSecondary} onPress={refresh}><Text style={styles.btnSecondaryText}>Refresh status</Text></Pressable>
+          </View>
+        ) : accountQ.isLoading || recordQ.isLoading ? (
           <View style={styles.successContainer}>
             <ActivityIndicator color={COLORS.brand} />
           </View>

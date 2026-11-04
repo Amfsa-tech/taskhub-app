@@ -1,3 +1,4 @@
+import type { VerificationDecision } from '@/lib/verification-status';
 // Identity verification (KYC).
 //
 // The live path is **Didit's hosted flow**: `createDiditKycSession` asks the
@@ -15,7 +16,7 @@
 //
 // For "is this account verified?", prefer `getVerificationStatus` in
 // `lib/auth/auth-api.ts`: it reads the account flag and is provider-agnostic.
-// `getKycStatus` below only ever sees Didit records.
+// `getKycStatus` also exposes the latest provider decision and retry policy.
 
 import { api } from './client';
 
@@ -79,13 +80,8 @@ export function createDiditKycSession() {
 export type KycRecordStatus = 'not_started' | 'in_progress' | 'under_review' | 'approved' | 'rejected';
 
 /**
- * Detail of the latest **Didit** KYC record.
- *
- * Two traps: it uses a `{ success, data }` envelope rather than the API-wide
- * `{ status, ... }` one, and it filters on `provider: 'didit'` — so an account
- * verified through QoreID reads back as `Not Started` here despite being
- * verified. Use it for rejection reasons and masked NIN, never as the source of
- * truth for whether the account is verified.
+ * Latest KYC decision across verification providers. Keep duplicate/fraud flags
+ * and the backend retry policy alongside capture-session and rejection details.
  */
 export interface KycStatusResponse {
   success: boolean;
@@ -98,7 +94,7 @@ export interface KycStatusResponse {
     verifiedAt?: string;
     rejectionReasons?: string[];
     updatedAt?: string;
-  };
+  } & VerificationDecision;
 }
 
 export function getKycStatus(signal?: AbortSignal) {

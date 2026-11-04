@@ -1,5 +1,6 @@
 // React Query hooks + query keys for the TaskHub API.
 
+import { verificationPollInterval } from '@/lib/verification-status';
 import { useInfiniteQuery, useQueries, useQuery } from '@tanstack/react-query';
 
 import { getCategories } from './categories';
@@ -245,14 +246,15 @@ export function useVerificationStatus() {
 }
 
 /**
- * Detail of the latest Didit KYC record — rejection reasons, masked NIN.
- * Not a verification source of truth (it ignores QoreID records); pair it with
+ * Detail of the latest KYC record — decision, rejection reasons, masked NIN.
+ * Pair the provider record with
  * `useVerificationStatus`, which reads the account flag.
  */
-export function useKycStatus() {
+export function useKycStatus(stopPolling = false) {
   return useQuery({
     queryKey: queryKeys.kycStatus(),
     queryFn: ({ signal }) => getKycStatus(signal),
+    refetchInterval: (query) => stopPolling ? false : verificationPollInterval(query.state.data?.data),
     staleTime: 30 * 1000,
   });
 }

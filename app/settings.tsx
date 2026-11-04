@@ -1,3 +1,4 @@
+import * as WebBrowser from 'expo-web-browser';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -237,6 +238,14 @@ export default function SettingsScreen() {
               label="Wallet"
               onPress={() => router.push('/wallet')}
             />
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionHeader}>BUSINESS</Text>
+          <View style={styles.groupCard}>
+            <SettingRow icon="megaphone-outline" iconBg="#f3efff" iconColor={COLORS.brand} label="Brand Campaign"
+              onPress={() => { void WebBrowser.openBrowserAsync('https://www.ngtaskhub.com/brand-campaign').catch(() => Alert.alert('Could not open Brand Campaign', 'Please try again, or visit ngtaskhub.com/brand-campaign.')); }} />
           </View>
         </View>
 

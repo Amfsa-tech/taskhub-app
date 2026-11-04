@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { isDuplicateIdentity, verificationMessage } from '@/lib/verification-status';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
 import { useVerificationStatus } from '@/lib/api/queries';
 
@@ -43,6 +44,7 @@ export default function SelectVerificationScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 20 }]}
         showsVerticalScrollIndicator={false}>
         
+        {isDuplicateIdentity(verificationQ.data?.data) && <Text accessibilityRole="alert" style={{ color: '#dc2626', marginBottom: 20 }}>{verificationMessage(verificationQ.data?.data)}</Text>}
         {isVerified ? (
           <View style={styles.verifiedBanner}>
             <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />

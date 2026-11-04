@@ -1,5 +1,6 @@
 // Auth endpoint bindings. All paths are relative to `/api/auth`.
 
+import { isDuplicateIdentity } from '@/lib/verification-status';
 import { api, apiRequest } from '@/lib/api/client';
 import type { PickedImage } from '@/lib/image-picker';
 import type {
@@ -147,8 +148,9 @@ export function updateUserLocation(payload: UpdateUserLocationPayload) {
 }
 
 /** Whether the account has completed KYC. One flag covers face + NIN. */
-export function getVerificationStatus(signal?: AbortSignal) {
-  return api.get<VerificationStatusResponse>(`${BASE}/verification-status`, { signal });
+export async function getVerificationStatus(signal?: AbortSignal) {
+  const response = await api.get<VerificationStatusResponse>(`${BASE}/verification-status`, { signal });
+  return { ...response, data: { ...response.data, isVerified: !isDuplicateIdentity(response.data) && !response.data.isFraudFlagged && response.data.isVerified } };
 }
 
 /* ------------------------------------------------------------------ *

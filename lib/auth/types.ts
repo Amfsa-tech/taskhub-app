@@ -1,3 +1,4 @@
+import type { VerificationDecision } from '@/lib/verification-status';
 // Auth domain types mirroring the TaskHub backend auth endpoints.
 
 export type AccountType = 'user' | 'tasker';
@@ -323,5 +324,6 @@ export interface VerificationStatusResponse {
     lastName: string;
     isVerified: boolean;
     role: 'User' | 'Tasker';
-  };
+    verificationStatus?: string;
+  } & VerificationDecision;
 }
