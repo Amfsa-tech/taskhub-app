@@ -1,53 +1,47 @@
-# Memory — Tasker Conversion on Mobile and Web
+# Memory — Frontend Video Fixes and Personalized Support Drafts
 
-Last updated: 2026-10-21 20:11 Africa/Lagos
+Last updated: 2026-11-02 15:06 Africa/Lagos
 
 ## What was built
 
-- Updated User-to-Tasker conversion in mobile `C:/Users/JESSE/Documents/Github Repo/taskhub-app` and web `C:/Users/JESSE/Documents/Github Repo/task-hub-webapp` to follow the backend contract supplied by the user. The backend was explicitly out of scope and was not changed in this session.
-- Web: updated `app/(main)/profile/page.tsx`, `app/(main)/profile/become-tasker/page.tsx`, `hooks/useAuth.ts`, `lib/api/auth.ts`, and `types/auth.ts`. Added `tests/tasker-role-creation.browser.test.mjs`.
-- Mobile: updated `app/(main)/profile.tsx`, `app/tasker-services.tsx`, and the auth API/context/types. Added `lib/auth/role-session.ts` and `tests/role-session.test.mjs`.
-- Recorded the role-creation UI pattern in both repositories' `ui-registry.md`.
+- Mobile repository: C:/Users/JESSE/Documents/Github Repo/taskhub-app. Web repository: C:/Users/JESSE/Documents/Github Repo/task-hub-webapp. Backend repository was out of scope and was not changed.
+- Applied the November 1 video feedback: centered web authentication without the decorative half-screen panel; made Google sign-in fit small screens; replaced web primary Payment History navigation with Wallet; added one-tap mobile Wallet access; removed the duplicate web task-posting banner and its tour step. User explicitly chose to keep category shortcuts. Mobile category shortcuts now select the actual category and open services directly while clearing old drafts.
+- Added shared support choosers, floating Need help actions, and payment-error support entry points on both clients. Web components are in components/support/; mobile components are components/taskhub/support-contact.tsx and support-widget.tsx. Additional context reaches wallet funding, withdrawals, payment callbacks, and web QoreID failures.
+- Added lib/support-context.ts and hooks/use-support-message.ts in both repositories. WhatsApp drafts include the signed-in account's full name or first/last names, email, a readable failed-action explanation, and a labeled payment reference when available. API request wrappers supply scoped failure context without changing their request results or refresh behavior. Direct support links on help/contact pages and web landing/footer sections also use personalized drafts.
+- Added tests/support-context.test.mjs and expanded the video-feedback tests in both repositories. Updated both ui-registry.md files.
 
 ## Decisions made
 
-- First attempt POST `/api/auth/switch-mode`. Only a 404 with code `counterpart_not_found` enters Tasker role creation; other failures remain errors.
-- Read `user.roleCreation.missingFields` from GET `/api/auth/user`. Display only required missing personal fields and preserve drafts and selected services when the backend returns `missing_fields`.
-- Submit missing/edited personal fields and selected mainCategories/subCategories together to POST `/api/auth/roles`, with user_type tasker. Campus university is submitted as the full selected name. Existing personal values are inherited by the backend.
-- Persist and activate the returned Tasker session before GET `/api/auth/tasker`. Do not PUT `/api/auth/categories` while creating a role under the User session; that endpoint remains for existing Taskers.
-- A profile refresh failure after successful creation must not restore the old User role. Mobile activation ordering is covered by the role-session helper.
+- Channel 1 is +234 912 463 8396, labeled Chat with Us, and always opens its WhatsApp chat. Channel 2 is +234 707 597 9682, labeled Call Us, and always opens the dialer. Never route the call number to WhatsApp or the chat number to a telephone call. Per-repository lib/support-contact.ts defines the canonical destinations.
+- WhatsApp opens with a prefilled draft; the person sends it. Use current profile identity rather than invented placeholders. Anonymous visitors get no fabricated name or email.
+- Do not concatenate raw backend errors, technical codes, stack traces, or credentials into drafts. Use the shared readable issue builder. Recent failure context is temporary, scoped to account and screen, cleared by matching recovery/navigation/account changes, and ignored when expired. Late API results and explicit old-account payment issues must not contaminate another account's draft.
+- Payment support observes the existing funding-verification query with fetching disabled; it must not start another verification request or change payment processing.
+- Auth-screen layout changes apply to web only. Other requested video fixes apply to web and mobile. Preserve existing account deletion, financial, and role-switch safeguards; do not modify the backend without authorization.
+- Mobile uses Expo SDK 54. Follow root AGENTS.md and read exact versioned documentation before coding. Its active identity-verification flow uses Didit, not the web QoreID capture SDK.
 
 ## Problems solved
 
-- Conversion previously attempted Tasker-only category updates before a Tasker role/session existed and surfaced a generic personal-information error.
-- Session responses accept token or accessToken and validate the returned role before activation.
-- Web creation clears stale User profile caches when the Tasker session is installed.
+- Old landing links incorrectly sent the 707 support number to WhatsApp, and support labels treated both numbers as call lines. All known frontend support destinations now follow the required split.
+- Floating help previously had no actual failure context, and existing support drafts lacked account identity. Readable contextual drafts now cover technical/generic failures without forwarding their raw text.
+- Prevented stale errors and payment references from appearing after successful retries, navigation, account changes, or delayed responses. Preserved original context across session-refresh retries.
+- Earlier web QoreID preparation fix remains in main: use backend preparationTimeoutMs with 90000 only as fallback; stop at SDK interactive readiness, not merely popup visibility; close on timeout and report SDK_TIMEOUT with the same client reference; allow another attempt only after failure reporting succeeds. Capture and final webhook processing are not timed. Cleanup handles close, success, failure, and unmount.
 
 ## Current state
 
-- Pushed both frontend repositories to `main` at the user's request: mobile `8f2d44bb7e723d6e037386aeb30959d7523f8b53`; web `d01ac8c8057627a110fbfa6a801f0082934add53`. Both matched origin/main and were clean after pushing. This memory save creates a local memory.md modification; it has not been committed or pushed.
-- The mobile commit also includes previously pending profile, deletion, task API, UI registry, and memory updates. Preserve those changes.
-- Both TypeScript checks passed. Four mobile role-session tests passed. The web browser test passed using real React components with mocked API/auth fixtures, covering missing-field inputs, validation retry, retained selections, and session ordering. Existing web auth retry tests passed earlier.
-- Browser tests use installed Chrome because Playwright-managed binaries were unavailable. They do not verify production sessions or real account changes.
-- Changed web page/browser-test lint checks passed. The web auth API retains pre-existing no-explicit-any lint errors; mobile auth API has a pre-existing array-style warning.
-- No production end-to-end test or deployment was performed by this agent. A git push does not establish deployment success. Backend untouched in this session.
-- The user requested a read-only mobile review against origin/main, including staged, unstaged, and untracked files, using base `8f2d44bb7e723d6e037386aeb30959d7523f8b53`. That turn was interrupted before any review agent started; no review findings exist.
+- Latest commits were pushed and remote main was verified: mobile 28f2d80; web cbd3470. Earlier video/routing commits are mobile 3da5c1c and web 39d1960.
+- All 24 mobile tests passed. Web support browser checks passed, including identity, readable errors, routing, missing/stored payment references, recovery, and observing payment results without new requests. Request/refresh tests and QoreID lifecycle regressions passed. Both TypeScript checks passed. No new lint issues were introduced; older web lint debt remains.
+- Tests use fixtures and mocked native/API dependencies. No real WhatsApp message, payment, deletion, or account conversion was performed. No native build, OTA release, store submission, or production deployment was performed; a Git push does not establish deployment.
+- Web working tree was clean after push. Mobile had only the pre-existing local memory.md change. This user-approved overwrite is a new local memory update; it is not committed or pushed.
+- Earlier role creation/linking fixes in both directions were already pushed. Preserve their session handoff and profile-hydration retry behavior.
 
 ## Next session starts with
 
-1. Restore this memory and confirm the next action. If resuming the review, use exactly one fresh child with fork_turns none unless an active review exists. Pass the user's complete review instructions, restrict it to mobile, include staged/unstaged/untracked files, and prohibit edits, further agents, and external messages/posts. Wait only for that child and return findings with file locations. Do not fix findings without a request.
-2. Check the comparison scope: the specified base is the already pushed mobile commit, so the working-tree diff may contain only this memory update. Do not silently substitute a previous commit.
-3. Verify the new backend contract is deployed before live conversion checks. The local backend checkout was noted as older than the supplied contract; do not alter it without authorization.
+1. Run /remember restore and confirm the user's next task before making changes.
+2. If asked about release readiness, check actual frontend deployment/build status for the latest commits. Device-test WhatsApp prefill and dialer routing using safe accounts, including an error followed by a successful retry and an account/screen change. Browser and renderer tests are not native-device validation.
+3. If preparing Apple resubmission, recheck App Store Connect and the actual replacement binary. The last read-only inspection was October 26: rejected build 10 was selected and Age Assurance was Yes. Those observations are historical, not current verified state. Location permission wording/purpose-string fixes were present in source, but the selected binary was not inspected. Do not send Apple a message or submit a build without an explicit request.
 
 ## Open questions
 
-- Has the updated backend role-creation contract been deployed and tested with both frontends?
-- Did the frontend pushes trigger deployments, and have those completed?
-- Does the user intend to review the pushed feature commit against its parent instead of the specified base, which is already HEAD?
-
-## Earlier work to preserve
-
-- Closed no-bid tasks were excluded from In Progress history. Shared web TaskerProfileHeader keeps full profile and modal location, university, verification, ratings, and statistics aligned. Both fetch complete details and surface failures instead of substituting incomplete cards.
-- Google account deletion offers sign-in immediately and separates authentication from final destructive confirmation. Live deletion remains unverified.
-- Earlier backend work repaired admin reports, deletion transaction conflicts, hiring ownership/verification/service eligibility, and invitation revocation. Earlier web work fixed notification dismissal/Mark all as read and invitation/chat layout. Those were not backend edits in the current conversion session.
-- Historical validation included 127 backend tests, profile/history label tests, Google deletion component tests, and profile/modal browser parity tests. These are not fresh results.
+- Have production deployments or new native builds incorporated the latest main commits?
+- Has Apple's age-rating declaration been corrected or justified, and has a replacement iOS build been selected for review? No store changes were made during this session.
+- No implementation work remains for the latest requested support-draft fixes. Live device and deployment validation remain unperformed.
