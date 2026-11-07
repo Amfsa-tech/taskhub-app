@@ -535,3 +535,8 @@ Use two rounded skeleton bars for the main balance and secondary balance while t
 ### Verification Decisions and Campaign Universities — 2026-11-04
 
 Display terminal duplicate-identity messages in error red (`#dc2626`) with an accessible alert and the shared support chooser. Hide verification launch actions until the backend explicitly permits resubmission; refresh status remains available. Verification polling stops on duplicate/fraud decisions. Brand Campaign is a Settings row using the existing native row and purple accent, opening the full web campaign form in the in-app browser.
+
+
+### Verification result feedback - 2026-11-07
+
+Capture submission is a neutral checking state, using the existing gray body text and loading spinner. Show backend rejection messages in the existing red alert style with Contact Support; a duplicate identity never offers another capture attempt. Other rejected attempts offer retry only with explicit backend permission. Approval uses the existing success treatment only after a status response confirms it. Under review is a stable state. Result polling lasts at most 90 seconds at four-second intervals and never continues in the background after the verification screen unmounts. Timeout/network failure uses neutral processing text and a manual Refresh status action; it is not an approval or rejection.

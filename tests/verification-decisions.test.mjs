@@ -21,43 +21,45 @@ test('duplicate and fraud decisions stop polling and require explicit retry perm
   for(const status of [{decisionCode:'duplicate_identity'},{isDuplicate:true},{isFraudFlagged:true}]) {
     assert.equal(verificationRetryBlocked(status),true);
     assert.equal(verificationRetryBlocked({...status,resubmissionAllowed:false}),true);
-    assert.equal(verificationRetryBlocked({...status,resubmissionAllowed:true}),false);
+    assert.equal(verificationRetryBlocked({...status,resubmissionAllowed:true}),!status.isFraudFlagged);
     assert.equal(verificationPollInterval({...status,status:'under_review'}),false);
   }
-  assert.equal(verificationPollInterval({status:'under_review'}),5000);
+  assert.equal(verificationPollInterval({status:'under_review'}),false);
+  assert.equal(verificationPollInterval({status:'pending'}),4000);
+  assert.equal(verificationRetryBlocked({status:'rejected',resubmissionAllowed:false}),true);
+  assert.equal(verificationRetryBlocked({status:'rejected',resubmissionAllowed:true}),false);
   assert.equal(verificationPollInterval({status:'approved'}),false);
   assert.equal(verificationRetryBlocked({resubmissionAllowed:false}),false);
   assert.equal(verificationMessage({message:'Contact the team about your identity.'}),'Contact the team about your identity.');
 });
 
 test('mobile duplicate state replaces loading and blocks both existing and newly revoked verification attempts',async()=>{
-  let creates=0;const alerts=[],opened=[];let stopped=false;
+  let creates=0;const alerts=[],opened=[];
   const blocked={isVerified:false,decisionCode:'duplicate_identity',message:'Your identity is linked to another account. Contact support.',isDuplicate:true,isFraudFlagged:true,resubmissionAllowed:false};
   const account={data:{data:blocked},isLoading:true,isError:false,refetch:async()=>({data:{data:blocked}})};
-  const record={data:{data:{status:'under_review'}},isLoading:true,isError:false,refetch:async()=>({})};
+  const record={data:{data:{...blocked,status:'rejected'}},isLoading:true,isError:false,refetch:async()=>({})};
   const mocks={
     'react-native':{View:'View',Text:'Text',Pressable:'Pressable',ScrollView:'ScrollView',ActivityIndicator:'ActivityIndicator',StyleSheet:{create:v=>v},AppState:{addEventListener:()=>({remove(){}})},Alert:{alert:(...args)=>alerts.push(args)}},
     '@expo/vector-icons':{Ionicons:'Icon'},'expo-router':{useRouter:()=>({replace(){},push(){}})},'expo-status-bar':{StatusBar:'StatusBar'},
-    'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:0})},'expo-web-browser':{openBrowserAsync:async url=>opened.push(url)},
-    '@tanstack/react-query':{useMutation:options=>({isPending:false,mutate:async()=>{try{const result=await options.mutationFn();await options.onSuccess(result)}catch(error){options.onError(error)}}})},
+    'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:0})},'expo-web-browser':{openBrowserAsync:async url=>{opened.push(url);return{type:'cancel'}}},
+    '@tanstack/react-query':{useQueryClient:()=>({setQueryData(){}}),useMutation:options=>({isPending:false,mutate:async()=>{try{const result=await options.mutationFn();await options.onSuccess(result)}catch(error){options.onError(error)}}})},
     '@/components/taskhub/screen-header':{ScreenHeader:()=>null},'@/components/taskhub/support-contact':{SupportContactButton:()=>React.createElement('Text',{},'Contact Support')},
-    '@/lib/api/queries':{useVerificationStatus:()=>account,useKycStatus:stop=>{stopped=stop;return record}},
-    '@/lib/auth/auth-context':{useAuth:()=>({accountType:'tasker'})},
-    '@/lib/api/kyc':{createDiditKycSession:async()=>{creates++;return{data:{url:'https://verification.example.invalid/session'}}}},
+    '@/lib/api/queries':{useVerificationStatus:()=>account,useKycStatus:()=>record},
+    '@/lib/auth/auth-context':{useAuth:()=>({accountType:'tasker',refreshProfile:async()=>{}})},
+    '@/lib/api/kyc':{getKycStatus:async()=>({data:{status:'under_review',isVerified:false}}),createDiditKycSession:async()=>{creates++;return{data:{url:'https://verification.example.invalid/session'}}}},
   };
   const Screen=load('app/nin-verification.tsx',mocks).default;
   let renderer;await act(async()=>{renderer=create(React.createElement(Screen))});
-  assert.equal(stopped,true);
   assert.equal(renderer.root.findAllByType('ActivityIndicator').length,0);
   assert.equal(renderer.root.findByProps({accessibilityRole:'alert'}).props.children,blocked.message);
   const retry=()=>renderer.root.findAllByType('Pressable').find(node=>node.findAllByType('Text').some(text=>text.props.children==='Try again'));
   assert.equal(retry(),undefined);
-  account.isLoading=false;record.isLoading=false;account.data={data:{...blocked,resubmissionAllowed:true}};
+  account.isLoading=false;record.isLoading=false;record.data={data:{status:'rejected',isVerified:false,message:'Please try again.',resubmissionAllowed:true}};record.refetch=async()=>({data:{data:{...blocked,status:'rejected'}}});
   await act(async()=>renderer.update(React.createElement(Screen)));
   assert.ok(retry());
   await act(async()=>retry().props.onPress());
   assert.equal(creates,0);assert.equal(alerts.at(-1)[1],blocked.message);
-  account.refetch=async()=>({data:{data:{...blocked,resubmissionAllowed:true}}});
+  record.refetch=async()=>({data:record.data});
   await act(async()=>renderer.update(React.createElement(Screen)));
   await act(async()=>retry().props.onPress());
   assert.equal(creates,1);assert.deepEqual(opened,['https://verification.example.invalid/session']);

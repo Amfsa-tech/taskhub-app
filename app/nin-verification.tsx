@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMutation } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as WebBrowser from 'expo-web-browser';
@@ -19,9 +19,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isDuplicateIdentity, verificationRetryBlocked, verificationMessage } from '@/lib/verification-status';
 import { SupportContactButton } from '@/components/taskhub/support-contact';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
-import { createDiditKycSession } from '@/lib/api/kyc';
-import { useKycStatus, useVerificationStatus } from '@/lib/api/queries';
+import { createDiditKycSession, getKycStatus, type KycStatusResponse } from '@/lib/api/kyc';
+import { queryKeys, useKycStatus, useVerificationStatus } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth/auth-context';
+import { pollVerificationResult, VERIFICATION_CHECKING_MESSAGE, VERIFICATION_PROCESSING_MESSAGE } from '@/lib/verification-result';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -36,80 +37,115 @@ const COLORS = {
   placeholder: '#a0a0ba',
 };
 
-/**
- * Identity verification via Didit's hosted flow.
- *
- * "Start verification" asks the backend for a Didit session and opens the
- * returned URL in an in-app browser, where Didit does the ID + selfie capture.
- * The decision reaches the backend via webhook, so the screen refreshes status
- * when the browser closes (approval can lag the webhook by a moment — the
- * Refresh button covers that). No NIN is ever collected in our own UI, and no
- * vendor SDK is needed. See `lib/api/kyc.ts`.
- */
+/** Hosted capture submits identity; only the authenticated backend decides KYC. */
 export default function NinVerificationScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { accountType } = useAuth();
-
-  // Account flag — provider-agnostic, the real answer to "am I verified?".
+  const { accountType, refreshProfile } = useAuth();
+  const queryClient = useQueryClient();
   const accountQ = useVerificationStatus();
-  // Didit record detail — rejection reasons and masked NIN, when present.
-  const recordQ = useKycStatus(isDuplicateIdentity(accountQ.data?.data) || accountQ.data?.data.isFraudFlagged === true);
+  const recordQ = useKycStatus();
   const refetchAccount = accountQ.refetch;
   const refetchRecord = recordQ.refetch;
+  const mountedRef = useRef(false);
+  const pollCleanupRef = useRef<(() => void) | null>(null);
+  const browserPendingRef = useRef(false);
+  const browserBackgroundedRef = useRef(false);
+  const [browserOpen, setBrowserOpen] = useState(false);
+  const [resultPhase, setResultPhase] = useState<'idle' | 'checking' | 'processing'>('idle');
 
   const record = recordQ.data?.data;
-  const decision = isDuplicateIdentity(accountQ.data?.data) || accountQ.data?.data.isFraudFlagged ? accountQ.data?.data : record;
+  const decision = record;
   const duplicate = isDuplicateIdentity(decision) || decision?.isFraudFlagged === true;
   const retryBlocked = verificationRetryBlocked(decision);
-  const isVerified = !duplicate && (accountQ.data?.data.isVerified === true || record?.status === 'approved');
+  // The provider record is authoritative; a stale account flag cannot override it.
+  const isVerified = !duplicate && record?.status === 'approved' && record.isVerified === true;
   const rejectionReasons = record?.rejectionReasons ?? [];
   const isRejected = record?.status === 'rejected';
   const isPending = !duplicate && record?.status === 'under_review';
-  const isResumable = record?.status === 'in_progress' || record?.status === 'not_started';
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      browserPendingRef.current = false;
+      pollCleanupRef.current?.();
+    };
+  }, []);
+
+  const checkResult = useCallback(() => {
+    if (!mountedRef.current) return;
+    pollCleanupRef.current?.();
+    setBrowserOpen(false);
+    setResultPhase('checking');
+    pollCleanupRef.current = pollVerificationResult({
+      fetchStatus: async (signal) => (await getKycStatus(signal)).data,
+      onStatus: (status) => {
+        queryClient.setQueryData<KycStatusResponse>(queryKeys.kycStatus(), (old) => ({ ...old, success: true, data: status }));
+      },
+      onSettled: (status) => {
+        if (!mountedRef.current) return;
+        setResultPhase(status ? 'idle' : 'processing');
+        if (status?.status === 'approved' && status.isVerified) void refreshProfile().catch(() => {});
+      },
+    });
+  }, [queryClient, refreshProfile]);
 
   const refresh = () => {
-    void refetchAccount();
-    void refetchRecord();
+    if (resultPhase !== 'idle') checkResult();
+    else { void refetchRecord(); void refetchAccount(); }
   };
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        void refetchAccount();
+      if (state !== 'active') {
+        if (browserPendingRef.current) browserBackgroundedRef.current = true;
+      } else if (browserPendingRef.current && browserBackgroundedRef.current) {
+        // Android's browser promise resolves on OPEN, so wait for app return.
+        browserPendingRef.current = false;
+        checkResult();
+      } else if (!browserPendingRef.current) {
         void refetchRecord();
+        void refetchAccount();
       }
     });
     return () => subscription.remove();
-  }, [refetchAccount, refetchRecord]);
+  }, [checkResult, refetchAccount, refetchRecord]);
 
-  // The backend only issues sessions to taskers (identity verification is a
-  // tasker requirement), so the start button is tasker-only too.
-  const canStart = accountType === 'tasker' && !isVerified && !isPending
-    && !retryBlocked && !accountQ.isLoading && !recordQ.isLoading && !accountQ.isError && !recordQ.isError;
+  const canStart = accountType === 'tasker' && !isVerified && !retryBlocked
+    && resultPhase === 'idle' && !browserOpen && !recordQ.isLoading && !recordQ.isError;
 
   const startMutation = useMutation({
     mutationFn: async () => {
-      const latest = await refetchAccount();
+      const latest = await refetchRecord();
       if (latest.error) throw latest.error;
-      if (verificationRetryBlocked(latest.data?.data)) throw new Error(verificationMessage(latest.data?.data));
+      if (!latest.data) throw new Error('Could not check verification status. Please try again.');
+      if (verificationRetryBlocked(latest.data.data)) throw new Error(verificationMessage(latest.data.data));
       return createDiditKycSession();
     },
     onSuccess: async (res) => {
+      if (!mountedRef.current) return;
       if (!res.data.url) {
         Alert.alert('Verification is preparing', 'Please try again shortly.');
         return;
       }
-      // Didit's hosted flow does the ID + selfie capture in the browser; the
-      // decision reaches the backend via webhook, so refresh when they return.
-      await WebBrowser.openBrowserAsync(res.data.url);
-      refresh();
+      browserPendingRef.current = true;
+      browserBackgroundedRef.current = false;
+      setBrowserOpen(true);
+      try {
+        const result = await WebBrowser.openBrowserAsync(res.data.url);
+        if (mountedRef.current && result.type !== 'opened' && browserPendingRef.current) {
+          browserPendingRef.current = false;
+          checkResult();
+        }
+      } catch (error) {
+        browserPendingRef.current = false;
+        if (mountedRef.current) setBrowserOpen(false);
+        throw error;
+      }
     },
     onError: (err) =>
-      Alert.alert(
-        'Could not start verification',
-        err instanceof Error ? err.message : 'Please try again later.',
-      ),
+      Alert.alert('Could not start verification', err instanceof Error ? err.message : 'Please try again later.'),
   });
 
   return (
@@ -121,18 +157,26 @@ export default function NinVerificationScreen() {
         style={styles.flex}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 20 }]}
         showsVerticalScrollIndicator={false}>
-        {duplicate ? (
+        {resultPhase !== 'idle' ? (
+          <View style={styles.formContainer}>
+            {resultPhase === 'checking' && <ActivityIndicator color={COLORS.brand} />}
+            <Text accessibilityLiveRegion="polite" style={styles.instructions}>
+              {resultPhase === 'checking' ? VERIFICATION_CHECKING_MESSAGE : VERIFICATION_PROCESSING_MESSAGE}
+            </Text>
+            {resultPhase === 'processing' && <Pressable style={styles.btnSecondary} onPress={refresh}><Text style={styles.btnSecondaryText}>Refresh status</Text></Pressable>}
+          </View>
+        ) : duplicate ? (
           <View style={styles.formContainer}>
             <Text accessibilityRole="alert" style={styles.errorText}>{verificationMessage(decision)}</Text>
             <SupportContactButton issue={{ action: 'verification', explanation: verificationMessage(decision) }} />
             {canStart && <Pressable style={styles.btn} disabled={startMutation.isPending} onPress={() => startMutation.mutate()}><Text style={styles.btnText}>Try again</Text></Pressable>}
             <Pressable style={styles.btnSecondary} onPress={refresh}><Text style={styles.btnSecondaryText}>Refresh status</Text></Pressable>
           </View>
-        ) : accountQ.isLoading || recordQ.isLoading ? (
+        ) : recordQ.isLoading ? (
           <View style={styles.successContainer}>
             <ActivityIndicator color={COLORS.brand} />
           </View>
-        ) : accountQ.isError || recordQ.isError ? (
+        ) : recordQ.isError ? (
           <View style={styles.formContainer}>
             <Text style={styles.instructions}>Could not check your verification status. Please try again.</Text>
             <Pressable style={styles.btn} onPress={refresh}><Text style={styles.btnText}>Retry status check</Text></Pressable>
@@ -163,9 +207,10 @@ export default function NinVerificationScreen() {
                   isRejected && { color: COLORS.error },
                   isPending && { color: COLORS.warning },
                 ]}>
-                {isRejected ? 'Rejected' : isPending ? 'In review' : 'Not verified'}
+                {isRejected ? 'Rejected' : isPending ? 'Your verification is under review' : record?.status === 'in_progress' || record?.status === 'pending' ? 'Processing' : 'Not verified'}
               </Text>
 
+              {isRejected && <Text accessibilityRole="alert" style={styles.errorText}>{verificationMessage(decision)}</Text>}
               {isRejected && rejectionReasons.length > 0 ? (
                 <View style={styles.reasonList}>
                   {rejectionReasons.map((reason) => (
@@ -183,6 +228,7 @@ export default function NinVerificationScreen() {
                 : 'Identity verification is a secure ID and selfie capture handled by our verification partner. It opens in your browser and takes about two minutes.'}
             </Text>
 
+            {isRejected && <SupportContactButton issue={{ action: 'verification', explanation: verificationMessage(decision) }} />}
             {canStart ? (
               <Pressable
                 style={({ pressed }) => [
@@ -196,7 +242,7 @@ export default function NinVerificationScreen() {
                   <ActivityIndicator color="#ffffff" size="small" />
                 ) : (
                   <Text style={styles.btnText}>
-                    {isRejected ? 'Try again' : isResumable ? 'Complete Profile' : 'Start verification'}
+                    {isRejected ? 'Try again' : 'Start verification'}
                   </Text>
                 )}
               </Pressable>

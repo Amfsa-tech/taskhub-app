@@ -150,7 +150,7 @@ export function updateUserLocation(payload: UpdateUserLocationPayload) {
 /** Whether the account has completed KYC. One flag covers face + NIN. */
 export async function getVerificationStatus(signal?: AbortSignal) {
   const response = await api.get<VerificationStatusResponse>(`${BASE}/verification-status`, { signal });
-  return { ...response, data: { ...response.data, isVerified: !isDuplicateIdentity(response.data) && !response.data.isFraudFlagged && response.data.isVerified } };
+  return { ...response, data: { ...response.data, isVerified: !isDuplicateIdentity(response.data) && !response.data.isFraudFlagged && (!response.data.verificationStatus || response.data.verificationStatus === 'approved') && response.data.isVerified } };
 }
 
 /* ------------------------------------------------------------------ *

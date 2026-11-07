@@ -1,4 +1,4 @@
-import type { VerificationDecision } from '@/lib/verification-status';
+import { isDuplicateIdentity, type VerificationDecision } from '@/lib/verification-status';
 // Identity verification (KYC).
 //
 // The live path is **Didit's hosted flow**: `createDiditKycSession` asks the
@@ -77,7 +77,7 @@ export function createDiditKycSession() {
   );
 }
 
-export type KycRecordStatus = 'not_started' | 'in_progress' | 'under_review' | 'approved' | 'rejected';
+export type KycRecordStatus = 'not_started' | 'in_progress' | 'pending' | 'under_review' | 'approved' | 'rejected';
 
 /**
  * Latest KYC decision across verification providers. Keep duplicate/fraud flags
@@ -97,6 +97,11 @@ export interface KycStatusResponse {
   } & VerificationDecision;
 }
 
-export function getKycStatus(signal?: AbortSignal) {
-  return api.get<KycStatusResponse>('/api/v1/kyc/verification-status', { signal });
+export async function getKycStatus(signal?: AbortSignal) {
+  const response = await api.get<KycStatusResponse>('/api/v1/kyc/verification-status', { signal, timeoutMs: 12000 });
+  const data = response.data;
+  if (!data || !['not_started', 'pending', 'in_progress', 'under_review', 'approved', 'rejected'].includes(data.status)) {
+    throw new Error('Identity verification status is unavailable');
+  }
+  return { ...response, data: { ...data, isVerified: data.status === 'approved' && data.isVerified === true && !isDuplicateIdentity(data) && !data.isFraudFlagged } };
 }

@@ -1,6 +1,5 @@
 // React Query hooks + query keys for the TaskHub API.
 
-import { verificationPollInterval } from '@/lib/verification-status';
 import { useInfiniteQuery, useQueries, useQuery } from '@tanstack/react-query';
 
 import { getCategories } from './categories';
@@ -11,6 +10,7 @@ import { getSavedTaskers } from './saved-taskers';
 import { getKycStatus } from './kyc';
 import { getUniversities } from './universities';
 import { getVerificationStatus } from '@/lib/auth/auth-api';
+import { useAuth } from '@/lib/auth/auth-context';
 import {
   getBanks,
   getTaskerBalance,
@@ -238,10 +238,14 @@ export function useUniversities() {
 
 /** KYC state for the signed-in account (one flag covers face + NIN). */
 export function useVerificationStatus() {
+  const { accountType } = useAuth();
   return useQuery({
-    queryKey: queryKeys.verificationStatus(),
-    queryFn: ({ signal }) => getVerificationStatus(signal),
+    // Tasker feature gates share the authoritative KYC cache with the result screen.
+    queryKey: accountType === 'tasker' ? queryKeys.kycStatus() : queryKeys.verificationStatus(),
+    queryFn: async ({ signal }) => accountType === 'tasker' ? getKycStatus(signal) : getVerificationStatus(signal),
+    enabled: !!accountType,
     staleTime: 60 * 1000,
+    retry: false,
   });
 }
 
@@ -250,11 +254,13 @@ export function useVerificationStatus() {
  * Pair the provider record with
  * `useVerificationStatus`, which reads the account flag.
  */
-export function useKycStatus(stopPolling = false) {
+export function useKycStatus() {
   return useQuery({
     queryKey: queryKeys.kycStatus(),
     queryFn: ({ signal }) => getKycStatus(signal),
-    refetchInterval: (query) => stopPolling ? false : verificationPollInterval(query.state.data?.data),
+    // The capture screen owns the bounded post-submission result check.
+    refetchInterval: false,
+    retry: false,
     staleTime: 30 * 1000,
   });
 }
