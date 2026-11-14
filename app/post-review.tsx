@@ -33,6 +33,7 @@ export default function PostReviewScreen() {
     { label: 'Service', value: serviceValue },
     { label: 'Title', value: draft.title.trim() || '—' },
     { label: 'Budget', value: budgetNum > 0 ? formatNaira(budgetNum) : '—', emphasized: true },
+    { label: 'Bidding', value: draft.isBiddingEnabled ? 'Enabled' : 'Disabled' },
     { label: 'Bidding deadline', value: draft.biddingDeadline || 'No deadline' },
     { label: 'Location', value: [draft.location, draft.locationCity, draft.locationState].filter(Boolean).join(', ') || 'Remote' },
     ...(draft.university ? [{ label: 'University', value: draft.university.name }] : []),
@@ -50,6 +51,8 @@ export default function PostReviewScreen() {
           mainCategory: draft.mainCategory!._id,
           categories: draft.subCategories.map((s) => s._id),
           budget: budgetNum,
+          isBiddingEnabled: draft.isBiddingEnabled,
+          tags: draft.tags,
           ...(draft.biddingDeadline ? { deadline: draft.biddingDeadline } : {}),
           ...(draft.location.trim() && draft.locationCity.trim() && draft.locationState.trim()
             ? { location: { address: draft.location.trim(), city: draft.locationCity.trim(), state: draft.locationState.trim() } }
@@ -75,12 +78,12 @@ export default function PostReviewScreen() {
       Alert.alert('Missing details', 'Please choose a category and at least one service.');
       return;
     }
-    if (!draft.title.trim() || !draft.description.trim()) {
+    if (draft.title.trim().length < 5 || draft.description.trim().length < 20) {
       Alert.alert('Missing details', 'Please add a title and description.');
       return;
     }
-    if (!(budgetNum > 0)) {
-      Alert.alert('Invalid budget', 'Please enter a valid budget amount.');
+    if (!Number.isFinite(budgetNum) || budgetNum < 1000) {
+      Alert.alert('Invalid budget', 'Minimum budget is ₦1,000.');
       return;
     }
     if (!/digital|remote/i.test(draft.mainCategory?.name ?? '') &&

@@ -21,6 +21,7 @@ import { SupportContactButton } from '@/components/taskhub/support-contact';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
 import { createDiditKycSession, getKycStatus, type KycStatusResponse } from '@/lib/api/kyc';
 import { queryKeys, useKycStatus, useVerificationStatus } from '@/lib/api/queries';
+import { continueOnWebsite } from '@/lib/mobile-web-handoff';
 import { useAuth } from '@/lib/auth/auth-context';
 import { pollVerificationResult, VERIFICATION_CHECKING_MESSAGE, VERIFICATION_PROCESSING_MESSAGE } from '@/lib/verification-result';
 
@@ -115,6 +116,11 @@ export default function NinVerificationScreen() {
   const canStart = accountType === 'tasker' && !isVerified && !retryBlocked
     && resultPhase === 'idle' && !browserOpen && !recordQ.isLoading && !recordQ.isError;
 
+  const webFallback = useMutation({
+    mutationFn: () => continueOnWebsite({ action: 'identity-verification' }),
+    onError: (error) => Alert.alert('Could not open TaskHub', error instanceof Error ? error.message : 'Please try again.'),
+  });
+
   const startMutation = useMutation({
     mutationFn: async () => {
       const latest = await refetchRecord();
@@ -126,14 +132,14 @@ export default function NinVerificationScreen() {
     onSuccess: async (res) => {
       if (!mountedRef.current) return;
       if (!res.data.url) {
-        Alert.alert('Verification is preparing', 'Please try again shortly.');
-        return;
+        throw new Error('Verification is preparing. Please try again shortly.');
       }
       browserPendingRef.current = true;
       browserBackgroundedRef.current = false;
       setBrowserOpen(true);
       try {
         const result = await WebBrowser.openBrowserAsync(res.data.url);
+        if (result.type === 'locked') throw new Error('The verification browser could not open.');
         if (mountedRef.current && result.type !== 'opened' && browserPendingRef.current) {
           browserPendingRef.current = false;
           checkResult();
@@ -144,8 +150,13 @@ export default function NinVerificationScreen() {
         throw error;
       }
     },
-    onError: (err) =>
-      Alert.alert('Could not start verification', err instanceof Error ? err.message : 'Please try again later.'),
+    onError: (err) => {
+      if (!mountedRef.current || verificationRetryBlocked(recordQ.data?.data)) return;
+      Alert.alert('Could not start verification', err instanceof Error ? err.message : 'Please try again later.', [
+        { text: 'Close', style: 'cancel' },
+        { text: 'Continue on the website', onPress: () => webFallback.mutate() },
+      ]);
+    },
   });
 
   return (
@@ -236,7 +247,7 @@ export default function NinVerificationScreen() {
                   startMutation.isPending && styles.btnDisabled,
                   pressed && styles.btnPressed,
                 ]}
-                disabled={startMutation.isPending}
+                disabled={startMutation.isPending || webFallback.isPending}
                 onPress={() => startMutation.mutate()}>
                 {startMutation.isPending ? (
                   <ActivityIndicator color="#ffffff" size="small" />
@@ -247,6 +258,13 @@ export default function NinVerificationScreen() {
                 )}
               </Pressable>
             ) : null}
+
+            {canStart && (
+              <Pressable accessibilityRole="button" style={styles.btnSecondary}
+                disabled={webFallback.isPending || startMutation.isPending} onPress={() => webFallback.mutate()}>
+                <Text style={styles.btnSecondaryText}>{webFallback.isPending ? 'Opening website…' : 'Continue on the website'}</Text>
+              </Pressable>
+            )}
 
             <Pressable
               style={({ pressed }) => [

@@ -45,6 +45,7 @@ test('mobile duplicate state replaces loading and blocks both existing and newly
     '@tanstack/react-query':{useQueryClient:()=>({setQueryData(){}}),useMutation:options=>({isPending:false,mutate:async()=>{try{const result=await options.mutationFn();await options.onSuccess(result)}catch(error){options.onError(error)}}})},
     '@/components/taskhub/screen-header':{ScreenHeader:()=>null},'@/components/taskhub/support-contact':{SupportContactButton:()=>React.createElement('Text',{},'Contact Support')},
     '@/lib/api/queries':{useVerificationStatus:()=>account,useKycStatus:()=>record},
+    '@/lib/mobile-web-handoff':{continueOnWebsite:async()=>{}},
     '@/lib/auth/auth-context':{useAuth:()=>({accountType:'tasker',refreshProfile:async()=>{}})},
     '@/lib/api/kyc':{getKycStatus:async()=>({data:{status:'under_review',isVerified:false}}),createDiditKycSession:async()=>{creates++;return{data:{url:'https://verification.example.invalid/session'}}}},
   };

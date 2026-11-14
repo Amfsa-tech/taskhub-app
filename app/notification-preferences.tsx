@@ -11,8 +11,8 @@ import {
 } from '@/lib/api/notifications';
 
 const COLORS = { canvas: '#f9f9fb', surface: '#ffffff', brand: '#6c3bff', text: '#111122', secondary: '#5a5a70', border: '#e0e0ea' };
-const LABELS: Record<keyof NotificationPreferences, { title: string; description: string }> = {
-  emailNotifications: { title: 'Email notifications', description: 'Receive important updates by email.' },
+type VisiblePreference = Exclude<keyof NotificationPreferences, 'emailNotifications'>;
+const LABELS: Record<VisiblePreference, { title: string; description: string }> = {
   pushNotifications: { title: 'Push notifications', description: 'Receive alerts on this device.' },
   taskUpdates: { title: 'Task updates', description: 'Status and completion changes.' },
   messages: { title: 'Messages', description: 'New chat message alerts.' },
@@ -41,7 +41,7 @@ export default function NotificationPreferencesScreen() {
           <Text style={styles.state}>Could not load notification preferences. Pull back and try again.</Text>
         ) : (
           <View style={styles.card}>
-            {(Object.keys(LABELS) as (keyof NotificationPreferences)[]).map((key, index) => (
+            {(Object.keys(LABELS) as VisiblePreference[]).map((key, index) => (
               <View key={key} style={[styles.row, index > 0 && styles.divider]}>
                 <View style={styles.copy}>
                   <Text style={styles.title}>{LABELS[key].title}</Text>

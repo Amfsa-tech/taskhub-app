@@ -29,7 +29,7 @@ import Star from '@/assets/icons/star.svg';
 import VerificationRing from '@/assets/icons/verification-ring.svg';
 import Wallet from '@/assets/icons/wallet.svg';
 
-import { ActiveTasks } from '@/components/taskhub/active-tasks';
+import { RecentTasks } from '@/components/taskhub/recent-tasks';
 import { useNewPost } from '@/hooks/use-new-post';
 import {
   queryKeys,
@@ -97,6 +97,7 @@ type TaskerVM = {
   rating: string;
   jobs: string;
   specialty: string;
+  isVerified: boolean;
 };
 
 /** `Chioma A.` from a populated tasker ref. */
@@ -115,6 +116,7 @@ function taskerToVM(t: TaskerMatch): TaskerVM {
     initials: (name.match(/\b\w/g)?.slice(0, 2).join('') || '?').toUpperCase(),
     rating: t.averageRating != null && t.averageRating > 0 ? t.averageRating.toFixed(1) : 'New',
     jobs: `${t.completedJobs ?? 0} ${t.completedJobs === 1 ? 'Job' : 'Jobs'}`,
+    isVerified: t.isVerified === true,
     specialty: t.primaryCategory || t.area || t.residentState || 'Available',
   };
 }
@@ -146,6 +148,9 @@ function TaskerCard({ tasker, onPress }: { tasker: TaskerVM; onPress: () => void
         <Text style={styles.taskerSpecialty} numberOfLines={1}>
           {tasker.specialty}
         </Text>
+        <Text style={[styles.taskerVerification, tasker.isVerified && styles.taskerVerified]}>
+          {tasker.isVerified ? '✓ Verified' : 'Unverified'}
+        </Text>
       </View>
     </Pressable>
   );
@@ -168,7 +173,7 @@ export default function HomeScreen() {
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
 
-  // `ActiveTasks` owns its own `useUserTasks` query, so refresh by key rather
+  // `RecentTasks` owns its own `useUserTasks` query, so refresh by key rather
   // than by handle — that covers the active-tasks list and the bell badge.
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -339,8 +344,8 @@ export default function HomeScreen() {
             )}
           </View>
 
-          {/* Your Active Tasks */}
-          <ActiveTasks
+          {/* Recent Tasks */}
+          <RecentTasks
             onTaskPress={(taskId) => router.push({ pathname: '/task-details', params: { id: taskId } })}
           />
         </ScrollView>
@@ -604,6 +609,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     width: '100%',
   },
+  taskerVerification: { alignSelf: 'flex-start', fontSize: 11, color: '#854d0e', backgroundColor: '#fff7e6',
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 12 },
+  taskerVerified: { color: '#047857', backgroundColor: '#ecfdf5' },
   ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',

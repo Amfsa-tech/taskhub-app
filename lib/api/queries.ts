@@ -154,11 +154,11 @@ export function useTasker(id?: string) {
 }
 
 /** Reviews clients left about a tasker. */
-export function useTaskerReviews(id?: string) {
+export function useTaskerReviews(id?: string, page = 1, enabled = true) {
   return useQuery({
-    queryKey: queryKeys.taskerReviews(id ?? ''),
-    queryFn: ({ signal }) => getTaskerReviews(id as string, signal),
-    enabled: Boolean(id),
+    queryKey: [...queryKeys.taskerReviews(id ?? ''), page],
+    queryFn: ({ signal }) => getTaskerReviews(id as string, page, signal),
+    enabled: Boolean(id) && enabled,
   });
 }
 
@@ -171,7 +171,7 @@ export function useNearbyTaskers(coords?: { latitude: number; longitude: number 
   });
 }
 
-export function useTaskerDirectory(filters: { search: string; category: string; sort: string }) {
+export function useTaskerDirectory(filters: { search: string; category: string; university: string; minRating: number; sort: string }) {
   return useInfiniteQuery({
     queryKey: ['tasker-directory', filters],
     queryFn: ({ pageParam, signal }) => getTaskerDirectory({ ...filters, page: pageParam }, signal),

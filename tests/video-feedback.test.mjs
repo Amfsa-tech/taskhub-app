@@ -51,13 +51,14 @@ function harness() {
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
     '@tanstack/react-query': { useQueryClient: () => queryClient },
     '@react-native-async-storage/async-storage': { __esModule: true, default: { getItem: async key => storage.get(key) ?? null, removeItem: async key => storage.delete(key) } },
+    '@/lib/mobile-web-handoff':{continueOnWebsite:async()=>{}},
     '@/lib/auth/auth-context': { useAuth: () => auth },
     '@/lib/api/queries': { useNotifications: () => ({}), useNearbyTaskers: () => ({}), useCategories: () => categoriesQuery,
       useWalletBalance: () => balanceQuery, useWalletTransactions: () => balanceQuery, useTaskerBalance: () => balanceQuery, useTaskerTransactions: () => balanceQuery },
     '@/lib/api/tasks': { formatNaira: value => `N${value}`, formatShortDate: () => '', formatRelativeTime: () => '', locationLabel: () => '' },
     '@/lib/api/wallet': { verifyFunding: async () => ({ data: { transactionStatus: 'failed' } }) },
     '@/lib/config': { STELLAR_WALLET_ENABLED: false },
-    '@/components/taskhub/active-tasks': { ActiveTasks: () => null },
+    '@/components/taskhub/recent-tasks': { RecentTasks: () => null },
     '@/components/taskhub/screen-header': { ScreenHeader: props => React.createElement('ScreenHeader', props) },
     '@/components/taskhub/fund-wallet-modal': { FundWalletModal: () => null },
   };
@@ -85,7 +86,7 @@ test('support chooser routes Chat with Us to WhatsApp and Call Us to the dialer,
   await act(async () => trigger().props.onPress());
   await act(async () => options()[1].props.onPress());
   assert.equal(modal().props.visible, false);
-  assert.deepEqual(h.links.slice(0, 2).map(url => new URL(url).pathname), ['/2349124638396', '/2349124638396']);
+  assert.deepEqual(h.links.slice(0, 2).map(url => new URL(url).pathname), ['/2347031332517', '/2347031332517']);
   assert.doesNotMatch(renderer.root.findAllByType('Text').map(node => node.props.children).join(' '), /—/);
   assert.equal(h.links[2], 'tel:+2349135308859');
   for (const url of h.links.slice(0, 2)) {
@@ -147,7 +148,7 @@ test('failed wallet payment offers the same support chooser with the original re
   await act(async () => alert[2].find(button => button.text === 'Contact Support').onPress());
   assert.equal(renderer.root.findByType('Modal').props.visible, true);
   await act(async () => renderer.root.findAllByProps({ accessibilityRole: 'link' })[0].props.onPress());
-  assert.equal(new URL(h.links[0]).pathname, '/2349124638396');
+  assert.equal(new URL(h.links[0]).pathname, '/2347031332517');
   assert.match(new URL(h.links[0]).searchParams.get('text'), /test-funding-reference/);
   await act(async () => renderer.unmount());
 });
@@ -157,14 +158,14 @@ test('all app support links obey the designated chat and call numbers', () => {
   const h = harness();
   const { SUPPORT_PHONE_NUMBERS, getSupportContactUrl } = h.load('lib/support-contact.ts');
   assert.equal(SUPPORT_PHONE_NUMBERS[0].actionLabel, 'Chat with Us');
-  assert.equal(getSupportContactUrl(SUPPORT_PHONE_NUMBERS[0]).split('?')[0], 'https://wa.me/2349124638396');
+  assert.equal(getSupportContactUrl(SUPPORT_PHONE_NUMBERS[0]).split('?')[0], 'https://wa.me/2347031332517');
   assert.equal(SUPPORT_PHONE_NUMBERS[1].actionLabel, 'Call Us');
   assert.equal(getSupportContactUrl(SUPPORT_PHONE_NUMBERS[1], 'Payment issue'), 'tel:+2349135308859');
   function check(directory) {
     for (const item of readdirSync(directory, { withFileTypes: true })) {
       const file = path.join(directory, item.name);
       if (item.isDirectory()) check(file);
-      else if (/\.tsx?$/.test(file)) assert.doesNotMatch(readFileSync(file, 'utf8'), /tel:\+?2349124638396|wa\.me\/2349135308859/, file);
+      else if (/\.tsx?$/.test(file)) assert.doesNotMatch(readFileSync(file, 'utf8'), /tel:\+?2347031332517|wa\.me\/2349135308859/, file);
     }
   }
   for (const directory of ['app', 'components', 'lib']) check(path.join(root, directory));

@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -5,7 +6,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
+  Switch,
   StyleSheet,
   Text,
   TextInput,
@@ -13,8 +14,7 @@ import {
 } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useEffect } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 import { PrimaryButton } from '@/components/taskhub/primary-button';
@@ -42,25 +42,41 @@ export default function PostDetailsScreen() {
   const { user } = useAuth();
   const isRemoteTask = /digital|remote/i.test(draft.mainCategory?.name ?? '');
 
+  const [addressPrefilled, setAddressPrefilled] = useState(false);
   useEffect(() => {
-    if (draft.location || !user) return;
+    if (addressPrefilled || !user) return;
+    setAddressPrefilled(true);
+    if (draft.location || draft.locationCity || draft.locationState) return;
     patch({
       location: typeof user.address === 'string' ? user.address : '',
       locationCity: typeof user.city === 'string' ? user.city : '',
       locationState: typeof user.residentState === 'string' ? user.residentState : '',
     });
-  }, [draft.location, patch, user]);
+  }, [addressPrefilled, draft.location, draft.locationCity, draft.locationState, patch, user]);
+  const [showImages, setShowImages] = useState(draft.images.length > 0);
+  const [tagInput, setTagInput] = useState('');
+  const budget = Number(draft.budget);
+  const validBudget = Number.isFinite(budget) && budget >= 1000;
+  const isCampus = Boolean(draft.mainCategory && isCampusCategory(draft.mainCategory));
+  const suggestedBudget = isCampus ? "₦4,000" : "₦15,000";
   const suggestedTitle =
     draft.subCategories.map((service) => service.displayName).join(' and ') ||
     draft.mainCategory?.displayName ||
     'Describe the task';
 
   const canContinue =
-    draft.title.trim().length > 0 &&
-    draft.description.trim().length > 0 &&
-    draft.budget.trim().length > 0 &&
+    draft.title.trim().length >= 5 &&
+    draft.description.trim().length >= 20 &&
+    validBudget &&
     (isRemoteTask || (Boolean(draft.location.trim()) && Boolean(draft.locationCity.trim()) && Boolean(draft.locationState.trim()))) &&
-    (!draft.mainCategory || !isCampusCategory(draft.mainCategory) || draft.university !== null);
+    (!isCampus || draft.university !== null);
+
+  const addTag = () => {
+    const tag = tagInput.trim();
+    if (!tag || draft.tags.includes(tag)) return;
+    patch({ tags: [...draft.tags, tag] });
+    setTagInput('');
+  };
 
   const addPhotos = async () => {
     const remaining = 5 - draft.images.length;
@@ -93,17 +109,22 @@ export default function PostDetailsScreen() {
             <View style={styles.field}>
               <Text style={styles.label}>Title</Text>
               <TextInput
+                accessibilityLabel="Title"
                 style={styles.input}
                 placeholder={suggestedTitle}
                 placeholderTextColor={COLORS.placeholder}
                 value={draft.title}
                 onChangeText={(title) => patch({ title })}
               />
+              {draft.title.length > 0 && draft.title.trim().length < 5 && (
+                <Text style={styles.error}>Title must be at least 5 characters long.</Text>
+              )}
             </View>
 
             <View style={styles.field}>
               <Text style={styles.label}>Description</Text>
               <TextInput
+                accessibilityLabel="Description"
                 style={[styles.input, styles.inputMultiline]}
                 placeholder="Describe what you need..."
                 placeholderTextColor={COLORS.placeholder}
@@ -111,57 +132,40 @@ export default function PostDetailsScreen() {
                 onChangeText={(description) => patch({ description })}
                 multiline
               />
+              {draft.description.length > 0 && draft.description.trim().length < 20 && (
+                <Text style={styles.error}>Description must be at least 20 characters long.</Text>
+              )}
             </View>
-
-            <View style={styles.field}>
-              <Text style={styles.label}>Task address</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Street, area or landmark"
-                placeholderTextColor={COLORS.placeholder}
-                value={draft.location}
-                onChangeText={(location) => patch({ location })}
-              />
-              <TextInput style={styles.input} placeholder="City" placeholderTextColor={COLORS.placeholder}
-                value={draft.locationCity} onChangeText={(locationCity) => patch({ locationCity })} />
-              <TextInput style={styles.input} placeholder="State" placeholderTextColor={COLORS.placeholder}
-                value={draft.locationState} onChangeText={(locationState) => patch({ locationState })} />
-              {!isRemoteTask && (!draft.location.trim() || !draft.locationCity.trim() || !draft.locationState.trim()) ? <Text style={styles.helper}>Enter the address, city and state for this task.</Text> : null}
-            </View>
-
-            {draft.mainCategory && isCampusCategory(draft.mainCategory) ? (
-              <View style={styles.field}>
-                <Text style={styles.label}>University</Text>
-                <Pressable
-                  style={styles.input}
-                  onPress={() =>
-                    router.push({ pathname: '/location-university', params: { forTask: 'true' } })
-                  }>
-                  <Text style={draft.university ? styles.inputValue : styles.inputPlaceholder}>
-                    {draft.university?.name ?? 'Select your university'}
-                  </Text>
-                </Pressable>
-              </View>
-            ) : null}
 
             <View style={styles.field}>
               <Text style={styles.label}>Set Budget</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="₦1,000"
-                placeholderTextColor={COLORS.placeholder}
-                value={draft.budget}
-                onChangeText={(budget) => patch({ budget })}
-                keyboardType="numeric"
-              />
+              <View style={styles.inputRow}>
+                <Text style={styles.inputValue}>₦</Text>
+                <TextInput
+                  accessibilityLabel="Set Budget"
+                  style={styles.inlineInput}
+                  placeholder="1,000"
+                  placeholderTextColor={COLORS.placeholder}
+                  value={draft.budget}
+                  onChangeText={(budget) => patch({ budget })}
+                  keyboardType="numeric"
+                />
+              </View>
+              {draft.budget !== '' && !validBudget ? (
+                <Text style={styles.error}>Minimum budget is ₦1,000</Text>
+              ) : (
+                <Text style={styles.helper}>Suggested budget {suggestedBudget}</Text>
+              )}
             </View>
 
             <View style={styles.field}>
               <Text style={styles.label}>Bidding deadline (optional)</Text>
-              <Pressable style={styles.input} onPress={() => setShowDeadlinePicker(true)}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Bidding deadline"
+                style={styles.inputRow} onPress={() => setShowDeadlinePicker(true)}>
                 <Text style={draft.biddingDeadline ? styles.inputValue : styles.inputPlaceholder}>
                   {draft.biddingDeadline || 'No deadline'}
                 </Text>
+                <Ionicons name="calendar-outline" size={18} color={COLORS.textSecondary} />
               </Pressable>
               {draft.biddingDeadline ? (
                 <Pressable accessibilityRole="button" accessibilityLabel="Remove bidding deadline" onPress={() => patch({ biddingDeadline: '' })} style={{ minHeight: 40, justifyContent: 'center' }}>
@@ -187,25 +191,107 @@ export default function PostDetailsScreen() {
             </View>
 
             <View style={styles.field}>
-              <Text style={styles.label}>Photos (optional)</Text>
-              <View style={styles.photoRow}>
-                {draft.images.map((img) => (
-                  <View key={img.uri} style={styles.thumb}>
-                    <Image source={{ uri: img.uri }} style={styles.thumbImage} contentFit="cover" />
-                    <Pressable
-                      style={styles.thumbRemove}
-                      hitSlop={6}
-                      onPress={() => removePhoto(img.uri)}>
-                      <Text style={styles.thumbRemoveText}>×</Text>
+              <Text style={styles.label}>Task address</Text>
+              <View style={styles.inputRow}>
+                <Ionicons name="location-outline" size={18} color={COLORS.textSecondary} />
+                <TextInput
+                  accessibilityLabel="Task address"
+                  style={styles.inlineInput}
+                  placeholder="Street, building, or landmark"
+                  placeholderTextColor={COLORS.placeholder}
+                  value={draft.location}
+                  onChangeText={(location) => patch({ location })}
+                />
+              </View>
+              <View style={styles.inlineRow}>
+                <View style={[styles.field, styles.flex]}>
+                  <Text style={styles.label}>City</Text>
+                  <TextInput accessibilityLabel="City" style={styles.input} placeholder="City" placeholderTextColor={COLORS.placeholder}
+                    value={draft.locationCity} onChangeText={(locationCity) => patch({ locationCity })} />
+                </View>
+                <View style={[styles.field, styles.flex]}>
+                  <Text style={styles.label}>State</Text>
+                  <TextInput accessibilityLabel="State" style={styles.input} placeholder="State" placeholderTextColor={COLORS.placeholder}
+                    value={draft.locationState} onChangeText={(locationState) => patch({ locationState })} />
+                </View>
+              </View>
+              {!isRemoteTask && (!draft.location.trim() || !draft.locationCity.trim() || !draft.locationState.trim()) ? <Text style={styles.helper}>Enter the address, city and state for this task.</Text> : null}
+            </View>
+
+            {isCampus ? (
+              <View style={styles.field}>
+                <Text style={styles.label}>University</Text>
+                <Pressable
+                  style={styles.inputRow} accessibilityRole="button"
+                  onPress={() =>
+                    router.push({ pathname: '/location-university', params: { forTask: 'true' } })
+                  }>
+                  <Text style={draft.university ? styles.inputValue : styles.inputPlaceholder}>
+                    {draft.university?.name ?? 'Select your university'}
+                  </Text>
+                  <Ionicons name="chevron-down" size={18} color={COLORS.textSecondary} />
+                </Pressable>
+              </View>
+            ) : null}
+
+            <View style={[styles.option, styles.optionCard]}>
+              <View style={styles.optionCopy}>
+                <Text style={styles.optionTitle}>Enable Bargain/Bidding</Text>
+                <Text style={styles.helper}>Allows Taskers to make custom budget bids.</Text>
+              </View>
+              <Switch accessibilityLabel="Enable Bargain/Bidding" value={draft.isBiddingEnabled}
+                onValueChange={(isBiddingEnabled) => patch({ isBiddingEnabled })} trackColor={{ true: '#ad97ff' }} />
+            </View>
+
+            <View style={styles.optionCard}>
+              <View style={styles.option}>
+                <Text style={styles.label}>Reference Images</Text>
+                <Switch accessibilityLabel="Reference Images" value={showImages} onValueChange={(enabled) => {
+                  setShowImages(enabled);
+                  if (!enabled) patch({ images: [] });
+                }} trackColor={{ true: '#ad97ff' }} />
+              </View>
+              {showImages && (
+                <>
+                  {draft.images.length < 5 && (
+                    <Pressable style={styles.addTile} accessibilityRole="button" onPress={addPhotos}>
+                      <Ionicons name="cloud-upload-outline" size={20} color={COLORS.textSecondary} />
+                      <Text style={styles.addLabel}>Upload Task Photos</Text>
                     </Pressable>
+                  )}
+                  <View style={styles.photoRow}>
+                    {draft.images.map((img, index) => (
+                      <View key={img.uri} style={styles.thumb}>
+                        <Image source={{ uri: img.uri }} style={styles.thumbImage} contentFit="cover" />
+                        <Pressable style={styles.thumbRemove} hitSlop={6} accessibilityRole="button"
+                          accessibilityLabel={`Remove photo ${index + 1}`} onPress={() => removePhoto(img.uri)}>
+                          <Text style={styles.thumbRemoveText}>×</Text>
+                        </Pressable>
+                      </View>
+                    ))}
                   </View>
-                ))}
-                {draft.images.length < 5 ? (
-                  <Pressable style={styles.addTile} onPress={addPhotos}>
-                    <Text style={styles.addPlus}>+</Text>
-                    <Text style={styles.addLabel}>Add</Text>
+                </>
+              )}
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>Tags (optional)</Text>
+              <View style={styles.inlineRow}>
+                <TextInput accessibilityLabel="Tag" style={[styles.input, styles.flex]} value={tagInput}
+                  placeholder="Enter a tag" placeholderTextColor={COLORS.placeholder}
+                  onChangeText={setTagInput} onSubmitEditing={addTag} returnKeyType="done" />
+                <Pressable accessibilityRole="button" onPress={addTag} style={styles.tagButton}>
+                  <Text style={styles.tagText}>Add</Text>
+                </Pressable>
+              </View>
+              <View style={styles.photoRow}>
+                {draft.tags.map((tag) => (
+                  <Pressable key={tag} accessibilityRole="button" accessibilityLabel={`Remove tag ${tag}`}
+                    onPress={() => patch({ tags: draft.tags.filter((item) => item !== tag) })} style={styles.tag}>
+                    <Text style={styles.tagText}>{tag}</Text>
+                    <Ionicons name="close" size={14} color={COLORS.brand} />
                   </Pressable>
-                ) : null}
+                ))}
               </View>
             </View>
           </View>
@@ -247,7 +333,7 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     letterSpacing: -0.26,
     color: COLORS.textPrimary,
-    width: '100%',
+    textAlign: 'center',
   },
   subtitle: {
     fontFamily: 'Geist_400Regular',
@@ -255,7 +341,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     letterSpacing: -0.24,
     color: COLORS.textSecondary,
-    width: '100%',
+    textAlign: 'center',
   },
   fields: {
     gap: 16,
@@ -264,10 +350,11 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   label: {
-    fontFamily: 'Geist_500Medium',
-    fontSize: 17,
-    letterSpacing: -0.41,
-    color: COLORS.textPrimary,
+    fontFamily: 'Geist_600SemiBold',
+    fontSize: 12,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    color: COLORS.textSecondary,
   },
   input: {
     minHeight: 48,
@@ -283,15 +370,21 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
   },
   inputMultiline: {
-    minHeight: 125,
+    minHeight: 100,
     textAlignVertical: 'top',
   },
-  useMap: {
-    fontFamily: 'Geist_500Medium',
-    fontSize: 15,
-    letterSpacing: -0.24,
-    color: COLORS.brand,
-  },
+  inputRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, minHeight: 48,
+    backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 12 },
+  inlineInput: { flex: 1, minHeight: 48, color: COLORS.textPrimary, fontSize: 15 },
+  inlineRow: { flexDirection: 'row', gap: 8 },
+  option: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  optionCard: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, padding: 12, gap: 8 },
+  optionCopy: { flex: 1, gap: 3 },
+  optionTitle: { fontFamily: 'Geist_600SemiBold', fontSize: 14, color: COLORS.textPrimary },
+  tagButton: { alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, paddingHorizontal: 16 },
+  tag: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#f3eeff', borderRadius: 6, padding: 6 },
+  tagText: { color: COLORS.brand, fontFamily: 'Geist_600SemiBold', fontSize: 13 },
+  error: { color: '#b01515', fontSize: 12 },
   photoRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -326,8 +419,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   addTile: {
-    width: 72,
-    height: 72,
+    minHeight: 64,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: COLORS.border,
@@ -337,12 +429,6 @@ const styles = StyleSheet.create({
     gap: 2,
     backgroundColor: COLORS.surface,
   },
-  addPlus: {
-    fontFamily: 'Geist_600SemiBold',
-    fontSize: 22,
-    lineHeight: 24,
-    color: COLORS.brand,
-  },
   addLabel: {
     fontFamily: 'Geist_500Medium',
     fontSize: 13,
@@ -350,8 +436,8 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   helper: {
-    fontFamily: 'Geist_500Medium',
-    fontSize: 15,
+    fontFamily: 'Geist_400Regular',
+    fontSize: 12,
     letterSpacing: -0.24,
     color: COLORS.textSecondary,
   },

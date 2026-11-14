@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { TaskCard } from '@/components/taskhub/task-card';
 import { useRouter } from 'expo-router';
 import { useUserTasks } from '@/lib/api/queries';
-import { isActiveTask, taskToCard } from '@/lib/api/tasks';
+import { taskToCard } from '@/lib/api/tasks';
 
 const COLORS = {
   textPrimary: '#111122',
@@ -12,16 +12,16 @@ const COLORS = {
   error: '#dc2626',
 };
 
-export function ActiveTasks({ onTaskPress }: { onTaskPress?: (taskId: string) => void }) {
+export function RecentTasks({ onTaskPress }: { onTaskPress?: (taskId: string) => void }) {
   const router = useRouter();
-  const { data, isLoading, isError, refetch, isRefetching } = useUserTasks();
+  const { data, isLoading, isError, refetch, isRefetching } = useUserTasks({ limit: 6 });
 
-  const activeTasks = (data?.tasks ?? []).filter(isActiveTask);
+  const recentTasks = data?.tasks ?? [];
 
   return (
     <View style={styles.section}>
       <View style={styles.header}>
-        <Text style={styles.sectionTitle}>Your Active Tasks</Text>
+        <Text style={styles.sectionTitle}>Recent Tasks</Text>
         <Pressable hitSlop={8} onPress={() => router.navigate('/(main)/tasks')}>
           <Text style={styles.viewAll}>View all</Text>
         </Pressable>
@@ -38,13 +38,13 @@ export function ActiveTasks({ onTaskPress }: { onTaskPress?: (taskId: string) =>
             <Text style={styles.retry}>{isRefetching ? 'Retrying…' : 'Retry'}</Text>
           </Pressable>
         </View>
-      ) : activeTasks.length === 0 ? (
+      ) : recentTasks.length === 0 ? (
         <View style={styles.state}>
-          <Text style={styles.emptyText}>No active tasks yet. Post one to get started.</Text>
+          <Text style={styles.emptyText}>No recent tasks yet. Post one to get started.</Text>
         </View>
       ) : (
         <View style={styles.list}>
-          {activeTasks.map((task) => (
+          {recentTasks.map((task) => (
             <TaskCard
               key={task._id}
               task={taskToCard(task)}

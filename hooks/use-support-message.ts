@@ -9,5 +9,5 @@ export function useSupportMessage(issue?: SupportIssue, topic?: string) {
   const snapshot = useSyncExternalStore(subscribeSupport, getSupportSnapshot, getServerSupportSnapshot);
   const currentScope = supportScope(user?._id, pathname);
   const explicitIssue = issue?.scope && issue.scope !== currentScope ? undefined : issue;
-  return buildSupportMessage(user, explicitIssue || currentSupportIssue(snapshot, currentScope), topic || supportTopic(pathname));
+  return buildSupportMessage(user, explicitIssue || (pathname === "/home" ? undefined : currentSupportIssue(snapshot, currentScope)), topic || supportTopic(pathname));
 }

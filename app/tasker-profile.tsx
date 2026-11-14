@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -50,37 +51,13 @@ function initialsOf(name: string): string {
 }
 
 /** ISO -> `2 days ago`. Empty when absent. */
-function relativeTime(iso?: string | null): string {
-  if (!iso) return '';
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return '';
-  const mins = Math.floor((Date.now() - then) / 60000);
-  if (mins < 1) return 'Just now';
-  if (mins < 60) return `${mins} ${mins === 1 ? 'minute' : 'minutes'} ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days} ${days === 1 ? 'day' : 'days'} ago`;
-  const weeks = Math.floor(days / 7);
-  if (weeks < 5) return `${weeks} ${weeks === 1 ? 'week' : 'weeks'} ago`;
-  const months = Math.floor(days / 30);
-  if (months < 12) return `${months} ${months === 1 ? 'month' : 'months'} ago`;
-  return `${Math.floor(days / 365)} year(s) ago`;
-}
-
 function StarRow({ rating }: { rating: number }) {
   return (
     <View style={styles.starRow}>
       {Array.from({ length: 5 }).map((_, i) => {
         const on = i < Math.round(rating);
         return (
-          <Star
-            key={i}
-            width={16}
-            height={16}
-            fill={on ? COLORS.star : COLORS.starEmpty}
-            color={on ? COLORS.star : COLORS.starEmpty}
-          />
+          <Ionicons key={i} name="star" size={12} color={on ? COLORS.star : COLORS.starEmpty} />
         );
       })}
     </View>
@@ -88,25 +65,28 @@ function StarRow({ rating }: { rating: number }) {
 }
 
 function ReviewCard({ review }: { review: TaskerReview }) {
-  const name = review.reviewer?.fullName?.trim() || 'Client';
-  const avatar = review.reviewer?.profilePicture || '';
+  const name = review.reviewer?.fullName?.trim() || 'Anonymous';
+  const avatar = review.reviewer?.profilePicture;
+  const date = review.ratedAt ? new Date(review.ratedAt) : null;
   return (
     <View style={styles.reviewCard}>
-      {avatar ? (
-        <Image source={{ uri: avatar }} style={styles.reviewAvatar} contentFit="cover" />
-      ) : (
-        <View style={[styles.reviewAvatar, styles.reviewAvatarFallback]}>
-          <Text style={styles.reviewInitials}>{initialsOf(name)}</Text>
+      <View style={styles.reviewTopRow}>
+        {avatar ? (
+          <Image source={{ uri: avatar }} style={styles.reviewAvatar} contentFit="cover" />
+        ) : (
+          <View style={[styles.reviewAvatar, styles.reviewAvatarFallback]}>
+            <Ionicons name="person-outline" size={14} color={COLORS.textSecondary} />
+          </View>
+        )}
+        <View style={styles.reviewBody}>
+          <Text style={styles.reviewName} numberOfLines={1}>{name}</Text>
+          {date && !Number.isNaN(date.getTime()) && <Text style={styles.reviewTime}>
+            {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+          </Text>}
         </View>
-      )}
-      <View style={styles.reviewBody}>
-        <View style={styles.reviewTopRow}>
-          <Text style={styles.reviewName}>{name}</Text>
-          <StarRow rating={review.rating} />
-        </View>
-        {review.reviewText ? <Text style={styles.reviewText}>{review.reviewText}</Text> : null}
-        <Text style={styles.reviewTime}>{relativeTime(review.ratedAt)}</Text>
+        <StarRow rating={review.rating} />
       </View>
+      <Text style={styles.reviewText}>{review.reviewText?.trim() || 'No review text provided.'}</Text>
     </View>
   );
 }
@@ -191,7 +171,10 @@ export default function TaskerProfileScreen() {
   const taskerId = params.id;
 
   const { data: taskerRes, isLoading, isError } = useTasker(taskerId);
-  const { data: reviewsRes } = useTaskerReviews(taskerId);
+  const [activeTab, setActiveTab] = useState<'about' | 'reviews'>('about');
+  const [reviewPage, setReviewPage] = useState(1);
+  const reviewsQuery = useTaskerReviews(taskerId, reviewPage, activeTab === 'reviews');
+  const reviewsRes = reviewsQuery.data;
   const tasker = taskerRes?.data;
   const reviews = reviewsRes?.data?.reviews ?? [];
 
@@ -200,7 +183,6 @@ export default function TaskerProfileScreen() {
     : (params.name ?? 'Tasker');
   const firstName = name.split(/[.\s]/).filter(Boolean)[0] ?? name;
 
-  const [activeTab, setActiveTab] = useState<'about' | 'reviews'>('about');
   const [servicesOpen, setServicesOpen] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [hireOpen, setHireOpen] = useState(false);
@@ -276,10 +258,12 @@ export default function TaskerProfileScreen() {
                 ) : null}
               </View>
             ) : null}
-            {tasker?.isVerified === true ? (
-              <View style={styles.verifiedBadge}>
-                <ShieldSuccess width={16} height={16} />
-                <Text style={styles.verifiedText}>Verified Tasker</Text>
+            {tasker ? (
+              <View style={[styles.verifiedBadge, !tasker.isVerified && styles.unverifiedBadge]}>
+                {tasker.isVerified && <ShieldSuccess width={16} height={16} />}
+                <Text style={[styles.verifiedText, !tasker.isVerified && styles.unverifiedText]}>
+                  {tasker.isVerified ? 'Verified Tasker' : 'Unverified Tasker'}
+                </Text>
               </View>
             ) : null}
           </View>
@@ -308,7 +292,7 @@ export default function TaskerProfileScreen() {
                   style={[styles.tabButton, activeTab === 'about' && styles.tabButtonActive]}
                   onPress={() => setActiveTab('about')}>
                   <Text style={[styles.tabButtonText, activeTab === 'about' && styles.tabButtonTextActive]}>
-                    About
+                    About & Projects
                   </Text>
                 </Pressable>
                 <Pressable
@@ -370,11 +354,29 @@ export default function TaskerProfileScreen() {
                 </>
               ) : (
                 <View style={styles.section}>
-                  {reviews.length > 0 ? (
+                  {reviewsQuery.isLoading ? <ActivityIndicator color={COLORS.brand} /> : reviewsQuery.isError ? (
+                    <Pressable accessibilityRole="button" onPress={() => void reviewsQuery.refetch()}>
+                      <Text style={styles.emptyText}>Failed to load reviews. Try again.</Text>
+                    </Pressable>
+                  ) : reviews.length > 0 ? (
                     <View style={styles.reviewList}>
                       {reviews.map((review) => (
                         <ReviewCard key={review.taskId} review={review} />
                       ))}
+                      {reviewsRes && reviewsRes.data.pagination.pages > 1 && (
+                        <View style={styles.reviewPagination}>
+                          <Pressable accessibilityRole="button" accessibilityLabel="Previous review page"
+                            disabled={reviewPage <= 1} onPress={() => setReviewPage(reviewPage - 1)}>
+                            <Ionicons name="chevron-back" size={22} color={reviewPage <= 1 ? COLORS.starEmpty : COLORS.brand} />
+                          </Pressable>
+                          <Text style={styles.reviewTime}>{reviewPage} / {reviewsRes.data.pagination.pages}</Text>
+                          <Pressable accessibilityRole="button" accessibilityLabel="Next review page"
+                            disabled={reviewPage >= reviewsRes.data.pagination.pages} onPress={() => setReviewPage(reviewPage + 1)}>
+                            <Ionicons name="chevron-forward" size={22}
+                              color={reviewPage >= reviewsRes.data.pagination.pages ? COLORS.starEmpty : COLORS.brand} />
+                          </Pressable>
+                        </View>
+                      )}
                     </View>
                   ) : (
                     <Text style={styles.emptyText}>No reviews yet.</Text>
@@ -651,44 +653,16 @@ const styles = StyleSheet.create({
   },
   // Reviews
   reviewList: { gap: 8 },
-  reviewCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 16,
-    padding: 10,
-    flexDirection: 'row',
-    gap: 8,
-  },
-  reviewAvatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 8,
-    backgroundColor: COLORS.avatarBg,
-  },
-  reviewAvatarFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.brand,
-  },
-  reviewInitials: {
-    fontFamily: 'Geist_600SemiBold',
-    fontSize: 18,
-    color: COLORS.onBrand,
-  },
-  reviewBody: {
-    flex: 1,
-    gap: 8,
-  },
-  reviewTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  reviewName: {
-    fontFamily: 'Geist_500Medium',
-    fontSize: 17,
-    letterSpacing: -0.41,
-    color: COLORS.textPrimary,
-  },
+  reviewCard: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: '#ededf2',
+    borderRadius: 8, padding: 14, gap: 8 },
+  reviewAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.avatarBg },
+  reviewAvatarFallback: { alignItems: 'center', justifyContent: 'center' },
+  reviewBody: { flex: 1, gap: 2 },
+  reviewTopRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  reviewName: { fontFamily: 'Geist_600SemiBold', fontSize: 12, color: COLORS.textPrimary },
+  reviewPagination: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20, padding: 8 },
+  unverifiedBadge: { backgroundColor: '#fff7e6', borderColor: '#fde68a' },
+  unverifiedText: { color: '#854d0e' },
   starRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -696,14 +670,14 @@ const styles = StyleSheet.create({
   },
   reviewText: {
     fontFamily: 'Geist_400Regular',
-    fontSize: 15,
-    lineHeight: 20,
+    fontSize: 12,
+    lineHeight: 17,
     letterSpacing: -0.24,
     color: COLORS.textSecondary,
   },
   reviewTime: {
-    fontFamily: 'Geist_500Medium',
-    fontSize: 13,
+    fontFamily: 'Geist_400Regular',
+    fontSize: 11,
     letterSpacing: -0.08,
     color: COLORS.textSecondary,
   },

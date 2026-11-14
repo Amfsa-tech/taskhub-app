@@ -35,6 +35,7 @@ async function mountScreen(t,{platformReturn='cancel',statuses=[{status:'approve
     '@tanstack/react-query':{useQueryClient:()=>client,useMutation:options=>({isPending:false,mutate:async()=>{try{await options.onSuccess(await options.mutationFn())}catch(error){options.onError(error)}}})},
     '@/components/taskhub/screen-header':{ScreenHeader:()=>null},'@/components/taskhub/support-contact':{SupportContactButton:()=>React.createElement('Text',{},'Contact Support')},
     '@/lib/api/queries':{useVerificationStatus:()=>{React.useSyncExternalStore(subscribe,()=>account.data);return account},useKycStatus:()=>{React.useSyncExternalStore(subscribe,()=>record.data);return record},queryKeys:{kycStatus:()=>['kyc','status'],verificationStatus:()=>['verification-status']}},
+    '@/lib/mobile-web-handoff':{continueOnWebsite:async()=>{}},
     '@/lib/auth/auth-context':{useAuth:()=>auth},
     '@/lib/api/kyc':{createDiditKycSession:async()=>({data:{url:'https://verification.example.invalid/session'}}),getKycStatus:async signal=>{
       assert.equal(signal.aborted,false);calls++;if(networkError)throw Error('offline');return{data:statuses[Math.min(calls-1,statuses.length-1)]};

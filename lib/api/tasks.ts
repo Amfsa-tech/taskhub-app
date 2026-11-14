@@ -198,6 +198,8 @@ export interface TaskerMatch {
   profilePicture?: string;
   bio?: string;
   averageRating?: number;
+  ratingCount?: number;
+  isVerified?: boolean;
   completedJobs?: number;
   primaryCategory?: string | null;
   area?: string | null;
@@ -269,8 +271,8 @@ export function getTaskerById(id: string, signal?: AbortSignal) {
 }
 
 /** Reviews clients left about a tasker. Public — no auth required. */
-export function getTaskerReviews(id: string, signal?: AbortSignal) {
-  return api.get<TaskerReviewsResponse>(`/api/taskers/${id}/reviews`, { signal, auth: false });
+export function getTaskerReviews(id: string, page: number, signal?: AbortSignal) {
+  return api.get<TaskerReviewsResponse>(`/api/taskers/${id}/reviews?page=${page}&limit=5`, { signal, auth: false });
 }
 
 export interface NearbyTaskersResponse {
@@ -285,7 +287,7 @@ export interface TaskerDirectoryResponse {
 }
 
 export function getTaskerDirectory(
-  filters: { page: number; search?: string; category?: string; sort?: string },
+  filters: { page: number; search?: string; category?: string; university?: string; minRating?: number; sort?: string },
   signal?: AbortSignal,
 ) {
   return api.get<TaskerDirectoryResponse>(`/api/taskers/directory${toQuery({
@@ -293,6 +295,8 @@ export function getTaskerDirectory(
     limit: 24,
     ...(filters.search ? { search: filters.search } : {}),
     ...(filters.category && filters.category !== 'All' ? { category: filters.category } : {}),
+    ...(filters.university ? { university: filters.university } : {}),
+    ...(filters.minRating ? { minRating: filters.minRating } : {}),
     ...(filters.sort ? { sort: filters.sort } : {}),
   })}`, { signal });
 }

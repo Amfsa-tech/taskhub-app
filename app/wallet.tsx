@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FundWalletModal } from '@/components/taskhub/fund-wallet-modal';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
+import { continueOnWebsite } from '@/lib/mobile-web-handoff';
 import { SupportContactModal } from '@/components/taskhub/support-contact';
 import {
   useTaskerBalance,
@@ -320,6 +321,12 @@ export default function WalletScreen() {
                 )}
               </Pressable>
             </View>
+            <Pressable accessibilityRole="button"
+              style={styles.pendingSecondary}
+              onPress={() => void continueOnWebsite({ action: 'payment-verification', reference: pendingFunding.reference })
+                .catch((error) => Alert.alert('Could not open TaskHub', error instanceof Error ? error.message : 'Please try again.'))}>
+              <Text style={styles.pendingSecondaryLabel}>Check payment on the website</Text>
+            </Pressable>
           </View>
         ) : null}
 

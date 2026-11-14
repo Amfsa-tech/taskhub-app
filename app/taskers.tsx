@@ -6,9 +6,9 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Modal,
   Pressable,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -17,7 +17,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/taskhub/screen-header';
-import { useCategories, useTaskerDirectory } from '@/lib/api/queries';
+import { useCategories, useTaskerDirectory, useUniversities } from '@/lib/api/queries';
+import { groupCategories } from '@/lib/api/categories';
+import { filterUniversities } from '@/lib/api/universities';
 import type { TaskerMatch } from '@/lib/api/tasks';
 
 const COLORS = {
@@ -81,6 +83,9 @@ function TaskerDirectoryCard({ tasker, onPress }: { tasker: TaskerMatch; onPress
               {tasker.primaryCategory || 'Tasker'}
             </Text>
           </View>
+          <Text style={[styles.verification, tasker.isVerified === true && styles.verified]}>
+            {tasker.isVerified === true ? '✓ Verified' : 'Unverified'}
+          </Text>
         </View>
       </View>
 
@@ -89,7 +94,7 @@ function TaskerDirectoryCard({ tasker, onPress }: { tasker: TaskerMatch; onPress
       <View style={styles.statsRow}>
         <View style={styles.ratingPill}>
           <Ionicons name="star" size={13} color={COLORS.star} />
-          <Text style={styles.ratingText}>{rating > 0 ? rating.toFixed(1) : 'New'}</Text>
+          <Text style={styles.ratingText}>{rating > 0 ? `${rating.toFixed(1)} (${tasker.ratingCount ?? 0})` : 'New'}</Text>
         </View>
         <Text style={styles.jobsText}>
           <Text style={styles.jobsStrong}>{jobs}</Text> {jobs === 1 ? 'task' : 'tasks'} completed
@@ -115,6 +120,10 @@ export default function TaskersScreen() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [category, setCategory] = useState('All');
+  const [university, setUniversity] = useState('');
+  const [minRating, setMinRating] = useState(0);
+  const [picker, setPicker] = useState<'category' | 'university' | 'rating' | null>(null);
+  const [pickerSearch, setPickerSearch] = useState('');
   const [sort, setSort] = useState<SortMode>('nearest');
 
   useEffect(() => {
@@ -124,35 +133,87 @@ export default function TaskersScreen() {
   const taskersQuery = useTaskerDirectory({
     search: debouncedSearch,
     category,
+    university,
+    minRating,
     sort: sort === 'rating' ? 'highest_rated' : sort === 'popular' ? 'most_popular' : 'nearest',
   });
   const categoriesQuery = useCategories();
   const taskers = useMemo(() => taskersQuery.data?.pages.flatMap((page) => page.data) ?? [], [taskersQuery.data]);
 
-  const categories = useMemo(() => {
-    const apiCategories = (categoriesQuery.data?.categories ?? [])
-      .filter((item) => !item.parentCategory)
-      .map((item) => item.displayName || item.name);
-    const taskerCategories = taskers
-      .map((item) => item.primaryCategory)
-      .filter((item): item is string => Boolean(item));
-    return ['All', ...Array.from(new Set([...apiCategories, ...taskerCategories])).sort()];
-  }, [categoriesQuery.data?.categories, taskers]);
+  const universitiesQuery = useUniversities();
+  const universities = universitiesQuery.data?.universities ?? [];
+  const categories = groupCategories(categoriesQuery.data?.categories ?? []).flatMap(({ main, subs }) =>
+    [{ id: main.displayName || main.name, label: main.displayName || main.name, nested: false },
+      ...subs.map((item) => ({ id: item.displayName || item.name, label: item.displayName || item.name, nested: true }))],
+  );
+  const filterTitle = picker === 'category' ? 'Categories' : picker === 'university' ? 'Institutions' : 'Minimum rating';
+  const options = picker === 'category' ? [{ id: 'All', label: 'All Categories', nested: false },
+    ...categories.filter((item) => item.label.toLowerCase().includes(pickerSearch.trim().toLowerCase()))]
+    : picker === 'university' ? [{ id: '', label: 'All Institutions', nested: false },
+      ...filterUniversities(universities, pickerSearch).map((item) => ({
+        id: item._id, label: item.abbreviation ? `${item.name} (${item.abbreviation})` : item.name, nested: false,
+      }))]
+      : [0, 3, 4, 4.5].map((rating) => ({ id: String(rating), label: rating ? `${rating}+ stars` : 'Any rating', nested: false }));
+  const selected = picker === 'category' ? category : picker === 'university' ? university : String(minRating);
+  const pickerQuery = picker === 'category' ? categoriesQuery : picker === 'university' ? universitiesQuery : null;
+  const openPicker = (filter: typeof picker) => {
+    setPickerSearch('');
+    setPicker(filter);
+  };
 
   const visibleTaskers = taskers;
 
   const clearFilters = () => {
     setSearch('');
     setCategory('All');
+    setUniversity('');
+    setMinRating(0);
     setSort('nearest');
   };
 
-  const hasFilters = Boolean(search.trim()) || category !== 'All' || sort !== 'nearest';
+  const hasFilters = Boolean(search.trim()) || category !== 'All' || Boolean(university) || minRating > 0 || sort !== 'nearest';
 
   return (
     <View style={styles.container}>
       <StatusBar style="dark" />
       <ScreenHeader title="Browse Taskers" />
+
+      <Modal visible={picker !== null} transparent animationType="fade" onRequestClose={() => setPicker(null)}>
+        <View style={styles.backdrop}>
+          <View style={styles.filterPanel} accessibilityViewIsModal>
+            <View style={styles.filterHeading}>
+              <Text style={styles.title}>{filterTitle}</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="Close filter" hitSlop={12} onPress={() => setPicker(null)}>
+                <Ionicons name="close" size={24} color={COLORS.textPrimary} />
+              </Pressable>
+            </View>
+            {picker !== 'rating' && <TextInput style={styles.filterSearch} value={pickerSearch}
+              onChangeText={setPickerSearch} placeholder={`Search ${filterTitle.toLowerCase()}`} />}
+            {pickerQuery?.isLoading && <ActivityIndicator color={COLORS.brand} />}
+            {pickerQuery?.isError && <Pressable accessibilityRole="button" onPress={() => void pickerQuery.refetch()}>
+              <Text style={styles.inlineErrorText}>Could not load options. Try again</Text>
+            </Pressable>}
+            <FlatList
+              keyboardShouldPersistTaps="handled"
+              data={options}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <Pressable accessibilityRole="radio" accessibilityState={{ checked: item.id === selected }}
+                  style={[styles.filterOption, item.nested && styles.subOption, item.id === selected && styles.chipSelected]}
+                  onPress={() => {
+                    if (picker === 'category') setCategory(item.id);
+                    if (picker === 'university') setUniversity(item.id);
+                    if (picker === 'rating') setMinRating(Number(item.id));
+                    setPicker(null);
+                  }}>
+                  <Text style={styles.chipText}>{item.label}</Text>
+                  {item.id === selected && <Ionicons name="checkmark" size={16} color={COLORS.brand} />}
+                </Pressable>
+              )}
+            />
+          </View>
+        </View>
+      </Modal>
 
       <FlatList
         data={visibleTaskers}
@@ -201,21 +262,17 @@ export default function TaskersScreen() {
               ) : null}
             </View>
 
-            <View style={styles.filterSection}>
-              <Text style={styles.filterLabel}>Category</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                {categories.map((item) => {
-                  const selected = item === category;
-                  return (
-                    <Pressable
-                      key={item}
-                      onPress={() => setCategory(item)}
-                      style={[styles.chip, selected && styles.chipSelected]}>
-                      <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{item}</Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
+            <View style={styles.filterRow}>
+              {([
+                ['category', category === 'All' ? 'Categories' : category],
+                ['university', universities.find((item) => item._id === university)?.name ?? 'Institutions'],
+                ['rating', minRating ? `${minRating}+ stars` : 'Rating'],
+              ] as const).map(([filter, label]) => (
+                <Pressable key={filter} accessibilityRole="button" onPress={() => openPicker(filter)} style={styles.filterButton}>
+                  <Text style={styles.chipText} numberOfLines={1}>{label}</Text>
+                  <Ionicons name="chevron-down" size={14} color={COLORS.brand} />
+                </Pressable>
+              ))}
             </View>
 
             <View style={styles.filterSection}>
@@ -330,17 +387,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.textSecondary,
   },
-  chipRow: { gap: 8, paddingRight: 16 },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  filterButton: { flexGrow: 1, maxWidth: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6,
+    borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, backgroundColor: COLORS.surface, paddingHorizontal: 10, minHeight: 44 },
+  backdrop: { flex: 1, justifyContent: 'center', padding: 16, backgroundColor: '#00000066' },
+  filterPanel: { maxHeight: '80%', padding: 16, gap: 12, borderRadius: 12, backgroundColor: COLORS.surface },
+  filterHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  filterSearch: { backgroundColor: COLORS.sunken, borderRadius: 8, paddingHorizontal: 12, minHeight: 44 },
+  filterOption: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 10, minHeight: 44, borderRadius: 6 },
+  subOption: { paddingLeft: 22 },
+  verification: { alignSelf: 'flex-start', backgroundColor: '#fff7e6', color: '#854d0e', fontSize: 11, borderRadius: 20, paddingHorizontal: 7, paddingVertical: 2 },
+  verified: { backgroundColor: '#ecfdf5', color: '#047857' },
   sortRow: { flexDirection: 'row', gap: 8 },
-  chip: {
-    minHeight: 36,
-    justifyContent: 'center',
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
   sortChip: {
     flex: 1,
     minHeight: 36,
