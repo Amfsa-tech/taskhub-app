@@ -230,11 +230,21 @@ export function getSavedBankAccounts(signal?: AbortSignal) {
   );
 }
 
-export function addSavedBankAccount(payload: Omit<SavedBankAccount, '_id'>) {
-  return api.post<{ status: string; message: string; data: SavedBankAccount[] }>(
+export interface BankChangeChallenge extends BankAccount {
+  challengeId: string;
+  expiresAt: string;
+}
+
+export function addSavedBankAccount(payload: SetBankAccountPayload & Partial<BankAccount> & { isDefault?: boolean }) {
+  return api.post<{ status: string; code?: string; message: string; data: BankChangeChallenge | SavedBankAccount[] }>(
     '/api/wallet/tasker/banks',
     payload,
   );
+}
+
+export function confirmBankChange(primary: boolean, challengeId: string, code: string) {
+  const path = primary ? 'bank-account' : 'banks';
+  return api.post<{ status: string; code?: string; message: string; data: BankAccount | SavedBankAccount[] }>(`/api/wallet/tasker/${path}/confirm`, { challengeId, code });
 }
 
 export function deleteSavedBankAccount(bankId: string) {
@@ -268,7 +278,8 @@ export interface SetBankAccountPayload {
 export interface SetBankAccountResponse {
   status: string;
   message: string;
-  data: BankAccount;
+  code?: string;
+  data: BankAccount | BankChangeChallenge;
 }
 
 /**
@@ -298,6 +309,7 @@ export interface WithdrawalPayload {
   stellarAddress?: string;
   /** Select one of the authenticated tasker's saved payout accounts. */
   bankId?: string;
+  pin?: string;
 }
 
 export interface WithdrawalResponse {
@@ -319,8 +331,7 @@ export interface WithdrawalResponse {
  * pending/approved withdrawal (only one at a time), or `bank_transfer` with no
  * saved bank account.
  *
- * ⚠️ Note: this endpoint does **not** verify the transaction PIN — see
- * `setupTransactionPin`. A bearer token alone authorizes a payout request.
+ * The backend requires the transaction PIN when one is configured.
  */
 export function requestWithdrawal(payload: WithdrawalPayload) {
   return api.post<WithdrawalResponse>('/api/wallet/withdraw', payload);
@@ -336,10 +347,6 @@ export interface SetupPinPayload {
 /**
  * Set the tasker's 4-digit transaction PIN.
  *
- * ⚠️ The stored PIN is currently **never checked by anything**: `transactionPin`
- * is written here and read nowhere in the backend, and `requestWithdrawal` does
- * not ask for it — despite this endpoint's success message implying it gates
- * withdrawals. Treat the PIN as non-functional until the backend enforces it.
  */
 export function setupTransactionPin(payload: SetupPinPayload) {
   return api.post<{ status: string; message: string }>('/api/wallet/tasker/pin/setup', payload);

@@ -43,6 +43,7 @@ test('mobile duplicate state replaces loading and blocks both existing and newly
     '@expo/vector-icons':{Ionicons:'Icon'},'expo-router':{useRouter:()=>({replace(){},push(){}})},'expo-status-bar':{StatusBar:'StatusBar'},
     'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:0})},'expo-web-browser':{openBrowserAsync:async url=>{opened.push(url);return{type:'cancel'}}},
     '@tanstack/react-query':{useQueryClient:()=>({setQueryData(){}}),useMutation:options=>({isPending:false,mutate:async()=>{try{const result=await options.mutationFn();await options.onSuccess(result)}catch(error){options.onError(error)}}})},
+    '@/components/taskhub/biometric-setting':{BiometricSetting:()=>null},
     '@/components/taskhub/screen-header':{ScreenHeader:()=>null},'@/components/taskhub/support-contact':{SupportContactButton:()=>React.createElement('Text',{},'Contact Support')},
     '@/lib/api/queries':{useVerificationStatus:()=>account,useKycStatus:()=>record},
     '@/lib/mobile-web-handoff':{continueOnWebsite:async()=>{}},
@@ -53,7 +54,7 @@ test('mobile duplicate state replaces loading and blocks both existing and newly
   let renderer;await act(async()=>{renderer=create(React.createElement(Screen))});
   assert.equal(renderer.root.findAllByType('ActivityIndicator').length,0);
   assert.equal(renderer.root.findByProps({accessibilityRole:'alert'}).props.children,blocked.message);
-  const retry=()=>renderer.root.findAllByType('Pressable').find(node=>node.findAllByType('Text').some(text=>text.props.children==='Try again'));
+  const retry=()=>renderer.root.findAllByType('Pressable').find(node=>node.findAllByType('Text').some(text=>text.props.children==='Retry with Didit'));
   assert.equal(retry(),undefined);
   account.isLoading=false;record.isLoading=false;record.data={data:{status:'rejected',isVerified:false,message:'Please try again.',resubmissionAllowed:true}};record.refetch=async()=>({data:{data:{...blocked,status:'rejected'}}});
   await act(async()=>renderer.update(React.createElement(Screen)));

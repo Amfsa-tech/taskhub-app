@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import {
@@ -20,6 +20,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { ArrowLeft } from '@/components/icons/arrow-left';
 import { CaretDown } from '@/components/icons/caret-down';
 import { Check } from '@/components/icons/check';
+import { ApiError } from '@/lib/api/client';
 import { signupAgeError } from '@/lib/auth/age';
 import { useAuth } from '@/lib/auth/auth-context';
 import { clearPendingAppleSignup, getPendingAppleSignup } from '@/lib/auth/apple';
@@ -41,6 +42,8 @@ const COLORS = {
 export default function GoogleCompleteSignupScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { ref } = useLocalSearchParams<{ ref?: string }>();
+  const [referralCode, setReferralCode] = useState(ref || '');
   const { completeAppleSignup, completeGoogleSignup } = useAuth();
   const country = useSelectedCountry();
 
@@ -53,6 +56,7 @@ export default function GoogleCompleteSignupScreen() {
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [referralError, setReferralError] = useState<string | null>(null);
 
   const completeMutation = useMutation({
     mutationFn: () => {
@@ -63,6 +67,7 @@ export default function GoogleCompleteSignupScreen() {
           fullName: fullName.trim(),
           country,
           dateOfBirth: dateOfBirth.trim(),
+          referralCode: referralCode.trim() || undefined,
         });
       }
       if (!pendingGoogle?.idToken) throw new Error('Your social sign-in session expired. Please try again.');
@@ -72,6 +77,7 @@ export default function GoogleCompleteSignupScreen() {
         fullName: fullName.trim(),
         country,
         dateOfBirth: dateOfBirth.trim(),
+        referralCode: referralCode.trim() || undefined,
       });
     },
     onSuccess: () => {
@@ -80,6 +86,10 @@ export default function GoogleCompleteSignupScreen() {
       router.replace('/purpose-selection');
     },
     onError: (err) => {
+      if (err instanceof ApiError && (err.body as { field?: string })?.field === 'referralCode') {
+        setReferralError(err.message);
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Could not complete sign up. Please try again.');
     },
   });
@@ -161,6 +171,11 @@ export default function GoogleCompleteSignupScreen() {
               />
             </View>
 
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Referral code (optional)</Text>
+              <TextInput style={styles.input} value={referralCode} onChangeText={(value) => { setReferralCode(value); setReferralError(null); }} autoCapitalize="characters" autoCorrect={false} />
+              {referralError && <Text accessibilityRole="alert" style={styles.error}>{referralError}</Text>}
+            </View>
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>Date of birth</Text>
               <TextInput

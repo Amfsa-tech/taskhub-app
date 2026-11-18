@@ -31,7 +31,8 @@ const COLORS = {
 };
 
 export default function HelpSupportScreen() {
-  const supportMessage = useSupportMessage();
+  const { resolveMessage, isLoadingIdentity } = useSupportMessage();
+  const [openingChat, setOpeningChat] = useState(false);
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const contactQ = useQuery({
@@ -105,9 +106,19 @@ export default function HelpSupportScreen() {
                 accessibilityRole="link"
                 accessibilityLabel={`${phone.actionLabel}, ${phone.label}`}
                 style={({ pressed }) => [styles.faqRow, pressed && styles.pressed]}
-                onPress={() => Linking.openURL(getSupportContactUrl(phone, supportMessage)).catch(() =>
-                  Alert.alert(phone.actionLabel, `Contact support using ${phone.label}`),
-                )}>
+                disabled={phone.kind === 'whatsapp' && (isLoadingIdentity || openingChat)}
+                onPress={async () => {
+                  const isChat = phone.kind === 'whatsapp';
+                  if (isChat) setOpeningChat(true);
+                  try {
+                    const message = isChat ? await resolveMessage() : undefined;
+                    await Linking.openURL(getSupportContactUrl(phone, message));
+                  } catch {
+                    Alert.alert(phone.actionLabel, 'Contact support using ' + phone.label);
+                  } finally {
+                    if (isChat) setOpeningChat(false);
+                  }
+                }}>
                 <Ionicons name={phone.kind === "whatsapp" ? "logo-whatsapp" : "call-outline"} size={22} color={COLORS.brand} />
                 <View style={{ flex: 1, gap: 4 }}><Text style={[styles.faqQuestion, { flex: 0 }]}>{phone.actionLabel}</Text><Text style={styles.faqAnswer}>{phone.label}</Text></View>
                 <Ionicons name="chevron-forward-outline" size={18} color={COLORS.textSecondary} />

@@ -7,6 +7,7 @@
 import * as SecureStore from 'expo-secure-store';
 
 import type { AccountType, AuthUser } from './types';
+import { supportIdentity } from '@/lib/support-context';
 
 const TOKEN_KEY = 'taskhub.auth.token';
 const REFRESH_TOKEN_KEY = 'taskhub.auth.refresh-token';
@@ -22,10 +23,11 @@ export interface StoredSession {
 
 /** Keep only small, stable identity fields to stay well under SecureStore limits. */
 function minimalUser(user: AuthUser): Partial<AuthUser> {
+  const { name, email } = supportIdentity(user);
   return {
     _id: user._id,
-    emailAddress: user.emailAddress,
-    fullName: user.fullName,
+    emailAddress: email,
+    fullName: name,
     firstName: user.firstName,
     lastName: user.lastName,
     phoneNumber: user.phoneNumber,

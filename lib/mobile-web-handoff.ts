@@ -2,7 +2,7 @@ import { Linking } from 'react-native';
 import { api } from '@/lib/api/client';
 
 type HandoffAction =
-  | { action: 'identity-verification' }
+  | { action: 'identity-verification'; provider?: 'qoreid' }
   | { action: 'payment-verification'; reference: string };
 
 export async function continueOnWebsite(action: HandoffAction) {

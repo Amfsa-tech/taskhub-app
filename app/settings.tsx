@@ -1,4 +1,5 @@
 import * as WebBrowser from 'expo-web-browser';
+import { BiometricSetting } from '@/components/taskhub/biometric-setting';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -182,6 +183,7 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionHeader}>SECURITY</Text>
           <View style={styles.groupCard}>
+            <BiometricSetting />
             <SettingRow
               icon="key-outline"
               iconBg="#edfaf3"

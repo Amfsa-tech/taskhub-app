@@ -16,6 +16,11 @@ import type { ApiErrorBody } from './types';
 let authToken: string | null = null;
 let authRefreshHandler: (() => Promise<string | null>) | null = null;
 let refreshPromise: Promise<string | null> | null = null;
+let emailVerificationHandler: ((details: { emailAddress?: string; retryAfter?: number }) => void) | undefined;
+
+export function setEmailVerificationHandler(handler?: typeof emailVerificationHandler) {
+  emailVerificationHandler = handler;
+}
 
 export function setApiToken(token: string | null): void {
   authToken = token;
@@ -54,7 +59,7 @@ export class ApiError extends Error {
   /** True when the backend rejected the request because email isn't verified. */
   get emailVerificationRequired(): boolean {
     const body = this.body as ApiErrorBody | undefined;
-    return Boolean(body && typeof body === 'object' && body.emailVerificationRequired);
+    return Boolean(body && typeof body === 'object' && (body.code === 'EMAIL_NOT_VERIFIED' || body.emailVerificationRequired));
   }
 
   /** Machine-readable reason when the backend supplies one (e.g. `no_password_set`). */
@@ -173,6 +178,13 @@ async function requestApiData<T = unknown>(
     signal?.removeEventListener('abort', abortFromCaller);
   }
 
+  if (response.status === 401 && path === '/api/wallet/withdraw') {
+    const rejection = await response.clone().json().catch(() => null);
+    if (rejection?.code === 'INCORRECT_PIN' || /^incorrect transaction pin$/i.test(rejection?.message ?? '')) {
+      throw new ApiError(rejection.message || 'Incorrect transaction PIN', 401, rejection);
+    }
+  }
+
   if (response.status === 401 && auth && !skipAuthRefresh && authRefreshHandler) {
     if (!refreshPromise) {
       refreshPromise = authRefreshHandler().finally(() => {
@@ -206,7 +218,11 @@ async function requestApiData<T = unknown>(
       (data && typeof data === 'object' && 'message' in data
         ? String((data as ApiErrorBody).message)
         : null) || `Request failed (${response.status})`;
-    throw new ApiError(message, response.status, data, afterSuccessfulRefresh);
+    const error = new ApiError(message, response.status, data, afterSuccessfulRefresh);
+    if (auth && bearer && bearer === authToken && response.status === 403 && error.emailVerificationRequired) {
+      emailVerificationHandler?.(data as { emailAddress?: string; retryAfter?: number });
+    }
+    throw error;
   }
 
   return data as T;

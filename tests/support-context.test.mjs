@@ -15,6 +15,109 @@ function load(file, mocks = {}) {
   return loadedModule.exports;
 }
 
+
+test('biometric enrollment stores the verified credential and signs the exact server challenge', async () => {
+  const calls = [];
+  const storage = new Map();
+  let keysExist = false;
+  let revoked = false;
+  class ApiError extends Error {
+    constructor(code) { super(code); this.code = code; }
+  }
+  class Biometrics {
+    async isSensorAvailable() { return { available: true, biometryType: 'FaceID' }; }
+    async biometricKeysExist() { return { keysExist }; }
+    async createKeys() { keysExist = true; return { publicKey: 'device-public-key' }; }
+    async deleteKeys() { keysExist = false; }
+    async createSignature(request) {
+      assert.equal(request.payload, 'server-challenge');
+      return { success: true, signature: 'device-signature' };
+    }
+  }
+  const { startBiometricEnrollment, confirmBiometricEnrollment, readBiometricCredential, loginWithBiometrics } = load('lib/auth/biometrics.ts', {
+    'expo-crypto': { randomUUID: () => 'install-id' },
+    'expo-secure-store': {
+      getItemAsync: async (key) => storage.get(key) ?? null,
+      setItemAsync: async (key, value) => storage.set(key, value),
+      deleteItemAsync: async (key) => storage.delete(key),
+    },
+    'react-native': { NativeModules: { ReactNativeBiometrics: {} }, Platform: { OS: 'ios' } },
+    'react-native-biometrics': { default: Biometrics },
+    '@/lib/api/client': { ApiError, api: {
+      async post(path, body, options) {
+        const action = path.replace('/api/auth/biometrics/', '');
+        calls.push({ action, body, options });
+        if (revoked) throw new ApiError('BIOMETRIC_NOT_AVAILABLE');
+        if (action === 'enroll') return { data: { challengeId: 'email-challenge' } };
+        if (action === 'enroll/verify') return { data: { credentialId: 'verified-credential' } };
+        if (action === 'challenge') return { data: { challengeId: 'login-challenge', challenge: 'server-challenge' } };
+        return { token: 'new-session', user_type: 'tasker' };
+      },
+    } },
+  });
+  const enrollment = await startBiometricEnrollment();
+  assert.equal(await readBiometricCredential(), null);
+  assert.deepEqual(calls[0].body, { publicKey: 'device-public-key', deviceId: 'install-id', deviceName: 'iPhone', platform: 'ios', biometryType: 'face_id' });
+  await confirmBiometricEnrollment(enrollment.challengeId, '04219', { accountId: 'test-profile', accountType: 'tasker', label: enrollment.label });
+  assert.deepEqual(calls[1].body, { challengeId: 'email-challenge', code: '04219' });
+  assert.equal((await readBiometricCredential()).credentialId, 'verified-credential');
+  assert.equal((await loginWithBiometrics()).token, 'new-session');
+  assert.deepEqual(calls[2].body, { credentialId: 'verified-credential' });
+  assert.deepEqual(calls[3].body, { credentialId: 'verified-credential', challengeId: 'login-challenge', signature: 'device-signature' });
+  assert.equal(calls[3].options.auth, false);
+  revoked = true;
+  await assert.rejects(loginWithBiometrics(), { code: 'BIOMETRIC_NOT_AVAILABLE' });
+  assert.equal(await readBiometricCredential(), null);
+  assert.equal(keysExist, false);
+});
+
+test('an incorrect payout PIN is surfaced after one request without refreshing the session', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const originalStorage = globalThis.localStorage;
+  const originalBase = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const storage = new Map([['token', 'test-session']]);
+  globalThis.window = { location: { hostname: 'localhost' } };
+  globalThis.localStorage = { getItem: (key) => storage.get(key) ?? null, removeItem: (key) => storage.delete(key) };
+  process.env.NEXT_PUBLIC_API_BASE_URL = 'https://example.invalid';
+  const requests = [];
+  let refreshes = 0;
+  const context = load('lib/support-context.ts');
+  const client = load(mobile ? 'lib/api/client.ts' : 'lib/api.ts', {
+    '@/lib/support-context': context,
+    '@/lib/config': { API_BASE_URL: 'https://example.invalid' },
+    'next/navigation': { redirect() {} },
+  });
+  if (mobile) {
+    client.setApiToken('test-session');
+    client.setAuthRefreshHandler(async () => { refreshes++; return 'new-token'; });
+  }
+  globalThis.fetch = async (url) => {
+    requests.push(url);
+    return new Response(JSON.stringify({
+      code: 'INCORRECT_PIN',
+      message: 'Incorrect transaction PIN',
+      attemptsRemaining: 4,
+    }), { status: 401 });
+  };
+  try {
+    const request = mobile ? client.apiRequest : client.apiData;
+    await assert.rejects(request('/api/wallet/withdraw', { method: 'POST' }), (error) => {
+      assert.equal((mobile ? error.body : error.data).attemptsRemaining, 4);
+      return error.status === 401;
+    });
+    assert.equal(requests.length, 1);
+    assert.equal(refreshes, 0);
+    assert.equal(storage.get('token'), 'test-session');
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.window = originalWindow;
+    globalThis.localStorage = originalStorage;
+    if (originalBase == null) delete process.env.NEXT_PUBLIC_API_BASE_URL;
+    else process.env.NEXT_PUBLIC_API_BASE_URL = originalBase;
+  }
+});
+
 test('request failures produce identity-aware readable support drafts without changing request results', async () => {
   const savedFetch = globalThis.fetch;
   const savedWindow = globalThis.window;

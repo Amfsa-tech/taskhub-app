@@ -18,6 +18,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 import { ArrowLeft } from '@/components/icons/arrow-left';
 import { Eye } from '@/components/icons/eye';
+import { ApiError } from '@/lib/api/client';
 import { resetPassword } from '@/lib/auth/auth-api';
 
 const COLORS = {
@@ -75,6 +76,7 @@ export default function CreateNewPasswordScreen() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [needsNewCode, setNeedsNewCode] = useState(false);
 
   const resetMutation = useMutation({
     mutationFn: () => {
@@ -89,17 +91,22 @@ export default function CreateNewPasswordScreen() {
     onSuccess: () => router.replace('/reset-success'),
     onError: (err) => {
       setError(err instanceof Error ? err.message : 'Could not reset password. Please try again.');
+      setNeedsNewCode(err instanceof ApiError && ['TOO_MANY_ATTEMPTS', 'CODE_EXPIRED'].includes(err.code ?? ''));
     },
   });
 
   const submit = () => {
+    if (needsNewCode) {
+      router.replace({ pathname: '/forgot-password', params: { type: accountType } });
+      return;
+    }
     setError(null);
-    if (!code.trim()) {
+    if (!/^\d{5}$/.test(code.trim())) {
       setError('Enter the reset code from your email.');
       return;
     }
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters.');
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.');
       return;
     }
     if (password !== confirm) {
@@ -165,7 +172,7 @@ export default function CreateNewPasswordScreen() {
             </View>
             <PasswordField
               label="New password"
-              placeholder="Enter new password"
+              placeholder="At least 8 characters"
               value={password}
               onChangeText={setPassword}
             />
@@ -192,7 +199,7 @@ export default function CreateNewPasswordScreen() {
             {isSubmitting ? (
               <ActivityIndicator color={COLORS.onBrand} />
             ) : (
-              <Text style={styles.buttonLabel}>Reset Password</Text>
+              <Text style={styles.buttonLabel}>{needsNewCode ? 'Request a new code' : 'Reset Password'}</Text>
             )}
           </Pressable>
         </View>

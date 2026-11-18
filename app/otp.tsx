@@ -14,6 +14,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ArrowLeft } from '@/components/icons/arrow-left';
 import { Headset } from '@/components/icons/headset';
+import { ApiError } from '@/lib/api/client';
+import { takePendingEmailLogin } from '@/lib/auth/pending-email-login';
 import { resendVerification, verifyEmail } from '@/lib/auth/auth-api';
 import { useAuth } from '@/lib/auth/auth-context';
 import type { AccountType } from '@/lib/auth/types';
@@ -42,9 +44,9 @@ function maskEmail(email: string): string {
 export default function OtpScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { email, password, type } = useLocalSearchParams<{
+  const { email, retryAfter, type } = useLocalSearchParams<{
     email?: string;
-    password?: string;
+    retryAfter?: string;
     type?: string;
   }>();
   const accountType: AccountType = type === 'tasker' ? 'tasker' : 'user';
@@ -53,7 +55,7 @@ export default function OtpScreen() {
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [resendSeconds, setResendSeconds] = useState(0);
+  const [resendSeconds, setResendSeconds] = useState(() => Math.min(60, Math.max(0, Number(retryAfter) || 0)));
 
   useEffect(() => {
     if (resendSeconds <= 0) return;
@@ -77,12 +79,18 @@ export default function OtpScreen() {
         await refreshProfile();
         return 'existing-session' as const;
       }
-      // When we arrived from sign-up we have the password, so log in
-      // automatically. When we arrived from an unverified login we don't —
-      // send the user back to log in with their now-verified account.
-      if (password) {
-        await signIn(accountType, { emailAddress: email, password });
-        return 'new-session' as const;
+      const pending = takePendingEmailLogin(accountType, email);
+      if (pending) {
+        try {
+          if (pending.authenticate) {
+            if (!await pending.authenticate()) return 'login-required' as const;
+          } else {
+            await signIn(accountType, { emailAddress: email, password: pending.password });
+          }
+          return pending.signup ? 'new-account' as const : 'existing-session' as const;
+        } catch {
+          return 'login-required' as const;
+        }
       }
       return 'login-required' as const;
     },
@@ -98,7 +106,9 @@ export default function OtpScreen() {
       }
     },
     onError: (err) => {
-      setError(err instanceof Error ? err.message : 'Verification failed. Please try again.');
+      const message = err instanceof Error ? err.message : 'Verification failed. Please try again.';
+      const attempts = err instanceof ApiError ? (err.body as { attemptsRemaining?: number })?.attemptsRemaining : undefined;
+      setError(attempts != null ? `${message}. Attempts remaining: ${attempts}.` : message);
     },
   });
 
@@ -113,6 +123,8 @@ export default function OtpScreen() {
       setResendSeconds(60);
     },
     onError: (err) => {
+      const cooldown = err instanceof ApiError ? (err.body as { retryAfter?: number })?.retryAfter : undefined;
+      if (cooldown && cooldown > 0) setResendSeconds(cooldown);
       setError(err instanceof Error ? err.message : 'Could not resend the code.');
     },
   });
@@ -150,7 +162,7 @@ export default function OtpScreen() {
         <View style={styles.heading}>
           <Text style={styles.title}>Verify your email</Text>
           <Text style={styles.subtitle}>
-            We sent a {CODE_LENGTH} digit Code to {email ? maskEmail(email) : 'your email'}
+            Enter the {CODE_LENGTH}-digit code for {email ? maskEmail(email) : 'your email'}.
           </Text>
         </View>
 

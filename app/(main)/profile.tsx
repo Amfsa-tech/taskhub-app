@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Spinner } from '@/components/taskhub/spinner';
 import { formatNaira } from '@/lib/api/tasks';
 import { ApiError } from '@/lib/api/client';
+import { ReferralCard } from '@/components/taskhub/referral-card';
 import { useAuth } from '@/lib/auth/auth-context';
 
 import BadgeVerified from '@/assets/icons/badge-verified.svg';
@@ -562,6 +563,7 @@ export default function ProfileScreen() {
           <CaretRight width={9} height={12} />
         </Pressable>
 
+        {user.referralCode && user.referralLink && <ReferralCard key={user._id} code={user.referralCode} link={user.referralLink} />}
         {/* Menu groups */}
         <MenuCard
           items={accountType === 'tasker' ? TASKER_MENU_GROUP_ACCOUNT : MENU_GROUP_ACCOUNT}

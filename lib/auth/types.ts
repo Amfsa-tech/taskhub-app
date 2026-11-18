@@ -9,6 +9,8 @@ export type AccountType = 'user' | 'tasker';
  * Extra profile fields are allowed through the index signature.
  */
 export interface AuthUser {
+  referralCode?: string;
+  referralLink?: string;
   roleCreation?: { missingFields: string[] };
   _id: string;
   emailAddress: string;
@@ -44,8 +46,7 @@ export interface AuthUser {
 /**
  * `/user-login` and `/tasker-login` return only the token plus metadata —
  * NOT the user object. The full profile is fetched separately via `getProfile`.
- * Note: login succeeds even when the email isn't verified. The authenticated
- * app shows a verification banner while the server restricts sensitive actions.
+ * An unverified email returns a 403 and no session.
  */
 export interface LoginResponse {
   status: string;
@@ -74,6 +75,8 @@ export interface MessageResponse {
 }
 
 export interface ProfileResponse {
+  emailVerificationRequired?: boolean;
+  emailAddress?: string;
   status: string;
   message?: string;
   user: AuthUser;
@@ -90,6 +93,7 @@ export interface LoginPayload {
  * User signup requires a DOB so the 18+ Terms can be enforced by the backend.
  */
 export interface UserRegisterPayload {
+  referralCode?: string;
   fullName: string;
   emailAddress: string;
   password: string;
@@ -104,6 +108,7 @@ export interface UserRegisterPayload {
 
 /** Fields the backend requires for `POST /api/auth/tasker-register`. */
 export interface TaskerRegisterPayload {
+  referralCode?: string;
   firstName: string;
   lastName: string;
   emailAddress: string;
@@ -170,6 +175,7 @@ export interface AppleAuthPayload {
 }
 
 export interface SocialCompleteSignupPayload {
+  referralCode?: string;
   signupToken: string;
   user_type: AccountType;
   fullName?: string;
@@ -195,6 +201,7 @@ export type LinkedRolePayload = Omit<SocialCompleteSignupPayload, 'signupToken'>
  * a DOB for the backend's 18+ check; some other profile fields remain optional.
  */
 export interface GoogleCompleteSignupPayload {
+  referralCode?: string;
   idToken: string;
   user_type: AccountType;
   fullName?: string;
@@ -215,6 +222,7 @@ export interface GoogleCompleteSignupPayload {
  * The picked "Location" is persisted as `address`.
  */
 export interface UpdateProfilePayload {
+  emailAddress?: string;
   fullName?: string;
   phoneNumber?: string;
   /** Max 500 characters — the backend rejects longer. */

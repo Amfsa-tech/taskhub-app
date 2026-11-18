@@ -1,5 +1,13 @@
 # UI Pattern Registry
 
+### Security confirmation and referral cards
+
+Use the existing white surface, 16-point card corners, and gray border. Keep
+instructions in 13–14-point secondary text and verification controls in the
+brand purple. Use a labeled numeric input with one-time-code autofill and
+show server errors beside the input. Referral codes and links are selectable
+and the share action opens the native share sheet.
+
 ### Saved Tasker Heart Feedback
 
 File: `app/tasker-profile.tsx`

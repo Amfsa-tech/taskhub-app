@@ -23,6 +23,8 @@ import { CaretDown } from '@/components/icons/caret-down';
 import { Check } from '@/components/icons/check';
 import { Eye } from '@/components/icons/eye';
 import { Headset } from '@/components/icons/headset';
+import { setPendingEmailLogin } from '@/lib/auth/pending-email-login';
+import { ApiError } from '@/lib/api/client';
 import { signupAgeError } from '@/lib/auth/age';
 import { registerUser } from '@/lib/auth/auth-api';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -95,7 +97,7 @@ function Field({
 export default function CreateAccountScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { type } = useLocalSearchParams<{ type?: string }>();
+  const { type, ref, chooseRole } = useLocalSearchParams<{ type?: string; ref?: string; chooseRole?: string }>();
   const { accountType, createRoleAndSwitch, refreshProfile, isAuthenticated, user } = useAuth();
   // Tasker signup runs in two steps: this screen collects the account basics,
   // then /tasker-details gathers the rest of what `tasker-register` requires
@@ -108,6 +110,7 @@ export default function CreateAccountScreen() {
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [referralCode, setReferralCode] = useState(typeof ref === 'string' ? ref.trim() : '');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [agreed, setAgreed] = useState(false);
   const country = useSelectedCountry();
@@ -120,6 +123,7 @@ export default function CreateAccountScreen() {
   }, [isLinkedRoleCreation, user?.country]);
   const needsProfileRetry = isLinkedRoleCreation && accountType === targetType;
   const [error, setError] = useState<string | null>(null);
+  const [referralError, setReferralError] = useState<string | null>(null);
 
   const registerMutation = useMutation<unknown, Error, void>({
     mutationFn: () => isLinkedRoleCreation
@@ -128,6 +132,7 @@ export default function CreateAccountScreen() {
         fullName: fullName.trim(),
         emailAddress: email.trim().toLowerCase(),
         password,
+        referralCode: referralCode.trim() || undefined,
         country,
         dateOfBirth: dateOfBirth.trim(),
       }),
@@ -136,12 +141,15 @@ export default function CreateAccountScreen() {
         router.replace('/(main)/home');
         return;
       }
-      router.push({
-        pathname: '/otp',
-        params: { email: email.trim().toLowerCase(), password, type: 'user' },
-      });
+      const address = email.trim().toLowerCase();
+      setPendingEmailLogin('user', { emailAddress: address, password }, true);
+      router.push({ pathname: '/otp', params: { email: address, type: 'user' } });
     },
     onError: (err) => {
+      if (err instanceof ApiError && (err.body as { field?: string })?.field === 'referralCode') {
+        setReferralError(err.message);
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
     },
   });
@@ -158,8 +166,8 @@ export default function CreateAccountScreen() {
       setError(isLinkedRoleCreation ? 'Please fill in your name.' : 'Please fill in your name, email, and password.');
       return;
     }
-    if (!isLinkedRoleCreation && password.length < 6) {
-      setError('Password must be at least 6 characters.');
+    if (!isLinkedRoleCreation && password.length < 8) {
+      setError('Password must be at least 8 characters.');
       return;
     }
     if (!isTasker && !isLinkedRoleCreation) {
@@ -182,6 +190,7 @@ export default function CreateAccountScreen() {
           lastName: lastName.trim(),
           email: email.trim().toLowerCase(),
           password,
+          referralCode: referralCode.trim() || undefined,
           country,
           linked: isLinkedRoleCreation ? 'true' : undefined,
         },
@@ -255,7 +264,14 @@ export default function CreateAccountScreen() {
             {!isLinkedRoleCreation ? (
               <>
                 <Field label="Email Address" placeholder="Enter your email address" value={email} onChangeText={setEmail} keyboardType="email-address" />
-                <Field label="Password" placeholder="Enter password" value={password} onChangeText={setPassword} secureTextEntry />
+                {chooseRole === 'true' && (
+                  <Pressable onPress={() => router.setParams({ type: isTasker ? 'user' : 'tasker' })}>
+                    <Text style={{ color: COLORS.primary }}>{isTasker ? 'Sign up as a User instead' : 'Sign up as a Tasker instead'}</Text>
+                  </Pressable>
+                )}
+                <Field label="Referral code (optional)" placeholder="Enter referral code" value={referralCode} onChangeText={(value) => { setReferralCode(value); setReferralError(null); }} />
+                {referralError && <Text accessibilityRole="alert" style={styles.error}>{referralError}</Text>}
+                <Field label="Password" placeholder="At least 8 characters" value={password} onChangeText={setPassword} secureTextEntry />
               </>
             ) : null}
             {!isTasker && !isLinkedRoleCreation ? (
@@ -323,7 +339,7 @@ export default function CreateAccountScreen() {
 
           {!isLinkedRoleCreation ? <Pressable
             hitSlop={8}
-            onPress={() => router.replace({ pathname: '/login-form', params: { type } })}
+            onPress={() => router.replace({ pathname: '/login-form', params: { type, ref: referralCode.trim() } })}
             style={styles.loginRow}>
             <Text style={styles.loginMuted}>
               Already have an account? <Text style={styles.loginLink}>Login</Text>

@@ -20,6 +20,8 @@ import { ArrowLeft } from '@/components/icons/arrow-left';
 import { ArrowRight } from '@/components/icons/arrow-right';
 import { Check } from '@/components/icons/check';
 import { Headset } from '@/components/icons/headset';
+import { setPendingEmailLogin } from '@/lib/auth/pending-email-login';
+import { ApiError } from '@/lib/api/client';
 import { signupAgeError } from '@/lib/auth/age';
 import { registerTasker } from '@/lib/auth/auth-api';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -81,7 +83,7 @@ export default function TaskerDetailsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { completeAppleSignup, completeGoogleSignup, createRoleAndSwitch, user } = useAuth();
-  const { firstName, lastName, email, password, country, social, linked } = useLocalSearchParams<{
+  const { firstName, lastName, email, password, country, social, linked, referralCode: initialReferral } = useLocalSearchParams<{
     firstName?: string;
     lastName?: string;
     email?: string;
@@ -89,8 +91,10 @@ export default function TaskerDetailsScreen() {
     country?: string;
     social?: 'apple' | 'google';
     linked?: string;
+    referralCode?: string;
   }>();
 
+  const [referralCode, setReferralCode] = useState(initialReferral || '');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState(
     linked === 'true' && typeof user?.dateOfBirth === 'string'
@@ -102,6 +106,7 @@ export default function TaskerDetailsScreen() {
   const [originState, setOriginState] = useState('');
   const [address, setAddress] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [referralError, setReferralError] = useState<string | null>(null);
   const [agreed, setAgreed] = useState(false);
   const isSocial = social === 'apple' || social === 'google';
   const isLinkedRole = linked === 'true';
@@ -123,17 +128,17 @@ export default function TaskerDetailsScreen() {
       if (social === 'apple') {
         const pending = getPendingAppleSignup();
         if (!pending) throw new Error('Your Apple sign-in session expired. Please try again.');
-        return completeAppleSignup({ signupToken: pending.signupToken, type: 'tasker', ...details });
+        return completeAppleSignup({ signupToken: pending.signupToken, type: 'tasker', ...details, referralCode: referralCode.trim() || undefined });
       }
       if (social === 'google') {
         const pending = getPendingGoogleSignup();
         if (!pending) throw new Error('Your Google sign-in session expired. Please try again.');
-        return completeGoogleSignup({ idToken: pending.idToken, type: 'tasker', ...details });
+        return completeGoogleSignup({ idToken: pending.idToken, type: 'tasker', ...details, referralCode: referralCode.trim() || undefined });
       }
       if (isLinkedRole) {
         return createRoleAndSwitch({ user_type: 'tasker', ...details });
       }
-      return registerTasker({ ...details, emailAddress: email ?? '', password: password ?? '' });
+      return registerTasker({ ...details, emailAddress: email ?? '', password: password ?? '', referralCode: referralCode.trim() || undefined });
     },
     onSuccess: () => {
       if (isSocial || isLinkedRole) {
@@ -146,12 +151,14 @@ export default function TaskerDetailsScreen() {
         );
         return;
       }
-      router.push({
-        pathname: '/otp',
-        params: { email, password, type: 'tasker' },
-      });
+      if (email && password) setPendingEmailLogin('tasker', { emailAddress: email, password }, true);
+      router.push({ pathname: '/otp', params: { email, type: 'tasker' } });
     },
     onError: (err) => {
+      if (err instanceof ApiError && (err.body as { field?: string })?.field === 'referralCode') {
+        setReferralError(err.message);
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
     },
   });
@@ -222,6 +229,8 @@ export default function TaskerDetailsScreen() {
 
           {/* Fields */}
           <View style={styles.fields}>
+            {!isLinkedRole && <Field label="Referral code (optional)" placeholder="Enter referral code" value={referralCode} onChangeText={(value) => { setReferralCode(value); setReferralError(null); }} />}
+            {referralError && <Text accessibilityRole="alert" style={styles.error}>{referralError}</Text>}
             <Field
               label="Phone number"
               placeholder="e.g 08012345678"

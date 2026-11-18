@@ -7,11 +7,12 @@ import { SUPPORT_PHONE_NUMBERS, getSupportContactUrl } from '@/lib/support-conta
 
 export function SupportContactModal({ visible, onClose, issue }: { visible: boolean; onClose: () => void; issue?: SupportIssue }) {
   const [opening, setOpening] = useState(false);
-  const message = useSupportMessage(issue);
+  const { resolveMessage, isLoadingIdentity } = useSupportMessage(issue);
   const openContact = async (contact: typeof SUPPORT_PHONE_NUMBERS[number]) => {
-    if (opening) return;
+    if (opening || (contact.kind === "whatsapp" && isLoadingIdentity)) return;
     setOpening(true);
     try {
+      const message = contact.kind === "whatsapp" ? await resolveMessage() : undefined;
       await Linking.openURL(getSupportContactUrl(contact, message));
       onClose();
     } catch {
@@ -34,7 +35,8 @@ export function SupportContactModal({ visible, onClose, issue }: { visible: bool
           <ScrollView contentContainerStyle={styles.options}>
             {SUPPORT_PHONE_NUMBERS.map((contact, index) => (
               <Pressable key={contact.href} accessibilityRole="link" accessibilityLabel={`Channel ${index + 1}, ${contact.actionLabel}, ${contact.label}`}
-                disabled={opening} accessibilityState={{ disabled: opening }}
+                disabled={opening || (contact.kind === "whatsapp" && isLoadingIdentity)}
+                accessibilityState={{ disabled: opening || (contact.kind === "whatsapp" && isLoadingIdentity) }}
                 onPress={() => void openContact(contact)} style={({ pressed }) => [styles.option, (pressed || opening) && styles.pressed]}>
                 <Ionicons name={contact.kind === "whatsapp" ? "logo-whatsapp" : "call-outline"} size={24} color="#15803d" />
                 <View style={styles.copy}>

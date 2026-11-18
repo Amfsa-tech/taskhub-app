@@ -114,19 +114,26 @@ export default function NinVerificationScreen() {
   }, [checkResult, refetchAccount, refetchRecord]);
 
   const canStart = accountType === 'tasker' && !isVerified && !retryBlocked
-    && resultPhase === 'idle' && !browserOpen && !recordQ.isLoading && !recordQ.isError;
+    && Boolean(record) && resultPhase === 'idle' && !browserOpen && !recordQ.isError;
+
+  const checkCanStart = async () => {
+    const latest = await refetchRecord();
+    if (latest.error) throw latest.error;
+    if (!latest.data) throw new Error('Could not check verification status. Please try again.');
+    if (verificationRetryBlocked(latest.data.data)) throw new Error(verificationMessage(latest.data.data));
+  };
 
   const webFallback = useMutation({
-    mutationFn: () => continueOnWebsite({ action: 'identity-verification' }),
+    mutationFn: async (provider?: 'qoreid') => {
+      await checkCanStart();
+      return continueOnWebsite({ action: 'identity-verification', provider });
+    },
     onError: (error) => Alert.alert('Could not open TaskHub', error instanceof Error ? error.message : 'Please try again.'),
   });
 
   const startMutation = useMutation({
     mutationFn: async () => {
-      const latest = await refetchRecord();
-      if (latest.error) throw latest.error;
-      if (!latest.data) throw new Error('Could not check verification status. Please try again.');
-      if (verificationRetryBlocked(latest.data.data)) throw new Error(verificationMessage(latest.data.data));
+      await checkCanStart();
       return createDiditKycSession();
     },
     onSuccess: async (res) => {
@@ -154,7 +161,7 @@ export default function NinVerificationScreen() {
       if (!mountedRef.current || verificationRetryBlocked(recordQ.data?.data)) return;
       Alert.alert('Could not start verification', err instanceof Error ? err.message : 'Please try again later.', [
         { text: 'Close', style: 'cancel' },
-        { text: 'Continue on the website', onPress: () => webFallback.mutate() },
+        { text: 'Continue on the website', onPress: () => webFallback.mutate(undefined) },
       ]);
     },
   });
@@ -180,7 +187,6 @@ export default function NinVerificationScreen() {
           <View style={styles.formContainer}>
             <Text accessibilityRole="alert" style={styles.errorText}>{verificationMessage(decision)}</Text>
             <SupportContactButton issue={{ action: 'verification', explanation: verificationMessage(decision) }} />
-            {canStart && <Pressable style={styles.btn} disabled={startMutation.isPending} onPress={() => startMutation.mutate()}><Text style={styles.btnText}>Try again</Text></Pressable>}
             <Pressable style={styles.btnSecondary} onPress={refresh}><Text style={styles.btnSecondaryText}>Refresh status</Text></Pressable>
           </View>
         ) : recordQ.isLoading ? (
@@ -236,50 +242,50 @@ export default function NinVerificationScreen() {
             <Text style={styles.instructions}>
               {isPending
                 ? 'Your documents are being reviewed. This usually takes a few minutes — check back shortly.'
-                : 'Identity verification is a secure ID and selfie capture handled by our verification partner. It opens in your browser and takes about two minutes.'}
+                : 'Choose NIN verification with QoreID on the TaskHub website, or upload an identity document with Didit.'}
             </Text>
 
             {isRejected && <SupportContactButton issue={{ action: 'verification', explanation: verificationMessage(decision) }} />}
+            {canStart && (
+              <Pressable accessibilityRole="button" style={styles.btn}
+                disabled={webFallback.isPending || startMutation.isPending} onPress={() => webFallback.mutate('qoreid')}>
+                <Text style={styles.btnText}>
+                  {webFallback.isPending ? 'Opening website…' : isRejected ? 'Retry with QoreID' : 'NIN Verification (QoreID)'}
+                </Text>
+              </Pressable>
+            )}
+
             {canStart ? (
               <Pressable
                 style={({ pressed }) => [
-                  styles.btn,
+                  styles.btnSecondary,
                   startMutation.isPending && styles.btnDisabled,
                   pressed && styles.btnPressed,
                 ]}
                 disabled={startMutation.isPending || webFallback.isPending}
                 onPress={() => startMutation.mutate()}>
                 {startMutation.isPending ? (
-                  <ActivityIndicator color="#ffffff" size="small" />
+                  <ActivityIndicator color={COLORS.brand} size="small" />
                 ) : (
-                  <Text style={styles.btnText}>
-                    {isRejected ? 'Try again' : 'Start verification'}
+                  <Text style={styles.btnSecondaryText}>
+                    {isRejected ? 'Retry with Didit' : 'Document Upload (Didit)'}
                   </Text>
                 )}
               </Pressable>
             ) : null}
 
-            {canStart && (
-              <Pressable accessibilityRole="button" style={styles.btnSecondary}
-                disabled={webFallback.isPending || startMutation.isPending} onPress={() => webFallback.mutate()}>
-                <Text style={styles.btnSecondaryText}>{webFallback.isPending ? 'Opening website…' : 'Continue on the website'}</Text>
-              </Pressable>
-            )}
-
             <Pressable
               style={({ pressed }) => [
-                canStart ? styles.btnSecondary : styles.btn,
+                styles.btnSecondary,
                 (accountQ.isRefetching || recordQ.isRefetching) && styles.btnDisabled,
                 pressed && styles.btnPressed,
               ]}
               disabled={accountQ.isRefetching || recordQ.isRefetching}
               onPress={refresh}>
               {accountQ.isRefetching || recordQ.isRefetching ? (
-                <ActivityIndicator color={canStart ? COLORS.brand : '#ffffff'} size="small" />
+                <ActivityIndicator color={COLORS.brand} size="small" />
               ) : (
-                <Text style={canStart ? styles.btnSecondaryText : styles.btnText}>
-                  Refresh status
-                </Text>
+                <Text style={styles.btnSecondaryText}>Refresh status</Text>
               )}
             </Pressable>
           </View>

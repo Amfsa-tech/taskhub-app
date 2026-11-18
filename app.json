@@ -2,7 +2,7 @@
   "expo": {
     "name": "Taskhub Connect",
     "slug": "taskhub-app",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "taskhubapp",
@@ -15,6 +15,7 @@
       "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "NSFaceIDUsageDescription": "Use Face ID to sign in to your TaskHub account on this device.",
         "NSLocationWhenInUseUsageDescription": "Taskhub Connect uses your location while you use the app to suggest nearby taskers and help you set a task location. For example, we can show taskers near your current area."
       }
     },

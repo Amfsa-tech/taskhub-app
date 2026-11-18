@@ -7,7 +7,7 @@ import {
 } from '@expo-google-fonts/geist';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { Stack, type ErrorBoundaryProps } from 'expo-router';
+import { Stack, usePathname, useRootNavigationState, useRouter, type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
@@ -18,6 +18,7 @@ import 'react-native-reanimated';
 
 import { useAppStateFocus } from '@/hooks/use-app-state-focus';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { setEmailVerificationHandler } from '@/lib/api/client';
 import { AuthProvider, useAuth } from '@/lib/auth/auth-context';
 import { initPush } from '@/lib/push';
 import { queryClient } from '@/lib/query-client';
@@ -126,7 +127,21 @@ export default function RootLayout() {
 
 function RootNavigator() {
   const colorScheme = useColorScheme();
-  const { isBootstrapping } = useAuth();
+  const { isBootstrapping, accountType, user } = useAuth();
+  const pathname = usePathname();
+  const router = useRouter();
+  const navigationKey = useRootNavigationState()?.key;
+
+  useEffect(() => {
+    if (!navigationKey || !accountType || !user?.emailAddress || pathname === '/otp') return;
+    let opened = false;
+    setEmailVerificationHandler(({ emailAddress, retryAfter }) => {
+      if (opened) return;
+      opened = true;
+      router.push({ pathname: '/otp', params: { email: emailAddress || user.emailAddress, type: accountType, retryAfter: String(retryAfter ?? 0) } });
+    });
+    return () => setEmailVerificationHandler();
+  }, [navigationKey, accountType, user?.emailAddress, pathname, router]);
 
   // Refetch stale queries when the app returns to the foreground.
   useAppStateFocus();

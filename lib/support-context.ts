@@ -33,7 +33,7 @@ const ACTIONS = {
 
 export type SupportAction = keyof typeof ACTIONS;
 export interface SupportIssue { action: SupportAction; explanation: string; reference?: string; scope?: string }
-type Identity = { fullName?: string; firstName?: string; lastName?: string; emailAddress?: string; email?: unknown };
+type Identity = { fullName?: unknown; firstName?: unknown; lastName?: unknown; name?: unknown; emailAddress?: unknown; email?: unknown };
 
 export function makeSupportIssue(action: SupportAction, error?: unknown, reference?: string, requestScope?: string): SupportIssue {
   const raw = typeof error === 'string' ? error : error && typeof error === 'object' && 'message' in error ? String(error.message) : '';
@@ -60,9 +60,18 @@ export function supportTopic(pathname: string): string {
   return 'I need help using TaskHub.';
 }
 
+function readSupportField(value: unknown) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+export function supportIdentity(user?: Identity | null) {
+  const name = readSupportField(user?.fullName) || [user?.firstName, user?.lastName].map(readSupportField).filter(Boolean).join(' ') || readSupportField(user?.name);
+  const email = readSupportField(user?.emailAddress) || readSupportField(user?.email);
+  return { name, email };
+}
+
 export function buildSupportMessage(user?: Identity | null, issue?: SupportIssue | null, topic = 'I need help using TaskHub.'): string {
-  const name = user?.fullName?.trim() || [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
-  const email = user?.emailAddress?.trim() || (typeof user?.email === 'string' ? user.email.trim() : '');
+  const { name, email } = supportIdentity(user);
   return [name ? `Hi, my name is ${name}.` : 'Hi, I would like help with TaskHub.', email ? `My email is ${email}.` : '', '',
     issue ? `${issue.action === 'load' || issue.action === 'save' ? topic + ' ' : ''}${issue.explanation}` : topic, issue?.reference ? `Payment reference: ${issue.reference}` : ''].filter((line, index) => line || index === 2).join('\n').trim();
 }

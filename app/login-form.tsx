@@ -18,10 +18,12 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
+import { BiometricLoginButton } from '@/components/taskhub/biometric-login-button';
 import { ArrowLeft } from '@/components/icons/arrow-left';
 import { Eye } from '@/components/icons/eye';
 import { GoogleLogo } from '@/components/icons/google-logo';
 import { ApiError } from '@/lib/api/client';
+import { setPendingEmailLogin } from '@/lib/auth/pending-email-login';
 import { useAuth } from '@/lib/auth/auth-context';
 import { isAppleSignInAvailable, setPendingAppleSignup } from '@/lib/auth/apple';
 import { setPendingGoogleSignup } from '@/lib/auth/google';
@@ -43,7 +45,7 @@ const COLORS = {
 export default function LoginFormScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { type } = useLocalSearchParams<{ type?: string }>();
+  const { type, ref } = useLocalSearchParams<{ type?: string; ref?: string }>();
   // Carried from the purpose/login screens; picks between the user and tasker
   // backend endpoints (same payload either way).
   const accountType = type === 'tasker' ? 'tasker' : 'user';
@@ -61,17 +63,15 @@ export default function LoginFormScreen() {
   }, []);
 
   const loginMutation = useMutation({
-    mutationFn: () =>
-      signIn(accountType, { emailAddress: email.trim().toLowerCase(), password }),
+    mutationFn: (credentials: { emailAddress: string; password: string }) => signIn(accountType, credentials),
     onSuccess: () => router.replace('/home'),
-    onError: (err) => {
+    onError: (err, credentials) => {
       if (err instanceof ApiError && err.emailVerificationRequired) {
-        // Account exists but isn't verified — route to the OTP screen, carrying
-        // the password so verification can log the user straight in.
-        router.push({
-          pathname: '/otp',
-          params: { email: email.trim().toLowerCase(), password, type: accountType },
-        });
+        const details = err.body as { emailAddress?: string; user_type?: string; retryAfter?: number };
+        const type = details.user_type === 'tasker' || details.user_type === 'user' ? details.user_type : accountType;
+        const address = details.emailAddress || credentials.emailAddress;
+        setPendingEmailLogin(type, { ...credentials, emailAddress: address });
+        router.push({ pathname: '/otp', params: { email: address, type, retryAfter: String(details.retryAfter ?? 0) } });
         return;
       }
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
@@ -84,7 +84,7 @@ export default function LoginFormScreen() {
       setError('Please enter your email and password.');
       return;
     }
-    loginMutation.mutate();
+    loginMutation.mutate({ emailAddress: email.trim().toLowerCase(), password });
   };
 
   const handleGoogle = async () => {
@@ -102,12 +102,12 @@ export default function LoginFormScreen() {
         setPendingGoogleSignup({ idToken: outcome.idToken, profile: outcome.profile });
         router.push({
           pathname: '/tasker-details' as any,
-          params: { social: 'google', firstName: outcome.profile.givenName, lastName: outcome.profile.familyName, email: outcome.profile.email, country: 'Nigeria' },
+          params: { social: 'google', referralCode: ref, firstName: outcome.profile.givenName, lastName: outcome.profile.familyName, email: outcome.profile.email, country: 'Nigeria' },
         });
       } else {
         // No account yet — carry the verified token to the completion screen.
         setPendingGoogleSignup({ idToken: outcome.idToken, profile: outcome.profile });
-        router.push('/google-complete-signup');
+        router.push({ pathname: '/google-complete-signup', params: { ref } });
       }
     } catch (err) {
       const code = (err as { code?: string })?.code;
@@ -136,11 +136,11 @@ export default function LoginFormScreen() {
         setPendingAppleSignup({ signupToken: outcome.signupToken, profile: outcome.profile });
         router.push({
           pathname: '/tasker-details' as any,
-          params: { social: 'apple', firstName: outcome.profile.givenName, lastName: outcome.profile.familyName, email: outcome.profile.email, country: 'Nigeria' },
+          params: { social: 'apple', referralCode: ref, firstName: outcome.profile.givenName, lastName: outcome.profile.familyName, email: outcome.profile.email, country: 'Nigeria' },
         });
       } else {
         setPendingAppleSignup({ signupToken: outcome.signupToken, profile: outcome.profile });
-        router.push('/google-complete-signup');
+        router.push({ pathname: '/google-complete-signup', params: { ref } });
       }
     } catch (err) {
       const code = (err as { code?: string })?.code;
@@ -240,6 +240,7 @@ export default function LoginFormScreen() {
               <Text style={styles.buttonLabel}>Login</Text>
             )}
           </Pressable>
+          <BiometricLoginButton disabled={isSubmitting || appleBusy || googleBusy} />
 
           {/* Divider */}
           <View style={styles.divider}>

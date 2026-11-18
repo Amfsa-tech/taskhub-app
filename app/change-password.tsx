@@ -20,7 +20,7 @@ import { ApiError } from '@/lib/api/client';
 import { changePassword, setPassword } from '@/lib/auth/auth-api';
 
 /** Backend minimum for `newPassword`. */
-const MIN_PASSWORD_LENGTH = 6;
+const MIN_PASSWORD_LENGTH = 8;
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -143,7 +143,7 @@ export default function ChangePasswordScreen() {
             />
             <PasswordField
               label="New Password"
-              placeholder="********"
+              placeholder="At least 8 characters"
               value={newPassword}
               onChangeText={setNewPassword}
             />

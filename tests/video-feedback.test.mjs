@@ -104,6 +104,22 @@ test('support chooser routes Chat with Us to WhatsApp and Call Us to the dialer,
   await act(async () => renderer.unmount());
 });
 
+
+test('WhatsApp resolves the full identity when the signed-in mobile profile is incomplete', async () => {
+  const h = harness();
+  h.auth.isAuthenticated = true;
+  h.auth.user = { _id: 'test-user' };
+  h.auth.refreshProfile = async () => ({ _id: 'test-user', name: 'Ada Okafor', email: 'ada@example.invalid' });
+  const { SupportContactModal } = h.load('components/taskhub/support-contact.tsx');
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(SupportContactModal, { visible: true, onClose() {} })); });
+  const chat = renderer.root.findByProps({ accessibilityLabel: 'Channel 1, Chat with Us, +234 703 133 2517' });
+  await act(async () => chat.props.onPress());
+  const message = new URL(h.links[0]).searchParams.get('text');
+  assert.match(message, /Ada Okafor[\s\S]*ada@example.invalid/);
+  await act(async () => renderer.unmount());
+});
+
 test('each home category resets the previous draft and opens its services directly; Wallet is one tap away', async () => {
   const h = harness();
   const { PostTaskProvider, usePostTask } = h.load('context/PostTaskContext.tsx');

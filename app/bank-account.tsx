@@ -19,10 +19,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { queryKeys, useBanks, useSavedBankAccounts, useTaskerBankAccount } from '@/lib/api/queries';
 import {
   addSavedBankAccount,
+  confirmBankChange,
+  type BankChangeChallenge,
   deleteSavedBankAccount,
   setTaskerBankAccount,
   type Bank,
 } from '@/lib/api/wallet';
+import { ApiError } from '@/lib/api/client';
 import { useAuth } from '@/lib/auth/auth-context';
 
 const COLORS = {
@@ -39,11 +42,7 @@ const COLORS = {
   dangerText: '#ef4444',
 };
 
-/**
- * Payout accounts — tasker only. New details are first verified through the
- * gateway-backed legacy endpoint, then persisted in the backend's multi-bank
- * collection. That keeps verification and account selection server-authoritative.
- */
+/** Tasker payout accounts. The new API verifies bank details before emailing a confirmation code. */
 export default function BankAccountScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -64,6 +63,9 @@ export default function BankAccountScreen() {
   // Form state
   const [selectedBank, setSelectedBank] = useState<Bank | null>(null);
   const [accountNumber, setAccountNumber] = useState('');
+  const [primary, setPrimary] = useState(false);
+  const [challenge, setChallenge] = useState<BankChangeChallenge | null>(null);
+  const [code, setCode] = useState('');
 
   // Dropdown state
   const [showBankDrop, setShowBankDrop] = useState(false);
@@ -73,21 +75,39 @@ export default function BankAccountScreen() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   const banks = banksQ.data?.data ?? [];
-  const canSave = Boolean(selectedBank) && accountNumber.trim().length === 10;
+  const canSave = challenge ? code.length === 5 : Boolean(selectedBank) && accountNumber.trim().length === 10;
 
   const save = useMutation({
     mutationFn: async () => {
-      const verified = await setTaskerBankAccount({
-        accountNumber: accountNumber.trim(),
-        bankCode: (selectedBank as Bank).code,
-      });
-      return addSavedBankAccount({
-        ...verified.data,
-        bankCode: (selectedBank as Bank).code,
-        isDefault: savedAccounts.length === 0,
-      });
+      if (challenge) return confirmBankChange(primary, challenge.challengeId, code);
+      if (!selectedBank) throw new Error('Select a bank first.');
+      const details = { accountNumber: accountNumber.trim(), bankCode: selectedBank.code };
+      if (primary) return setTaskerBankAccount(details);
+      try {
+        return await addSavedBankAccount({ ...details, isDefault: savedAccounts.length === 0 });
+      } catch (error) {
+        // The previous API requires gateway-resolved names in the saved-bank request.
+        if (!(error instanceof ApiError) || error.status !== 400 || error.message !== 'bankName, accountNumber and accountName are required') throw error;
+        const verified = await setTaskerBankAccount(details);
+        if (verified.code === 'OTP_REQUIRED') throw new Error('Payout settings changed. Please request a new code.');
+        return addSavedBankAccount({ ...verified.data, ...details, isDefault: savedAccounts.length === 0 });
+      }
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
+      if (result.code === 'OTP_REQUIRED') {
+        const next = result.data;
+        if (!Array.isArray(next) && next && 'challengeId' in next && 'expiresAt' in next
+          && typeof next.challengeId === 'string' && typeof next.expiresAt === 'string') {
+          setChallenge({ ...next, challengeId: next.challengeId, expiresAt: next.expiresAt });
+          setCode('');
+          return;
+        }
+        Alert.alert('Could not start bank confirmation', 'Please request a new code.');
+        return;
+      }
+      setChallenge(null);
+      setCode('');
+      if (result.message.includes('24 hours')) Alert.alert('Bank account saved', result.message);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.taskerBankAccount() }),
         queryClient.invalidateQueries({ queryKey: queryKeys.savedBankAccounts() }),
@@ -139,7 +159,17 @@ export default function BankAccountScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable
-          onPress={() => (view === 'add' ? setView('list') : router.back())}
+          disabled={save.isPending}
+          onPress={() => {
+            if (view === 'list') return router.back();
+            if (challenge) {
+              setChallenge(null);
+              setCode('');
+            } else {
+              setView('list');
+            }
+            save.reset();
+          }}
           hitSlop={8}
           style={styles.backBtn}>
           <MaterialCommunityIcons name="chevron-left" size={26} color={COLORS.textPrimary} />
@@ -210,7 +240,7 @@ export default function BankAccountScreen() {
                 <View style={styles.accountDetails}>
                   <Text style={styles.accountNo}>{account.accountNumber}</Text>
                   <Text style={styles.accountHolder}>{account.accountName}</Text>
-                  <Text style={styles.bankNameLabel}>{account.bankName} · Legacy account</Text>
+                  <Text style={styles.bankNameLabel}>{account.bankName} · Primary account</Text>
                 </View>
               </View>
             ) : (
@@ -219,10 +249,32 @@ export default function BankAccountScreen() {
               </View>
             )}
 
-            <Pressable style={styles.addBankBox} onPress={() => setView('add')}>
+            <Pressable style={styles.addBankBox} onPress={() => { setPrimary(false); setView('add'); }}>
               <Text style={styles.addBankText}>
                 Add bank account
               </Text>
+            </Pressable>
+            <Pressable style={styles.addBankBox} onPress={() => { setPrimary(true); setView('add'); }}>
+              <Text style={styles.addBankText}>{account ? 'Change primary bank account' : 'Set primary bank account'}</Text>
+            </Pressable>
+          </View>
+        ) : challenge ? (
+          <View style={styles.formSection}>
+            <Text style={styles.fieldLabel}>Confirm {challenge.accountName}</Text>
+            <Text style={styles.infoCardSub}>{challenge.bankName} · {challenge.accountNumber}</Text>
+            <Text style={styles.infoCardSub}>Enter the 5-digit code from your email.</Text>
+            <TextInput
+              accessibilityLabel="Email verification code"
+              autoComplete="one-time-code"
+              keyboardType="number-pad"
+              maxLength={5}
+              onChangeText={(value) => { setCode(value.replace(/\D/g, '')); save.reset(); }}
+              style={styles.input}
+              value={code}
+            />
+            {save.isError && <Text accessibilityRole="alert" style={styles.errorText}>{save.error.message}</Text>}
+            <Pressable disabled={save.isPending} onPress={() => { setChallenge(null); setCode(''); save.reset(); }}>
+              <Text style={styles.addBankText}>Request a new code</Text>
             </Pressable>
           </View>
         ) : (
@@ -304,7 +356,7 @@ export default function BankAccountScreen() {
               <ActivityIndicator color="#ffffff" size="small" />
             ) : (
               <Text style={[styles.saveBtnText, !canSave && styles.saveBtnTextDisabled]}>
-                Save bank Details
+                {challenge ? 'Confirm bank account' : 'Continue'}
               </Text>
             )}
           </Pressable>

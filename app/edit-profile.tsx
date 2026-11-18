@@ -53,9 +53,10 @@ function initialsOf(name: string, email: string): string {
 export default function EditProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user, refreshProfile } = useAuth();
+  const { user, accountType, refreshProfile } = useAuth();
 
   // Seeded from the live profile — never from placeholder copy.
+  const [email, setEmail] = useState(user?.emailAddress ?? '');
   const [fullName, setFullName] = useState(user?.fullName ?? '');
   const [phoneNumber, setPhoneNumber] = useState(user?.phoneNumber ?? '');
   const [bio, setBio] = useState(typeof user?.bio === 'string' ? user.bio : '');
@@ -85,6 +86,8 @@ export default function EditProfileScreen() {
       const nextBio = bio.trim();
       const nextAddress = address.trim();
 
+      const nextEmail = email.trim().toLowerCase();
+      if (nextEmail !== user?.emailAddress?.trim().toLowerCase()) payload.emailAddress = nextEmail;
       if (nextName !== (user?.fullName ?? '')) payload.fullName = nextName;
       if (nextPhone !== (user?.phoneNumber ?? '')) payload.phoneNumber = nextPhone;
       if (nextBio !== (typeof user?.bio === 'string' ? user.bio : '')) payload.bio = nextBio;
@@ -95,10 +98,14 @@ export default function EditProfileScreen() {
       if (residentState.trim() !== (typeof user?.residentState === 'string' ? user.residentState : '')) payload.residentState = residentState.trim();
 
       if (Object.keys(payload).length > 0) {
-        await updateProfile(payload);
+        return updateProfile(payload);
       }
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
+      if (result?.emailVerificationRequired && accountType) {
+        router.replace({ pathname: '/otp', params: { email: result.emailAddress || email.trim().toLowerCase(), type: accountType } });
+        return;
+      }
       // Pull the canonical profile back so the Profile screen's name, avatar
       // and badges update immediately.
       await refreshProfile();
@@ -112,6 +119,10 @@ export default function EditProfileScreen() {
   const onSave = () => {
     if (!fullName.trim()) {
       Alert.alert('Name required', 'Please enter your full name.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      Alert.alert('Email required', 'Enter a valid email address.');
       return;
     }
     if (bio.length > BIO_MAX) {
@@ -180,6 +191,24 @@ export default function EditProfileScreen() {
                   onChangeText={setFullName}
                   placeholder="Enter your full name"
                   placeholderTextColor={COLORS.placeholder}
+                  autoCorrect={false}
+                  editable={!pending}
+                />
+              </View>
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Email address</Text>
+              <View style={styles.input}>
+                <TextInput
+                  accessibilityLabel="Email address"
+                  style={styles.inputText}
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholder="Enter your email address"
+                  placeholderTextColor={COLORS.placeholder}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
                   autoCorrect={false}
                   editable={!pending}
                 />

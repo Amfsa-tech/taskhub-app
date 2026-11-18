@@ -22,6 +22,7 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
 import { SupportContactButton } from '@/components/taskhub/support-contact';
 import { useSavedBankAccounts, useTaskerBalance, useTaskerBankAccount } from '@/lib/api/queries';
+import { ApiError } from '@/lib/api/client';
 import { formatNaira } from '@/lib/api/tasks';
 import { requestWithdrawal } from '@/lib/api/wallet';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -49,8 +50,7 @@ const MIN_WITHDRAWAL = 500;
  * saved bank account, and the backend holds every request for admin approval
  * (the wallet is debited immediately).
  *
- * No transaction PIN is collected: the backend never verifies one, and asking
- * for a PIN the server ignores would imply protection that doesn't exist.
+ * A transaction PIN is required when enabled on the account.
  */
 export default function WithdrawScreen() {
   const insets = useSafeAreaInsets();
@@ -69,6 +69,9 @@ export default function WithdrawScreen() {
   const payoutMethod = STELLAR_WALLET_ENABLED ? method : 'bank_transfer';
   const [selectedBankId, setSelectedBankId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pin, setPin] = useState('');
+  const [needsPin, setNeedsPin] = useState(false);
+  const [pinLockedUntil, setPinLockedUntil] = useState(0);
 
   const available = balanceQ.data?.data?.availableToWithdraw ?? 0;
   const pendingAmount = balanceQ.data?.data?.pendingWithdrawals ?? 0;
@@ -89,6 +92,7 @@ export default function WithdrawScreen() {
     mutationFn: (amount: number) =>
       requestWithdrawal({
         amount,
+        pin: pin || undefined,
         payoutMethod,
         bankId: payoutMethod === 'bank_transfer' ? selectedBank?._id : undefined,
         stellarAddress: payoutMethod === 'stellar_crypto' ? stellarAddress.trim() : undefined,
@@ -102,12 +106,41 @@ export default function WithdrawScreen() {
       );
     },
     onError: (err) => {
-      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+      const details = err instanceof ApiError ? err.body as { retryAfter?: number; attemptsRemaining?: number; availableAt?: string } : undefined;
+      const message = err instanceof Error ? err.message : 'Could not request a withdrawal.';
+      if (err instanceof ApiError) {
+        if (err.code === 'PIN_REQUIRED' || err.code === 'INCORRECT_PIN' || err.code === 'PIN_LOCKED' || /transaction pin is required/i.test(message)) {
+          setNeedsPin(true);
+          setPin('');
+        }
+        if (err.code === 'PIN_LOCKED' && details?.retryAfter) {
+          setPinLockedUntil(Date.now() + details.retryAfter * 1000);
+          setError(`${message} Try again in ${Math.ceil(details.retryAfter / 60)} minutes.`);
+          return;
+        }
+        if (err.code === 'PAYOUT_HOLD' && details?.availableAt) {
+          setError(`${message} Available ${new Date(details.availableAt).toLocaleString()}.`);
+          return;
+        }
+        if (err.code === 'INCORRECT_PIN' && details?.attemptsRemaining != null) {
+          setError(`${message}. Attempts remaining: ${details.attemptsRemaining}.`);
+          return;
+        }
+      }
+      setError(message);
     },
   });
 
   const submit = () => {
+    if (pinLockedUntil > Date.now()) {
+      setError(`Your PIN is locked. Try again at ${new Date(pinLockedUntil).toLocaleTimeString()}.`);
+      return;
+    }
     setError(null);
+    if (needsPin && pin.length !== 4) {
+      setError('Enter your 4-digit transaction PIN.');
+      return;
+    }
     const amount = Number(amountInput.replace(/[^0-9.]/g, ''));
     if (!Number.isFinite(amount) || amount <= 0) {
       setError('Enter the amount you want to withdraw.');
@@ -270,6 +303,19 @@ export default function WithdrawScreen() {
                   right away.
                 </Text>
               </View>
+              {needsPin && <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Transaction PIN</Text>
+                <TextInput
+                  accessibilityLabel="Transaction PIN"
+                  style={styles.input}
+                  value={pin}
+                  onChangeText={(value) => setPin(value.replace(/\D/g, '').slice(0, 4))}
+                  keyboardType="number-pad"
+                  secureTextEntry
+                  maxLength={4}
+                  editable={!submitting}
+                />
+              </View>}
             </KeyboardAwareScrollView>
 
             {/* Footer */}

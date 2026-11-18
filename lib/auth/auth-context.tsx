@@ -5,6 +5,8 @@
 // - Exposes `signIn` / `signOut` / `refreshProfile`; screens wrap these in
 //   React Query mutations for per-screen pending/error UI.
 
+import { loginWithBiometrics } from './biometrics';
+import type { LoginResponse } from './types';
 import {
   createContext,
   useCallback,
@@ -18,7 +20,7 @@ import {
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { Platform } from 'react-native';
 
-import { ApiError, setApiToken, setAuthRefreshHandler } from '@/lib/api/client';
+import { ApiError, getApiToken, setApiToken, setAuthRefreshHandler } from '@/lib/api/client';
 import { watchPushSubscriptionId } from '@/lib/push';
 import { queryClient } from '@/lib/query-client';
 import {
@@ -77,6 +79,7 @@ interface AuthContextValue {
   accountType: AccountType | null;
   /** Authenticate and persist the session. Returns the signed-in user. */
   signIn: (type: AccountType, payload: LoginPayload) => Promise<AuthUser>;
+  signInWithBiometrics: () => Promise<AuthUser | null>;
   /**
    * Native Google sign-in. Establishes a session for existing/linked accounts,
    * or returns a `needs-signup` outcome (with the verified idToken + profile)
@@ -91,7 +94,7 @@ interface AuthContextValue {
   setSession: (type: AccountType, token: string, user: AuthUser) => Promise<void>;
   signOut: () => Promise<void>;
   /** Re-fetch the full profile for the current account. */
-  refreshProfile: () => Promise<void>;
+  refreshProfile: () => Promise<AuthUser | null>;
   /** Switch to the linked counterpart account without asking for credentials again. */
   switchMode: () => Promise<SwitchModeOutcome>;
   /** Prove ownership of an existing opposite-role profile and switch to it. */
@@ -108,6 +111,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [accountType, setAccountType] = useState<AccountType | null>(null);
 
   // Guards a background profile refresh from racing a sign-out.
+  const profileSession = useRef(0);
   const tokenRef = useRef<string | null>(null);
   tokenRef.current = token;
   const accountTypeRef = useRef<AccountType | null>(null);
@@ -147,6 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const applySession = useCallback(
     (nextType: AccountType, nextToken: string, nextUser: AuthUser | null) => {
+      profileSession.current += 1;
       setApiToken(nextToken);
       setToken(nextToken);
       setAccountType(nextType);
@@ -221,13 +226,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [applySession]);
 
-  const signIn = useCallback(
-    async (type: AccountType, payload: LoginPayload) => {
-      // The login endpoint returns only a token (+ metadata) — never the user —
-      // so we set the token, then fetch the full profile ourselves.
-      const res = await login(type, payload);
+  const finishLogin = useCallback(
+    async (res: LoginResponse, type: AccountType) => {
       const accountType = res.user_type ?? type;
-
+      if (!res.token) throw new Error('Sign-in did not complete. Please try again.');
       setApiToken(res.token);
       try {
         const { user } = await getProfile(accountType);
@@ -246,6 +248,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     [applySession],
   );
+
+  const signIn = useCallback(async (type: AccountType, payload: LoginPayload) =>
+    finishLogin(await login(type, payload), type), [finishLogin]);
+
+  const signInWithBiometrics = useCallback(async () => {
+    const session = await loginWithBiometrics();
+    return session ? finishLogin(session, session.user_type) : null;
+  }, [finishLogin]);
 
   const signInWithGoogle = useCallback(
     async (type: AccountType): Promise<GoogleSignInOutcome> => {
@@ -358,10 +368,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshProfile = useCallback(async () => {
-    if (!accountType) return;
+    if (!accountType || !tokenRef.current) return null;
+    const session = profileSession.current;
     const { user: fresh } = await getProfile(accountType);
+    if (session !== profileSession.current || !getApiToken()) {
+      throw new Error('Your account session changed. Please try again.');
+    }
     setUser(fresh);
     await saveUser(fresh);
+    return fresh;
   }, [accountType]);
 
   const switchMode = useCallback(async (): Promise<SwitchModeOutcome> => {
@@ -504,6 +519,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       token,
       accountType,
       signIn,
+      signInWithBiometrics,
       signInWithGoogle,
       signInWithApple,
       completeGoogleSignup,
@@ -521,6 +537,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       accountType,
       signIn,
+      signInWithBiometrics,
       signInWithGoogle,
       signInWithApple,
       completeGoogleSignup,

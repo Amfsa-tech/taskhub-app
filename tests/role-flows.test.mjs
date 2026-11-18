@@ -43,12 +43,13 @@ async function mountAuth(sourceRole) {
     'expo-apple-authentication': {},
     '@/lib/api/client': {
       ApiError,
+      getApiToken: () => activeToken,
       setApiToken(value) { activeToken = value; if (started) events.push('activate'); },
       setAuthRefreshHandler() {},
     },
     '@/lib/push': { watchPushSubscriptionId() { return () => {}; } },
     '@/lib/query-client': { queryClient: { async cancelQueries() { events.push('cancel'); }, removeQueries() { events.push('clear-cache'); } } },
-    './apple': {}, './google': {},
+    './apple': {}, './google': {}, './biometrics': {},
     './storage': {
       async loadSession() { return stored; }, async loadRefreshToken() { return null; },
       async saveSession(session) { events.push('persist'); stored = session; },
