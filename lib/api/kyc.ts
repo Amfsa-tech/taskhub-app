@@ -19,6 +19,11 @@ import { isDuplicateIdentity, type VerificationDecision } from '@/lib/verificati
 // `getKycStatus` also exposes the latest provider decision and retry policy.
 
 import { api } from './client';
+import { parseKycProviders } from '@/lib/kyc-providers';
+
+export async function getKycProviders(signal?: AbortSignal) {
+  return parseKycProviders(await api.get<unknown>('/api/v1/kyc/providers', { auth: false, signal, timeoutMs: 12000 }));
+}
 
 /** Credentials for the QoreID frontend SDK. Useless without that SDK. */
 export interface NinKycSession {

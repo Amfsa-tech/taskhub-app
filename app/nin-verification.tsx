@@ -23,6 +23,9 @@ import { createDiditKycSession, getKycStatus, type KycStatusResponse } from '@/l
 import { queryKeys, useKycStatus, useVerificationStatus } from '@/lib/api/queries';
 import { continueOnWebsite } from '@/lib/mobile-web-handoff';
 import { useAuth } from '@/lib/auth/auth-context';
+import { useKycProviders } from '@/hooks/use-kyc-providers';
+import { kycProviderEnabled } from '@/lib/kyc-providers';
+import { ApiError } from '@/lib/api/client';
 import { pollVerificationResult, VERIFICATION_CHECKING_MESSAGE, VERIFICATION_PROCESSING_MESSAGE } from '@/lib/verification-result';
 
 const COLORS = {
@@ -46,6 +49,9 @@ export default function NinVerificationScreen() {
   const queryClient = useQueryClient();
   const accountQ = useVerificationStatus();
   const recordQ = useKycStatus();
+  const providers = useKycProviders(accountType === 'tasker');
+  const qoreidEnabled = kycProviderEnabled(providers.data, 'qoreid');
+  const diditEnabled = kycProviderEnabled(providers.data, 'didit');
   const refetchAccount = accountQ.refetch;
   const refetchRecord = recordQ.refetch;
   const mountedRef = useRef(false);
@@ -93,6 +99,7 @@ export default function NinVerificationScreen() {
   }, [queryClient, refreshProfile]);
 
   const refresh = () => {
+    void providers.refetch();
     if (resultPhase !== 'idle') checkResult();
     else { void refetchRecord(); void refetchAccount(); }
   };
@@ -125,6 +132,7 @@ export default function NinVerificationScreen() {
 
   const webFallback = useMutation({
     mutationFn: async (provider?: 'qoreid') => {
+      await providers.checkEnabled(provider ?? 'didit');
       await checkCanStart();
       return continueOnWebsite({ action: 'identity-verification', provider });
     },
@@ -133,6 +141,7 @@ export default function NinVerificationScreen() {
 
   const startMutation = useMutation({
     mutationFn: async () => {
+      await providers.checkEnabled('didit');
       await checkCanStart();
       return createDiditKycSession();
     },
@@ -158,6 +167,11 @@ export default function NinVerificationScreen() {
       }
     },
     onError: (err) => {
+      if (err instanceof ApiError && err.code === 'KYC_PROVIDER_DISABLED') {
+        void providers.refetch();
+        Alert.alert('Verification option unavailable', err.message);
+        return;
+      }
       if (!mountedRef.current || verificationRetryBlocked(recordQ.data?.data)) return;
       Alert.alert('Could not start verification', err instanceof Error ? err.message : 'Please try again later.', [
         { text: 'Close', style: 'cancel' },
@@ -242,11 +256,23 @@ export default function NinVerificationScreen() {
             <Text style={styles.instructions}>
               {isPending
                 ? 'Your documents are being reviewed. This usually takes a few minutes — check back shortly.'
-                : 'Choose NIN verification with QoreID on the TaskHub website, or upload an identity document with Didit.'}
+                : 'Choose an available verification option below.'}
             </Text>
 
             {isRejected && <SupportContactButton issue={{ action: 'verification', explanation: verificationMessage(decision) }} />}
-            {canStart && (
+            {canStart && providers.isPending && <Text accessibilityRole="text" style={styles.instructions}>Loading verification options…</Text>}
+            {canStart && providers.isError && (
+              <View style={{ gap: 8 }}>
+                <Text accessibilityRole="alert" style={styles.errorText}>Could not load verification options. Please try again.</Text>
+                <Pressable accessibilityRole="button" style={styles.btnSecondary} onPress={() => void providers.refetch()}>
+                  <Text style={styles.btnSecondaryText}>Retry verification options</Text>
+                </Pressable>
+              </View>
+            )}
+            {canStart && providers.data && !qoreidEnabled && !diditEnabled && (
+              <Text style={styles.instructions}>Identity verification is temporarily unavailable. Please check back later.</Text>
+            )}
+            {canStart && qoreidEnabled && (
               <Pressable accessibilityRole="button" style={styles.btn}
                 disabled={webFallback.isPending || startMutation.isPending} onPress={() => webFallback.mutate('qoreid')}>
                 <Text style={styles.btnText}>
@@ -255,7 +281,7 @@ export default function NinVerificationScreen() {
               </Pressable>
             )}
 
-            {canStart ? (
+            {canStart && diditEnabled ? (
               <Pressable
                 style={({ pressed }) => [
                   styles.btnSecondary,

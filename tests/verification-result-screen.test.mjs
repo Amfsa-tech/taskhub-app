@@ -17,13 +17,13 @@ function load(relative,mocks={},cache=new Map()) {
 }
 
 
-async function mountScreen(t,{platformReturn='cancel',platform='ios',statuses=[{status:'approved',isVerified:true}],networkError=false}={}) {
+async function mountScreen(t,{platformReturn='cancel',platform='ios',statuses=[{status:'approved',isVerified:true}],networkError=false,providersState={data:{anyEnabled:true,providers:[{key:'qoreid',enabled:true},{key:'didit',enabled:true}]}},disabledAtStart=false}={}) {
   t.mock.timers.enable({apis:['setTimeout','Date'],now:0});
   const record={data:{success:true,data:{status:'not_started',isVerified:false}},isLoading:false,isError:false,isRefetching:false};
   record.refetch=async()=>({data:record.data});
   // Deliberately stale; the screen must wait for the primary KYC result.
   const account={data:{data:{isVerified:true}},isLoading:false,isError:false,isRefetching:false,refetch:async()=>({})};
-  let calls=0,profileRefreshes=0;const listeners=new Set(),alerts=[],handoffs=[];
+  let calls=0,profileRefreshes=0,sessionCalls=0,providerChecks=0;const listeners=new Set(),alerts=[],handoffs=[];
   const auth={accountType:'tasker',refreshProfile:async()=>{profileRefreshes++}};
   const subscribers=new Set();
   const subscribe=fn=>{subscribers.add(fn);return()=>subscribers.delete(fn)};
@@ -35,9 +35,11 @@ async function mountScreen(t,{platformReturn='cancel',platform='ios',statuses=[{
     '@tanstack/react-query':{useQueryClient:()=>client,useMutation:options=>({isPending:false,mutate:async input=>{try{const data=await options.mutationFn(input);await options.onSuccess?.(data)}catch(error){options.onError?.(error)}}})},
     '@/components/taskhub/screen-header':{ScreenHeader:()=>null},'@/components/taskhub/support-contact':{SupportContactButton:()=>React.createElement('Text',{},'Contact Support')},
     '@/lib/api/queries':{useVerificationStatus:()=>{React.useSyncExternalStore(subscribe,()=>account.data);return account},useKycStatus:()=>{React.useSyncExternalStore(subscribe,()=>record.data);return record},queryKeys:{kycStatus:()=>['kyc','status'],verificationStatus:()=>['verification-status']}},
+    '@/lib/api/client':{ApiError:class ApiError extends Error {}},
+    '@/hooks/use-kyc-providers':{useKycProviders:()=>({...providersState,refetch:async()=>{},checkEnabled:async()=>{providerChecks++;if(disabledAtStart)throw Error('This verification option is currently unavailable.');}})},
     '@/lib/mobile-web-handoff':{continueOnWebsite:async action=>{handoffs.push(action)}},
     '@/lib/auth/auth-context':{useAuth:()=>auth},
-    '@/lib/api/kyc':{createDiditKycSession:async()=>({data:{url:'https://verification.example.invalid/session'}}),getKycStatus:async signal=>{
+    '@/lib/api/kyc':{createDiditKycSession:async()=>{sessionCalls++;return{data:{url:'https://verification.example.invalid/session'}}},getKycStatus:async signal=>{
       assert.equal(signal.aborted,false);calls++;if(networkError)throw Error('offline');return{data:statuses[Math.min(calls-1,statuses.length-1)]};
     }},
   };
@@ -47,7 +49,7 @@ async function mountScreen(t,{platformReturn='cancel',platform='ios',statuses=[{
   assert.doesNotMatch(text(),/Identity Verified/);
   const button=name=>renderer.root.findAllByType('Pressable').find(node=>node.findAllByType('Text').some(text=>text.props.children===name));
   const start=()=>act(async()=>button('Document Upload (Didit)').props.onPress());
-  return{renderer,text,button,start,record,account,alerts,handoffs,calls:()=>calls,profileRefreshes:()=>profileRefreshes,appState:state=>act(async()=>{for(const fn of [...listeners])fn(state)})};
+  return{renderer,text,button,start,sessionCalls:()=>sessionCalls,providerChecks:()=>providerChecks,record,account,alerts,handoffs,calls:()=>calls,profileRefreshes:()=>profileRefreshes,appState:state=>act(async()=>{for(const fn of [...listeners])fn(state)})};
 }
 for(const status of ['approved','under_review','rejected'])test(`mobile uses primary backend ${status} after hosted capture closes`,async t=>{
   const message='The document could not be read.';
@@ -93,4 +95,37 @@ for (const platform of ['ios','android']) test(`QoreID is first on ${platform} a
   await act(async()=>fixture.button('Retry with QoreID').props.onPress());
   assert.deepEqual(fixture.handoffs,[{action:'identity-verification',provider:'qoreid'}]);
   await act(async()=>fixture.renderer.unmount());
+});
+
+
+for (const [qoreid, didit] of [[true, false], [false, true], [false, false]]) {
+  test(`mobile offers only enabled providers (QoreID ${qoreid}, Didit ${didit})`, async t => {
+    const fixture = await mountScreen(t, { providersState: { data: {
+      anyEnabled: qoreid || didit,
+      providers: [{ key: 'qoreid', enabled: qoreid }, { key: 'didit', enabled: didit }],
+    } } });
+    assert.equal(Boolean(fixture.button('NIN Verification (QoreID)')), qoreid);
+    assert.equal(Boolean(fixture.button('Document Upload (Didit)')), didit);
+    if (!qoreid && !didit) assert.match(fixture.text(), /temporarily unavailable/);
+    await act(async () => fixture.renderer.unmount());
+  });
+}
+
+for (const providersState of [{ isPending: true }, { isError: true }]) {
+  test(`mobile handles provider ${providersState.isPending ? 'loading' : 'failure'} without launching capture`, async t => {
+    const fixture = await mountScreen(t, { providersState });
+    assert.equal(fixture.button('NIN Verification (QoreID)'), undefined);
+    assert.equal(fixture.button('Document Upload (Didit)'), undefined);
+    assert.match(fixture.text(), providersState.isPending ? /Loading verification options/ : /Could not load verification options/);
+    await act(async () => fixture.renderer.unmount());
+  });
+}
+
+test('mobile rechecks a provider before launch and blocks a newly disabled option', async t => {
+  const fixture = await mountScreen(t, { disabledAtStart: true });
+  await fixture.start();
+  assert.equal(fixture.providerChecks(), 1);
+  assert.equal(fixture.sessionCalls(), 0);
+  assert.match(JSON.stringify(fixture.alerts), /currently unavailable/);
+  await act(async () => fixture.renderer.unmount());
 });

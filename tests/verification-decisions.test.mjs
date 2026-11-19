@@ -46,6 +46,8 @@ test('mobile duplicate state replaces loading and blocks both existing and newly
     '@/components/taskhub/biometric-setting':{BiometricSetting:()=>null},
     '@/components/taskhub/screen-header':{ScreenHeader:()=>null},'@/components/taskhub/support-contact':{SupportContactButton:()=>React.createElement('Text',{},'Contact Support')},
     '@/lib/api/queries':{useVerificationStatus:()=>account,useKycStatus:()=>record},
+    '@/lib/api/client':{ApiError:class ApiError extends Error {}},
+    '@/hooks/use-kyc-providers':{useKycProviders:()=>({data:{anyEnabled:true,providers:[{key:'qoreid',enabled:true},{key:'didit',enabled:true}]},checkEnabled:async()=>{},refetch:async()=>{}})},
     '@/lib/mobile-web-handoff':{continueOnWebsite:async()=>{}},
     '@/lib/auth/auth-context':{useAuth:()=>({accountType:'tasker',refreshProfile:async()=>{}})},
     '@/lib/api/kyc':{getKycStatus:async()=>({data:{status:'under_review',isVerified:false}}),createDiditKycSession:async()=>{creates++;return{data:{url:'https://verification.example.invalid/session'}}}},

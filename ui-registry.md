@@ -1,5 +1,12 @@
 # UI Pattern Registry
 
+### Verification provider availability
+
+The verification screen uses the server provider list to show available actions,
+with QoreID first. Loading and temporary-unavailability messages use the existing
+secondary text style. A failed lookup shows an inline error and a retry button.
+Keep status refresh available when every capture provider is disabled.
+
 ### Security confirmation and referral cards
 
 Use the existing white surface, 16-point card corners, and gray border. Keep
