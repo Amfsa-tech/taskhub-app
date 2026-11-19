@@ -563,7 +563,7 @@ export default function ProfileScreen() {
           <CaretRight width={9} height={12} />
         </Pressable>
 
-        {user.referralCode && user.referralLink && <ReferralCard key={user._id} code={user.referralCode} link={user.referralLink} />}
+        <ReferralCard key={user._id} />
         {/* Menu groups */}
         <MenuCard
           items={accountType === 'tasker' ? TASKER_MENU_GROUP_ACCOUNT : MENU_GROUP_ACCOUNT}

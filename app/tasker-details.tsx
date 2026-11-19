@@ -21,7 +21,7 @@ import { ArrowRight } from '@/components/icons/arrow-right';
 import { Check } from '@/components/icons/check';
 import { Headset } from '@/components/icons/headset';
 import { setPendingEmailLogin } from '@/lib/auth/pending-email-login';
-import { ApiError } from '@/lib/api/client';
+import { referralCodeValue, referralFieldError } from '@/lib/referral-code';
 import { signupAgeError } from '@/lib/auth/age';
 import { registerTasker } from '@/lib/auth/auth-api';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -94,7 +94,7 @@ export default function TaskerDetailsScreen() {
     referralCode?: string;
   }>();
 
-  const [referralCode, setReferralCode] = useState(initialReferral || '');
+  const [referralCode, setReferralCode] = useState(referralCodeValue(initialReferral));
   const [phoneNumber, setPhoneNumber] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState(
     linked === 'true' && typeof user?.dateOfBirth === 'string'
@@ -128,17 +128,17 @@ export default function TaskerDetailsScreen() {
       if (social === 'apple') {
         const pending = getPendingAppleSignup();
         if (!pending) throw new Error('Your Apple sign-in session expired. Please try again.');
-        return completeAppleSignup({ signupToken: pending.signupToken, type: 'tasker', ...details, referralCode: referralCode.trim() || undefined });
+        return completeAppleSignup({ signupToken: pending.signupToken, type: 'tasker', ...details, referralCode: referralCodeValue(referralCode) || undefined });
       }
       if (social === 'google') {
         const pending = getPendingGoogleSignup();
         if (!pending) throw new Error('Your Google sign-in session expired. Please try again.');
-        return completeGoogleSignup({ idToken: pending.idToken, type: 'tasker', ...details, referralCode: referralCode.trim() || undefined });
+        return completeGoogleSignup({ idToken: pending.idToken, type: 'tasker', ...details, referralCode: referralCodeValue(referralCode) || undefined });
       }
       if (isLinkedRole) {
         return createRoleAndSwitch({ user_type: 'tasker', ...details });
       }
-      return registerTasker({ ...details, emailAddress: email ?? '', password: password ?? '', referralCode: referralCode.trim() || undefined });
+      return registerTasker({ ...details, emailAddress: email ?? '', password: password ?? '', referralCode: referralCodeValue(referralCode) || undefined });
     },
     onSuccess: () => {
       if (isSocial || isLinkedRole) {
@@ -155,8 +155,9 @@ export default function TaskerDetailsScreen() {
       router.push({ pathname: '/otp', params: { email, type: 'tasker' } });
     },
     onError: (err) => {
-      if (err instanceof ApiError && (err.body as { field?: string })?.field === 'referralCode') {
-        setReferralError(err.message);
+      const fieldError = referralFieldError(err);
+      if (fieldError) {
+        setReferralError(fieldError);
         return;
       }
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');

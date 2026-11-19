@@ -555,3 +555,9 @@ Display terminal duplicate-identity messages in error red (`#dc2626`) with an ac
 ### Verification result feedback - 2026-11-07
 
 Capture submission is a neutral checking state, using the existing gray body text and loading spinner. Show backend rejection messages in the existing red alert style with Contact Support; a duplicate identity never offers another capture attempt. Other rejected attempts offer retry only with explicit backend permission. Approval uses the existing success treatment only after a status response confirms it. Under review is a stable state. Result polling lasts at most 90 seconds at four-second intervals and never continues in the background after the verification screen unmounts. Timeout/network failure uses neutral processing text and a manual Refresh status action; it is not an approval or rejection.
+
+### Referral sharing and counts - 2026-11-19
+
+Files: `app/referrals.tsx`, `components/taskhub/referral-card.tsx`, `components/taskhub/referral-actions.tsx`
+
+Use the existing `#f9f9fb` canvas, white cards, 1px `#e0e0ea` borders, 16px card radii, 20px card padding and 12px internal gaps. Headings use 17px semibold `#111122`; body copy uses 14px `#5a5a70` with 21px line height. Highlight selectable referral codes in brand purple `#6c3bff`. Copy and Share have 12px radii, 14px vertical padding and semibold labels, using purple outlines or purple fills. Dim unavailable actions to 50% opacity. Counts use matching cards with 23px bold values and neutral skeletons; show readable error and retry states instead of invented zero counts. Share uses only the server's prepared message through the native share sheet. Keep the profile entry available while referral details load.

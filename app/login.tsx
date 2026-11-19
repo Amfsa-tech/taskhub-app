@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft } from '@/components/icons/arrow-left';
 import { GoogleLogo } from '@/components/icons/google-logo';
 import { Headset } from '@/components/icons/headset';
+import { referralCodeValue } from '@/lib/referral-code';
 import { useAuth } from '@/lib/auth/auth-context';
 import { isAppleSignInAvailable, setPendingAppleSignup } from '@/lib/auth/apple';
 import { GoogleSignInUnavailableError, setPendingGoogleSignup } from '@/lib/auth/google';
@@ -25,7 +26,7 @@ const COLORS = {
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { type } = useLocalSearchParams<{ type?: string }>();
+  const { type, ref } = useLocalSearchParams<{ type?: string; ref?: string }>();
   // Set by the purpose screen ("I want to Earn" → tasker). Defaults to user.
   const accountType = type === 'tasker' ? 'tasker' : 'user';
   const { signInWithApple, signInWithGoogle } = useAuth();
@@ -51,12 +52,12 @@ export default function LoginScreen() {
         setPendingGoogleSignup({ idToken: outcome.idToken, profile: outcome.profile });
         router.push({
           pathname: '/tasker-details' as any,
-          params: { social: 'google', firstName: outcome.profile.givenName, lastName: outcome.profile.familyName, email: outcome.profile.email, country: 'Nigeria' },
+          params: { social: 'google', referralCode: referralCodeValue(ref), firstName: outcome.profile.givenName, lastName: outcome.profile.familyName, email: outcome.profile.email, country: 'Nigeria' },
         });
       } else {
         // No account yet — carry the verified token to the completion screen.
         setPendingGoogleSignup({ idToken: outcome.idToken, profile: outcome.profile });
-        router.push('/google-complete-signup');
+        router.push({ pathname: '/google-complete-signup', params: { ref: referralCodeValue(ref) } });
       }
     } catch (err) {
       const code = (err as { code?: string })?.code;
@@ -86,11 +87,11 @@ export default function LoginScreen() {
         setPendingAppleSignup({ signupToken: outcome.signupToken, profile: outcome.profile });
         router.push({
           pathname: '/tasker-details' as any,
-          params: { social: 'apple', firstName: outcome.profile.givenName, lastName: outcome.profile.familyName, email: outcome.profile.email, country: 'Nigeria' },
+          params: { social: 'apple', referralCode: referralCodeValue(ref), firstName: outcome.profile.givenName, lastName: outcome.profile.familyName, email: outcome.profile.email, country: 'Nigeria' },
         });
       } else {
         setPendingAppleSignup({ signupToken: outcome.signupToken, profile: outcome.profile });
-        router.push('/google-complete-signup');
+        router.push({ pathname: '/google-complete-signup', params: { ref: referralCodeValue(ref) } });
       }
     } catch (err) {
       const code = (err as { code?: string })?.code;
@@ -135,7 +136,7 @@ export default function LoginScreen() {
         <View style={styles.buttons}>
           <Pressable
             style={({ pressed }) => [styles.button, styles.emailButton, pressed && styles.pressed]}
-            onPress={() => router.push({ pathname: '/create-account', params: { type: accountType } })}>
+            onPress={() => router.push({ pathname: '/create-account', params: { type: accountType, ref: referralCodeValue(ref) } })}>
             <Text style={styles.emailLabel}>Continue with Email</Text>
           </Pressable>
 

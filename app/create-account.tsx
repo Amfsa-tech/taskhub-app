@@ -24,7 +24,7 @@ import { Check } from '@/components/icons/check';
 import { Eye } from '@/components/icons/eye';
 import { Headset } from '@/components/icons/headset';
 import { setPendingEmailLogin } from '@/lib/auth/pending-email-login';
-import { ApiError } from '@/lib/api/client';
+import { referralCodeValue, referralFieldError } from '@/lib/referral-code';
 import { signupAgeError } from '@/lib/auth/age';
 import { registerUser } from '@/lib/auth/auth-api';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -110,7 +110,7 @@ export default function CreateAccountScreen() {
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [referralCode, setReferralCode] = useState(typeof ref === 'string' ? ref.trim() : '');
+  const [referralCode, setReferralCode] = useState(referralCodeValue(ref));
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [agreed, setAgreed] = useState(false);
   const country = useSelectedCountry();
@@ -124,6 +124,9 @@ export default function CreateAccountScreen() {
   const needsProfileRetry = isLinkedRoleCreation && accountType === targetType;
   const [error, setError] = useState<string | null>(null);
   const [referralError, setReferralError] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof ref === 'string') { setReferralCode(referralCodeValue(ref)); setReferralError(null); }
+  }, [ref]);
 
   const registerMutation = useMutation<unknown, Error, void>({
     mutationFn: () => isLinkedRoleCreation
@@ -132,7 +135,7 @@ export default function CreateAccountScreen() {
         fullName: fullName.trim(),
         emailAddress: email.trim().toLowerCase(),
         password,
-        referralCode: referralCode.trim() || undefined,
+        referralCode: referralCodeValue(referralCode) || undefined,
         country,
         dateOfBirth: dateOfBirth.trim(),
       }),
@@ -146,8 +149,9 @@ export default function CreateAccountScreen() {
       router.push({ pathname: '/otp', params: { email: address, type: 'user' } });
     },
     onError: (err) => {
-      if (err instanceof ApiError && (err.body as { field?: string })?.field === 'referralCode') {
-        setReferralError(err.message);
+      const fieldError = referralFieldError(err);
+      if (fieldError) {
+        setReferralError(fieldError);
         return;
       }
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
@@ -190,7 +194,7 @@ export default function CreateAccountScreen() {
           lastName: lastName.trim(),
           email: email.trim().toLowerCase(),
           password,
-          referralCode: referralCode.trim() || undefined,
+          referralCode: referralCodeValue(referralCode) || undefined,
           country,
           linked: isLinkedRoleCreation ? 'true' : undefined,
         },

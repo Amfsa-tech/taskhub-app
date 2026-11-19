@@ -285,7 +285,7 @@ export default function LoginFormScreen() {
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
           <Pressable
             hitSlop={8}
-            onPress={() => router.replace({ pathname: '/create-account', params: { type: accountType } })}
+            onPress={() => router.replace({ pathname: '/create-account', params: { type: accountType, ref } })}
             style={styles.altRow}>
             <Text style={styles.altMuted}>
               Don’t have an account? <Text style={styles.altLink}>Create account</Text>
