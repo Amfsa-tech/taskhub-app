@@ -10,6 +10,7 @@ export interface ApiEnvelope {
 
 // Error body shapes seen across endpoints.
 export interface ApiErrorBody extends ApiEnvelope {
+  requestId?: string;
   status: 'error';
   message: string;
   missingFields?: string[];

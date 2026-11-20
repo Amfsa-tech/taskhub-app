@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { formatBalance } from '@/lib/money';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
 import { useTaskerTransactionsPaged, useTaskerWithdrawals, useWalletTransactionsPaged } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -78,6 +79,10 @@ export default function TransactionHistoryScreen() {
     status: withdrawal.status === 'paid' ? 'success' as const : withdrawal.status === 'rejected' ? 'failed' as const : 'pending' as const,
     reference: withdrawal._id,
     paymentPurpose: 'withdrawal',
+    previousBalance: withdrawal.balanceBefore,
+    previousBalanceKobo: withdrawal.balanceBeforeKobo,
+    balanceAfter: withdrawal.balanceAfter,
+    balanceAfterKobo: withdrawal.balanceAfterKobo,
     createdAt: withdrawal.createdAt,
     isWithdrawal: true,
   }));
@@ -175,6 +180,8 @@ export default function TransactionHistoryScreen() {
                     {transactionTitle(item)}
                   </Text>
                   <Text style={styles.txMeta}>{formatLongDate(item.createdAt)}</Text>
+                  <Text style={styles.txMeta}>Balance before: {formatBalance(item.previousBalance, item.previousBalanceKobo)}</Text>
+                  <Text style={styles.txMeta}>Balance after: {formatBalance(item.balanceAfter, item.balanceAfterKobo)}</Text>
                 </View>
                 <View style={styles.txPriceCol}>
                   <Text style={[styles.txAmount, credit ? styles.creditText : styles.debitText]}>

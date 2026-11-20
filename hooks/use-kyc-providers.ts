@@ -9,7 +9,9 @@ export function useKycProviders(enabled = true) {
     queryKey: ['kyc-providers'],
     queryFn: ({ signal }) => getKycProviders(signal),
     enabled,
-    staleTime: 30_000,
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: 'always',
     retry: false,
     refetchInterval: false,
   });

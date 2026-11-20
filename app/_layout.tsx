@@ -26,6 +26,7 @@ import { queryClient } from '@/lib/query-client';
 import { LocationProvider } from '@/context/LocationContext';
 import { PostTaskProvider } from '@/context/PostTaskContext';
 import { SupportWidget } from '@/components/taskhub/support-widget';
+import { CaptchaProvider } from '@/components/taskhub/captcha-provider';
 
 // The app shell is the anchor, so popping back from a pushed screen lands in
 // the tabs — not on a stray intro route.
@@ -45,6 +46,7 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
       <Text style={errorStyles.message}>
         An unexpected error occurred. Please try again.
       </Text>
+      {'requestId' in error && typeof error.requestId === 'string' && <Text selectable style={errorStyles.message}>Error ID: {error.requestId}</Text>}
       <Pressable
         style={({ pressed }) => [errorStyles.button, pressed && errorStyles.buttonPressed]}
         onPress={retry}>
@@ -209,6 +211,7 @@ function RootNavigator() {
                     <Stack.Screen name="(main)" options={{ headerShown: false }} />
       </Stack>
       <SupportWidget />
+      <CaptchaProvider />
       <StatusBar style="auto" />
     </ThemeProvider>
   );

@@ -519,7 +519,7 @@ export default function ProfileScreen() {
             {[
               { value: String(user.tasksCompleted ?? 0), label: 'Completed' },
               { value: (user.averageRating ?? 0) > 0 ? Number(user.averageRating).toFixed(1) : 'New', label: 'Avg Rating' },
-              { value: formatNaira(user.amountEarned ?? 0), label: 'Earned' },
+              ...(user.amountEarned == null ? [] : [{ value: formatNaira(user.amountEarned), label: 'Earned' }]),
             ].map((s) => (
               <View key={s.label} style={styles.taskerStatCard}>
                 <Text style={styles.taskerStatValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{s.value}</Text>

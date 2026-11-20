@@ -1,3 +1,4 @@
+import { CaptchaNotice } from "@/components/taskhub/captcha-notice";
 import { useMutation } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -322,6 +323,7 @@ export default function CreateAccountScreen() {
             </Text>
           </View>
 
+          <CaptchaNotice />
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <Pressable
             style={({ pressed }) => [

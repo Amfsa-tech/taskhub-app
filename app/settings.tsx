@@ -1,3 +1,4 @@
+import { DownloadMyData } from "@/components/taskhub/download-my-data";
 import * as WebBrowser from 'expo-web-browser';
 import { BiometricSetting } from '@/components/taskhub/biometric-setting';
 import { Ionicons } from '@expo/vector-icons';
@@ -160,6 +161,8 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionHeader}>PRIVACY</Text>
           <View style={styles.groupCard}>
+            <DownloadMyData />
+            <View style={styles.divider} />
             <SettingRow
               icon="person-remove-outline"
               iconBg="#fff1f1"

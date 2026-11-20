@@ -22,7 +22,7 @@ import { api } from './client';
 import { parseKycProviders } from '@/lib/kyc-providers';
 
 export async function getKycProviders(signal?: AbortSignal) {
-  return parseKycProviders(await api.get<unknown>('/api/v1/kyc/providers', { auth: false, signal, timeoutMs: 12000 }));
+  return parseKycProviders(await api.get<unknown>('/api/v1/kyc/providers', { auth: false, signal, timeoutMs: 12000, cache: 'no-store' }));
 }
 
 /** Credentials for the QoreID frontend SDK. Useless without that SDK. */

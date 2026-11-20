@@ -276,10 +276,10 @@ export default function TaskerProfileScreen() {
                   <Text style={styles.statValue}>{tasker.completedJobs}</Text>
                   <Text style={styles.statLabel}>Completed</Text>
                 </View>
-                <View style={styles.statCard}>
-                  <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{formatNaira(tasker.amountEarned ?? 0)}</Text>
+                {tasker.amountEarned != null && <View style={styles.statCard}>
+                  <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{formatNaira(tasker.amountEarned)}</Text>
                   <Text style={styles.statLabel}>Earned</Text>
-                </View>
+                </View>}
                 <View style={styles.statCard}>
                   <Text style={styles.statValue}>{ratingLabel}</Text>
                   <Text style={styles.statLabel}>Avg Rating</Text>

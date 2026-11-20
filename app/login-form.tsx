@@ -1,3 +1,4 @@
+import { CaptchaNotice } from "@/components/taskhub/captcha-notice";
 import { useMutation } from '@tanstack/react-query';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -223,6 +224,7 @@ export default function LoginFormScreen() {
             <Text style={styles.forgot}>Forgot Password?</Text>
           </Pressable>
 
+          <CaptchaNotice />
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           {/* Login */}

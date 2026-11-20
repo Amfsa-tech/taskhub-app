@@ -1,3 +1,4 @@
+import { CaptchaNotice } from "@/components/taskhub/captcha-notice";
 import { useMutation } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -99,7 +100,8 @@ export default function ForgotPasswordScreen() {
           </View>
         </View>
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        <CaptchaNotice />
+          {error ? <Text style={styles.error}>{error}</Text> : null}
 
         {/* Buttons */}
         <View style={styles.buttons}>

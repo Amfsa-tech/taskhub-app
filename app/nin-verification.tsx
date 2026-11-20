@@ -136,7 +136,10 @@ export default function NinVerificationScreen() {
       await checkCanStart();
       return continueOnWebsite({ action: 'identity-verification', provider });
     },
-    onError: (error) => Alert.alert('Could not open TaskHub', error instanceof Error ? error.message : 'Please try again.'),
+    onError: (error) => {
+      if (error instanceof ApiError && error.code === 'KYC_PROVIDER_DISABLED') void providers.refetch();
+      Alert.alert('Could not open TaskHub', error instanceof Error ? error.message : 'Please try again.');
+    },
   });
 
   const startMutation = useMutation({
@@ -238,7 +241,7 @@ export default function NinVerificationScreen() {
                   isRejected && { color: COLORS.error },
                   isPending && { color: COLORS.warning },
                 ]}>
-                {isRejected ? 'Rejected' : isPending ? 'Your verification is under review' : record?.status === 'in_progress' || record?.status === 'pending' ? 'Processing' : 'Not verified'}
+                {isRejected ? 'Rejected' : isPending ? 'Your verification is under review' : record?.status === 'in_progress' || record?.status === 'pending' ? 'Pending' : 'Not verified'}
               </Text>
 
               {isRejected && <Text accessibilityRole="alert" style={styles.errorText}>{verificationMessage(decision)}</Text>}

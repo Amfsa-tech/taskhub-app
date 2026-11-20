@@ -14,7 +14,8 @@ export function isDuplicateIdentity(status?: VerificationDecision | null) {
 
 export function verificationRetryBlocked(status?: (VerificationDecision & { status?: string }) | null) {
   if (isDuplicateIdentity(status)) return true;
-  if (['approved', 'under_review', 'in_progress', 'pending'].includes(status?.status || '')) return true;
+  // Unfinished QoreID sessions can be resumed; only submitted/final decisions block a launch.
+  if (['approved', 'under_review'].includes(status?.status || '')) return true;
   return (status?.status === 'rejected' || status?.isFraudFlagged === true) && status?.resubmissionAllowed !== true;
 }
 

@@ -41,9 +41,12 @@ export class ApiError extends Error {
   readonly body?: ApiErrorBody | unknown;
   /** The refresh token worked, but this particular endpoint still rejected the new access token. */
   readonly afterSuccessfulRefresh: boolean;
+  readonly requestId?: string;
 
   constructor(message: string, status: number, body?: unknown, afterSuccessfulRefresh = false) {
-    super(message);
+    const requestId = body && typeof body === 'object' && 'requestId' in body && typeof body.requestId === 'string' && /^[\w.:-]{1,200}$/.test(body.requestId) ? body.requestId : undefined;
+    super(requestId ? `${message}\nError ID: ${requestId}` : message);
+    this.requestId = requestId;
     this.name = 'ApiError';
     this.status = status;
     this.body = body;
@@ -97,6 +100,8 @@ export interface RequestOptions {
   token?: string;
   /** Extra headers, merged over the defaults. */
   headers?: Record<string, string>;
+  /** Provider switches must bypass the device HTTP cache too. */
+  cache?: 'no-store';
   /** Abort signal for cancellation (e.g. from React Query). */
   signal?: AbortSignal;
   /** Request deadline. JSON requests default to 45s; uploads default to 120s. */
@@ -157,6 +162,7 @@ async function requestApiData<T = unknown>(
   }, deadline);
   try {
     response = await fetch(url, {
+      cache: options.cache,
       method,
       headers: finalHeaders,
       body: body !== undefined ? (isFormData ? (body as FormData) : JSON.stringify(body)) : undefined,
@@ -214,6 +220,16 @@ async function requestApiData<T = unknown>(
   }
 
   if (!response.ok) {
+    if (response.status >= 500 && data && typeof data === 'object' && !('requestId' in data)) {
+      data = { ...data, requestId: response.headers?.get?.('X-Request-ID') || undefined };
+    }
+    if (response.status === 409 && (data as ApiErrorBody | undefined)?.code === 'TASK_STATE_CHANGED') {
+      const [{ queryClient }, { refreshChangedTask, TASK_CHANGED_MESSAGE }] = await Promise.all([
+        import('@/lib/query-client'), import('@/lib/task-conflict'),
+      ]);
+      await refreshChangedTask(queryClient, path);
+      throw new ApiError(TASK_CHANGED_MESSAGE, response.status, data);
+    }
     const message =
       (data && typeof data === 'object' && 'message' in data
         ? String((data as ApiErrorBody).message)
@@ -232,6 +248,13 @@ export async function apiRequest<T = unknown>(path: string, options: RequestOpti
   const requestScope = getSupportScope();
   const method = options.method || 'GET';
   try {
+    if (process.env.EXPO_PUBLIC_TURNSTILE_SITE_KEY?.trim()) {
+      const { captchaRequiredFor, requestCaptchaToken } = await import('@/lib/captcha');
+      if (captchaRequiredFor(path, method)) {
+        const token = await requestCaptchaToken();
+        options = { ...options, headers: { ...options.headers, 'cf-turnstile-response': token } };
+      }
+    }
     const data = await requestApiData<T>(path, options);
     clearSupportIssue(`${method}:${path}`, requestScope);
     return data;

@@ -44,6 +44,7 @@ test('mobile duplicate state replaces loading and blocks both existing and newly
     'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:0})},'expo-web-browser':{openBrowserAsync:async url=>{opened.push(url);return{type:'cancel'}}},
     '@tanstack/react-query':{useQueryClient:()=>({setQueryData(){}}),useMutation:options=>({isPending:false,mutate:async()=>{try{const result=await options.mutationFn();await options.onSuccess(result)}catch(error){options.onError(error)}}})},
     '@/components/taskhub/biometric-setting':{BiometricSetting:()=>null},
+    '@/components/taskhub/download-my-data':{DownloadMyData:()=>null},
     '@/components/taskhub/screen-header':{ScreenHeader:()=>null},'@/components/taskhub/support-contact':{SupportContactButton:()=>React.createElement('Text',{},'Contact Support')},
     '@/lib/api/queries':{useVerificationStatus:()=>account,useKycStatus:()=>record},
     '@/lib/api/client':{ApiError:class ApiError extends Error {}},

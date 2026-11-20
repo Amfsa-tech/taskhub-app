@@ -39,8 +39,10 @@ export interface WalletTransaction {
   /** Wider than `WalletTransactionPurpose` — reads can return `withdrawal`, `refund`, `other`. */
   paymentPurpose?: string;
   createdAt: string;
-  previousBalance?: number;
-  balanceAfter?: number;
+  previousBalance?: number | null;
+  previousBalanceKobo?: number | null;
+  balanceAfter?: number | null;
+  balanceAfterKobo?: number | null;
   /** Synthetic history row backed by the withdrawal ledger, not the transaction ledger. */
   isWithdrawal?: boolean;
 }
@@ -54,7 +56,10 @@ export interface TransactionReceipt {
   taskTitle?: string;
   amount: number;
   currency?: string;
+  previousBalance?: number | null;
+  previousBalanceKobo?: number | null;
   balanceAfter?: number | null;
+  balanceAfterKobo?: number | null;
   provider?: string;
   paymentMethod?: string;
   counterparty?: string;
@@ -364,6 +369,10 @@ export interface StellarDepositInfoResponse {
 
 export interface WithdrawalRecord {
   _id: string;
+  balanceBefore?: number | null;
+  balanceBeforeKobo?: number | null;
+  balanceAfter?: number | null;
+  balanceAfterKobo?: number | null;
   amount: number;
   status: 'pending' | 'approved' | 'rejected' | 'paid';
   payoutMethod: PayoutMethod;

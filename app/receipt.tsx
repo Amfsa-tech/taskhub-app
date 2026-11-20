@@ -17,6 +17,7 @@ import ShieldCheck from '@/assets/icons/shield-check.svg';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
 import { useQuery } from '@tanstack/react-query';
 import { formatLongDate, formatNaira } from '@/lib/api/tasks';
+import { formatBalance } from '@/lib/money';
 import { getTransactionReceipt } from '@/lib/api/wallet';
 
 const COLORS = {
@@ -135,6 +136,14 @@ export default function ReceiptScreen() {
             <Text style={styles.label}>Payment Method</Text>
             <Text style={styles.value}>{receipt.paymentMethod || receipt.provider}</Text>
           </View> : null}
+          <View style={styles.row}>
+            <Text style={styles.label}>Balance before</Text>
+            <Text style={styles.value}>{formatBalance(receipt.previousBalance, receipt.previousBalanceKobo)}</Text>
+          </View>
+          <View style={styles.row}>
+            <Text style={styles.label}>Balance after</Text>
+            <Text style={styles.value}>{formatBalance(receipt.balanceAfter, receipt.balanceAfterKobo)}</Text>
+          </View>
           {receipt.platformFee != null && (
             <View style={styles.row}>
               <Text style={styles.label}>Platform Fee</Text>

@@ -573,3 +573,15 @@ Home and Profile share the same completion card: `#f3eeff` surface, 1px `#e4d6ff
 Files: `components/taskhub/biometric-dialog.tsx`, `components/taskhub/biometric-setting.tsx`, `components/taskhub/biometric-login-button.tsx`
 
 Biometric setup uses a centered white modal with a 28px radius, 24px padding, subtle purple border and dimmed backdrop. Frame the native fingerprint/Face ID symbol in concentric pale purple circles with a small shield badge. Use Geist semibold 23px centered headings, 14px gray body copy, purple 14px-radius primary buttons and separate cancel/password actions. Email confirmation appears as five outlined digit cells inside the modal, with a purple active cell and standard one-time-code autofill. Keep validation errors inside the modal, and clear the draft on dismissal or profile changes. The sign-in entry is a bordered white card with a purple icon tile and supporting caption. Actual biometric authentication always uses the OS prompt; the custom modal presents setup and recovery feedback.
+
+### Verification resume and historical balances - 2026-11-20
+
+Files: `app/nin-verification.tsx`, `app/receipt.tsx`, `app/transaction-history.tsx`
+
+Show Pending for both pending and in-progress KYC. Keep the existing provider controls available to continue an unfinished session, with under review, approval and backend-blocked rejections remaining protected. Provider availability refreshes on screen entry and before launch, with no retained cache or recurring poll. Receipt balance rows use existing gray labels and semibold dark values; history uses the existing secondary metadata text style. Unknown before/after balances display an em dash, legitimate zero displays as currency, and authoritative Kobo snapshots take precedence. Preserve wrapping on narrow screens and keep financial mutations disabled only while the request is pending.
+
+### Security checks and personal data - 2026-11-20
+
+Files: `components/taskhub/captcha-provider.tsx`, `components/taskhub/turnstile-challenge.tsx`, `components/taskhub/download-my-data.tsx`
+
+Security checks open a centered white modal with 24-point corners, 20-point padding, a dimmed backdrop, 21-point semibold heading and gray 14-point description. Keep Cancel separate, with an outlined 12-point-radius control and purple text. The embedded browser shows only the hosted challenge; load it on demand, validate the source URL, and unmount it after completion or cancellation. Settings data export uses the existing Privacy card, purple download icon and a disabled preparing state. Save/share the authenticated JSON through the system sheet; remove the temporary file afterwards and cancel requests on account changes or unmount. Display Error ID references in readable text. Hide unavailable earnings statistics and keep a legitimate zero visible.

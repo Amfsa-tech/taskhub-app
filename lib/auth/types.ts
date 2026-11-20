@@ -30,7 +30,7 @@ export interface AuthUser {
   completedTasksCount?: number;
   trustScore?: number;
   tasksCompleted?: number;
-  amountEarned?: number;
+  amountEarned?: number | null;
   /** Reviews this user has left on their completed tasks. */
   reviewsGivenCount?: number;
   savedTaskersCount?: number;

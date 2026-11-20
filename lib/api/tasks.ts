@@ -228,7 +228,7 @@ export interface TaskerProfile {
   bio: string;
   averageRating: number;
   completedJobs: number;
-  amountEarned?: number;
+  amountEarned?: number | null;
   primaryCategory: string | null;
   subCategories?: { _id: string; name?: string; displayName?: string; description?: string }[];
   services?: string[];
