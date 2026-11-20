@@ -59,6 +59,8 @@ function harness() {
     '@/lib/api/wallet': { verifyFunding: async () => ({ data: { transactionStatus: 'failed' } }) },
     '@/lib/config': { STELLAR_WALLET_ENABLED: false },
     '@/components/taskhub/recent-tasks': { RecentTasks: () => null },
+    '@/components/taskhub/tasker-profile-progress-card': { TaskerProfileProgressCard: () => null },
+    '@/hooks/use-tasker-profile-progress': { useTaskerProfileProgress: () => ({ score: 0 }) },
     '@/components/taskhub/screen-header': { ScreenHeader: props => React.createElement('ScreenHeader', props) },
     '@/components/taskhub/fund-wallet-modal': { FundWalletModal: () => null },
   };

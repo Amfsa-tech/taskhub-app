@@ -1,4 +1,5 @@
 import type { VerificationDecision } from '@/lib/verification-status';
+import type { TaskerProfileCompletion } from '@/lib/tasker-profile-progress';
 // Auth domain types mirroring the TaskHub backend auth endpoints.
 
 export type AccountType = 'user' | 'tasker';
@@ -20,6 +21,7 @@ export interface AuthUser {
   phoneNumber?: string;
   dateOfBirth?: string;
   profilePicture?: string;
+  profileCompletion?: TaskerProfileCompletion;
   wallet?: number;
   isEmailVerified?: boolean;
   isKYCVerified?: boolean;

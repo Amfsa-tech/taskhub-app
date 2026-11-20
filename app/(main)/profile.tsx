@@ -10,6 +10,8 @@ import { Spinner } from '@/components/taskhub/spinner';
 import { formatNaira } from '@/lib/api/tasks';
 import { ApiError } from '@/lib/api/client';
 import { ReferralCard } from '@/components/taskhub/referral-card';
+import { TaskerProfileProgressCard } from '@/components/taskhub/tasker-profile-progress-card';
+import { useTaskerProfileProgress } from '@/hooks/use-tasker-profile-progress';
 import { useAuth } from '@/lib/auth/auth-context';
 
 import BadgeVerified from '@/assets/icons/badge-verified.svg';
@@ -26,7 +28,6 @@ import StarAmber from '@/assets/icons/star-amber.svg';
 import Swap from '@/assets/icons/swap.svg';
 import User from '@/assets/icons/user.svg';
 import Wallet from '@/assets/icons/wallet.svg';
-import VerificationRing from '@/assets/icons/verification-ring.svg';
 
 const COLORS = {
   canvas: '#f9f9fb',
@@ -232,6 +233,7 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, accountType, isBootstrapping, signOut, switchMode } = useAuth();
+  const profileProgress = useTaskerProfileProgress();
 
   const switchMutation = useMutation({
     mutationFn: switchMode,
@@ -405,7 +407,7 @@ export default function ProfileScreen() {
     user.emailAddress?.split('@')[0] ||
     'User';
 
-  const isVerified = Boolean(user.isKYCVerified);
+  const isVerified = accountType === 'tasker' ? profileProgress.identityVerified : user.isEmailVerified === true;
   const stats = [
     { value: user.tasksPostedCount ?? 0, label: 'Tasks Posted' },
     { value: user.completedTasksCount ?? 0, label: 'Completed' },
@@ -493,22 +495,7 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* Tasker: Verification & Profile Card first */}
-        {accountType === 'tasker' && (
-          <Pressable style={styles.taskerProfileVerifyCard} onPress={() => router.push('/select-verification')}>
-            <View style={styles.ring}>
-              <VerificationRing width={51} height={51} style={styles.ringImage} color={COLORS.brand} />
-              <Text style={styles.ringText}>{isVerified ? '100' : user.profilePicture ? '75' : '50'}</Text>
-            </View>
-            <View style={styles.taskerVerifyText}>
-              <Text style={styles.taskerVerifyTitle}>Complete Verification & Profile</Text>
-              <Text style={styles.taskerVerifySubtitle}>
-                {isVerified ? 'Profile verified' : user.profilePicture ? 'Complete identity verification' : 'Add profile photo'}
-              </Text>
-            </View>
-            <CaretRight width={9} height={12} color={COLORS.brand} />
-          </Pressable>
-        )}
+        {accountType === 'tasker' && <TaskerProfileProgressCard progress={profileProgress} />}
 
         {/* Tasker: Performance button row */}
         {accountType === 'tasker' && (
@@ -881,45 +868,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Geist_500Medium',
     fontSize: 13,
     color: COLORS.textSecondary,
-  },
-  taskerProfileVerifyCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.brandSubtle,
-    borderWidth: 1,
-    borderColor: COLORS.brandMuted,
-    borderRadius: 16,
-    padding: 16,
-    gap: 12,
-  },
-  taskerVerifyText: {
-    flex: 1,
-    gap: 4,
-  },
-  taskerVerifyTitle: {
-    fontFamily: 'Geist_600SemiBold',
-    fontSize: 15,
-    color: COLORS.textPrimary,
-  },
-  taskerVerifySubtitle: {
-    fontFamily: 'Geist_500Medium',
-    fontSize: 13,
-    color: COLORS.brand,
-  },
-  ring: {
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 51,
-    height: 51,
-  },
-  ringImage: {
-    position: 'absolute',
-  },
-  ringText: {
-    fontFamily: 'Geist_600SemiBold',
-    fontSize: 15,
-    color: COLORS.brand,
   },
   // 4 individual tasker stat cards
   taskerStatCards: {

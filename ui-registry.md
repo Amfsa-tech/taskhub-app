@@ -561,3 +561,9 @@ Capture submission is a neutral checking state, using the existing gray body tex
 Files: `app/referrals.tsx`, `components/taskhub/referral-card.tsx`, `components/taskhub/referral-actions.tsx`
 
 Use the existing `#f9f9fb` canvas, white cards, 1px `#e0e0ea` borders, 16px card radii, 20px card padding and 12px internal gaps. Headings use 17px semibold `#111122`; body copy uses 14px `#5a5a70` with 21px line height. Highlight selectable referral codes in brand purple `#6c3bff`. Copy and Share have 12px radii, 14px vertical padding and semibold labels, using purple outlines or purple fills. Dim unavailable actions to 50% opacity. Counts use matching cards with 23px bold values and neutral skeletons; show readable error and retry states instead of invented zero counts. Share uses only the server's prepared message through the native share sheet. Keep the profile entry available while referral details load.
+
+### Tasker profile completion - 2026-11-20
+
+File: `components/taskhub/tasker-profile-progress-card.tsx`
+
+Home and Profile share the same completion card: `#f3eeff` surface, 1px `#e4d6ff` border, 16px radius/padding and 12px gaps. Keep Geist semibold 15px headings in `#111122`, 13px purple subtitles, and a 12px purple percentage. Draw the ring from the same 0–100 score as its label and expose an accessible progress value. Use the backend's photo/services/portfolio/identity checklist, link to the next missing section, and hide the card at 100%. KYC approval alone does not complete the profile.

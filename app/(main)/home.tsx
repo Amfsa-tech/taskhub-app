@@ -26,10 +26,11 @@ import MapPin from '@/assets/icons/map-pin.svg';
 import Package from '@/assets/icons/package.svg';
 import RatingDot from '@/assets/icons/rating-dot.svg';
 import Star from '@/assets/icons/star.svg';
-import VerificationRing from '@/assets/icons/verification-ring.svg';
 import Wallet from '@/assets/icons/wallet.svg';
 
 import { RecentTasks } from '@/components/taskhub/recent-tasks';
+import { TaskerProfileProgressCard } from '@/components/taskhub/tasker-profile-progress-card';
+import { useTaskerProfileProgress } from '@/hooks/use-tasker-profile-progress';
 import { useNewPost } from '@/hooks/use-new-post';
 import {
   queryKeys,
@@ -41,7 +42,6 @@ import {
   useTaskerFeed,
   useTaskerTasks,
   useTaskerTransactions,
-  useVerificationStatus,
 } from '@/lib/api/queries';
 import {
   formatNaira,
@@ -270,7 +270,7 @@ export default function HomeScreen() {
       ) : null}
 
       {isTasker ? (
-        <TaskerHomeView refreshing={refreshing} onRefresh={onRefresh} insets={insets} user={user} router={router} />
+        <TaskerHomeView refreshing={refreshing} onRefresh={onRefresh} insets={insets} router={router} />
       ) : (
         <ScrollView
           style={styles.flex}
@@ -460,25 +460,6 @@ const styles = StyleSheet.create({
   emailBannerAction: {
     fontFamily: 'Geist_600SemiBold',
     fontSize: 15,
-    color: COLORS.brand,
-  },
-  // Verification ring — tasker "Complete Verification & Profile" card only
-  ring: {
-    width: 51,
-    height: 51,
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: COLORS.brand
-  },
-  ringImage: {
-    position: 'absolute',
-    width: 51,
-    height: 51,
-  },
-  ringText: {
-    fontFamily: 'Geist_500Medium',
-    fontSize: 13,
-    letterSpacing: 0.8,
     color: COLORS.brand,
   },
   // Sections
@@ -697,32 +678,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: COLORS.onBrand,
   },
-  taskerVerifyCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.brandSubtle,
-    borderWidth: 1,
-    borderColor: COLORS.brandMuted,
-    borderRadius: 16,
-    padding: 16,
-    marginHorizontal: 16,
-    marginTop: 16,
-    gap: 12,
-  },
-  taskerVerifyText: {
-    flex: 1,
-    gap: 4,
-  },
-  taskerVerifyTitle: {
-    fontFamily: 'Geist_600SemiBold',
-    fontSize: 15,
-    color: COLORS.textPrimary,
-  },
-  taskerVerifySubtitle: {
-    fontFamily: 'Geist_500Medium',
-    fontSize: 13,
-    color: COLORS.brand,
-  },
   taskerSection: {
     marginTop: 24,
     paddingHorizontal: 16,
@@ -860,14 +815,13 @@ type TaskerHomeViewProps = {
   refreshing: boolean;
   onRefresh: () => void;
   insets: any;
-  user: any;
   router: any;
 };
 
-function TaskerHomeView({ refreshing, onRefresh, insets, user, router }: TaskerHomeViewProps) {
+function TaskerHomeView({ refreshing, onRefresh, insets, router }: TaskerHomeViewProps) {
   const balance = useTaskerBalance();
   const transactions = useTaskerTransactions();
-  const verification = useVerificationStatus();
+  const profileProgress = useTaskerProfileProgress();
   const invitations = useTaskerBids('pending');
   const feed = useTaskerFeed();
   const activeJobs = useTaskerTasks();
@@ -889,25 +843,6 @@ function TaskerHomeView({ refreshing, onRefresh, insets, user, router }: TaskerH
       );
     })
     .reduce((sum, t) => sum + t.amount, 0);
-
-  // Profile completeness, computed from facts we can actually check rather than
-  // a stored score (the backend keeps none).
-  const checks = [
-    Boolean(user?.profilePicture),
-    Boolean(verification.data?.data?.isVerified),
-    Boolean(user?.bio),
-    Boolean(user?.location),
-  ];
-  const completeness = Math.round((checks.filter(Boolean).length / checks.length) * 100);
-  const nextStep = !user?.profilePicture
-    ? 'Add profile photo'
-    : !verification.data?.data?.isVerified
-      ? 'Verify your identity'
-      : !user?.bio
-        ? 'Add a short bio'
-        : !user?.location
-          ? 'Set your service area'
-          : 'Profile complete';
 
   const pendingInvites = (invitations.data?.bids ?? []).filter((b) => b.invitedByUser && b.task);
   const recommended = (feed.data?.pages ?? []).flatMap((p) => p?.tasks ?? []).slice(0, 5);
@@ -953,20 +888,7 @@ function TaskerHomeView({ refreshing, onRefresh, insets, user, router }: TaskerH
         </Pressable>
       </View>
 
-      {/* Complete Verification & Profile Card */}
-      {completeness < 100 && (
-        <Pressable style={styles.taskerVerifyCard} onPress={() => router.push('/select-verification')}>
-          <View style={styles.ring}>
-            <VerificationRing width={51} height={51} style={styles.ringImage} color={COLORS.brand} />
-            <Text style={styles.ringText}>{completeness}</Text>
-          </View>
-          <View style={styles.taskerVerifyText}>
-            <Text style={styles.taskerVerifyTitle}>Complete Verification & Profile</Text>
-            <Text style={styles.taskerVerifySubtitle}>{nextStep}</Text>
-          </View>
-          <CaretRight width={9} height={24} color={COLORS.brand} />
-        </Pressable>
-      )}
+      <TaskerProfileProgressCard progress={profileProgress} style={{ marginHorizontal: 16, marginTop: 16 }} />
 
       {/* Pending Invitations */}
       {pendingInvites.length > 0 && (
