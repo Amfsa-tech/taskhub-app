@@ -567,3 +567,9 @@ Use the existing `#f9f9fb` canvas, white cards, 1px `#e0e0ea` borders, 16px card
 File: `components/taskhub/tasker-profile-progress-card.tsx`
 
 Home and Profile share the same completion card: `#f3eeff` surface, 1px `#e4d6ff` border, 16px radius/padding and 12px gaps. Keep Geist semibold 15px headings in `#111122`, 13px purple subtitles, and a 12px purple percentage. Draw the ring from the same 0–100 score as its label and expose an accessible progress value. Use the backend's photo/services/portfolio/identity checklist, link to the next missing section, and hide the card at 100%. KYC approval alone does not complete the profile.
+
+### Biometric setup and sign-in - 2026-11-20
+
+Files: `components/taskhub/biometric-dialog.tsx`, `components/taskhub/biometric-setting.tsx`, `components/taskhub/biometric-login-button.tsx`
+
+Biometric setup uses a centered white modal with a 28px radius, 24px padding, subtle purple border and dimmed backdrop. Frame the native fingerprint/Face ID symbol in concentric pale purple circles with a small shield badge. Use Geist semibold 23px centered headings, 14px gray body copy, purple 14px-radius primary buttons and separate cancel/password actions. Email confirmation appears as five outlined digit cells inside the modal, with a purple active cell and standard one-time-code autofill. Keep validation errors inside the modal, and clear the draft on dismissal or profile changes. The sign-in entry is a bordered white card with a purple icon tile and supporting caption. Actual biometric authentication always uses the OS prompt; the custom modal presents setup and recovery feedback.
