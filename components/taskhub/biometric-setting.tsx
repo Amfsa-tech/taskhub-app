@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BiometricDialog, biometricLabel } from './biometric-dialog';
@@ -27,6 +27,7 @@ function AccountBiometricSetting({ user, accountType }: { user: AuthUser; accoun
   const queryClient = useQueryClient();
   const [challenge, setChallenge] = useState<{ challengeId: string; label: string; accountId: string }>();
   const [code, setCode] = useState('');
+  const codeInput = useRef<TextInput>(null);
   const [setupOpen, setSetupOpen] = useState(false);
   const [setupComplete, setSetupComplete] = useState(false);
   const status = useQuery({
@@ -47,6 +48,7 @@ function AccountBiometricSetting({ user, accountType }: { user: AuthUser; accoun
   const method = label === 'Fingerprint' ? 'fingerprint' : label;
   const cancel = () => {
     if (change.isPending) return;
+    codeInput.current?.blur();
     setSetupOpen(false);
     setSetupComplete(false);
     setChallenge(undefined);
@@ -112,15 +114,16 @@ function AccountBiometricSetting({ user, accountType }: { user: AuthUser; accoun
         </> : <>
           {activeChallenge && <View style={styles.codeGroup}>
             <Text style={styles.codeLabel}>EMAIL VERIFICATION CODE</Text>
-            <View style={styles.digits}>
+            <Pressable accessible={false} testID="biometric-code-entry" style={styles.digits} onPress={() => codeInput.current?.focus()}>
               {[0, 1, 2, 3, 4].map(index => <View key={index} accessible={false} style={[styles.digit, index === code.length && styles.activeDigit]}>
                 <Text style={styles.digitText}>{code[index] ?? ''}</Text>
               </View>)}
-              <TextInput accessibilityLabel="Email verification code" style={styles.codeInput} keyboardType="number-pad"
+              <TextInput ref={codeInput} accessibilityLabel="Email verification code" style={styles.codeInput} keyboardType="number-pad" inputMode="numeric"
+                autoCorrect={false} spellCheck={false} autoCapitalize="none"
                 autoFocus autoComplete="one-time-code" textContentType="oneTimeCode" caretHidden selectionColor="transparent" underlineColorAndroid="transparent"
                 maxLength={5} value={code} editable={!change.isPending}
                 onChangeText={value => setCode(value.replace(/\D/g, '').slice(0, 5))} />
-            </View>
+            </Pressable>
             <Text style={styles.codeHint}>This code confirms setup. Your device will handle future biometric checks.</Text>
           </View>}
           {change.error && <Text style={styles.dialogError} accessibilityRole="alert">{change.error.message}</Text>}
@@ -128,7 +131,7 @@ function AccountBiometricSetting({ user, accountType }: { user: AuthUser; accoun
             : <Pressable accessibilityRole="button" disabled={change.isPending || (!!activeChallenge && code.length !== 5)}
               accessibilityState={{ disabled: change.isPending || (!!activeChallenge && code.length !== 5) }}
               style={[styles.primary, (change.isPending || (!!activeChallenge && code.length !== 5)) && styles.disabled]}
-              onPress={() => change.mutate(activeChallenge ? 'confirm' : 'start')}>
+              onPress={() => { codeInput.current?.blur(); change.mutate(activeChallenge ? 'confirm' : 'start'); }}>
               {change.isPending && <ActivityIndicator color="#ffffff" size="small" />}
               <Text style={styles.primaryText}>{change.isPending ? 'Confirming…' : activeChallenge ? `Enable ${method}` : 'Try again'}</Text>
             </Pressable>}
@@ -152,7 +155,8 @@ const styles = StyleSheet.create({
   digit: { flex: 1, height: 54, borderWidth: 1, borderColor: '#e0e0ea', borderRadius: 12, backgroundColor: '#f9f9fb', alignItems: 'center', justifyContent: 'center' },
   activeDigit: { borderWidth: 2, borderColor: '#6c3bff', backgroundColor: '#faf7ff' },
   digitText: { fontFamily: 'Geist_600SemiBold', fontSize: 23, color: '#111122' },
-  codeInput: { ...StyleSheet.absoluteFillObject, color: 'transparent', backgroundColor: 'transparent', fontSize: 24 },
+  // Hide the whole native view: some Android keyboards draw composing text in their own colour.
+  codeInput: { ...StyleSheet.absoluteFillObject, opacity: 0, color: 'transparent', backgroundColor: 'transparent', padding: 0 },
   codeHint: { color: '#78788c', fontSize: 12, lineHeight: 18, textAlign: 'center' },
   primary: { alignSelf: 'stretch', minHeight: 50, padding: 14, borderRadius: 14, backgroundColor: '#6c3bff', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 8 },
   primaryText: { color: '#ffffff', fontFamily: 'Geist_600SemiBold', fontSize: 15 },

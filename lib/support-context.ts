@@ -25,6 +25,7 @@ const ACTIONS = {
   profile: 'I tried to update my account details, but my changes could not be saved.',
   'delete-account': 'I tried to delete my account, but account deletion could not be completed.',
   signin: 'I tried to sign in or switch account roles, but I could not access the requested account.',
+  biometrics: 'I tried to set up or use biometric sign-in, but the biometric check could not be completed.',
   categories: 'I tried to choose a task category or service, but the available choices could not be loaded.',
   support: 'I tried to send a support request, but it could not be submitted.',
   load: 'I tried to load information on this screen, but it could not be displayed.',
@@ -48,13 +49,31 @@ export function makeSupportIssue(action: SupportAction, error?: unknown, referen
   else if (/restrict|suspend/i.test(raw)) detail = 'My account is restricted from completing this action.';
   else if (/bank|payout/i.test(raw) && /missing|invalid|required|not.*accept/i.test(raw)) detail = 'My payout bank details were missing or could not be accepted.';
   else if (/verif|kyc/i.test(raw) && /required|must|need|not verified/i.test(raw)) detail = 'My account needs verification before I can complete this action.';
+  else if (/code|otp/i.test(raw) && /incorrect|invalid|expired/i.test(raw)) detail = 'The email verification code was incorrect or had expired.';
   return { action, explanation: `${ACTIONS[action]}${detail ? ' ' + detail : ''}`, ...(reference ? { reference } : {}), ...(requestScope ? { scope: requestScope } : {}) };
 }
 
 export function supportTopic(pathname: string): string {
+  if (/deactivate-account|delete-account/.test(pathname)) return 'I need help deleting my TaskHub account.';
+  if (/biometric/.test(pathname)) return 'I need help setting up or using biometric sign-in on TaskHub.';
   if (/bank|payout/.test(pathname)) return 'I need help with my payout bank account.';
+  if (/withdraw/.test(pathname)) return 'I need help withdrawing money from my TaskHub wallet.';
+  if (/receipt|transaction-history/.test(pathname)) return 'I need help with my TaskHub transactions or receipts.';
   if (/wallet|payment|transaction|withdraw/.test(pathname)) return 'I need help with my TaskHub wallet.';
+  if (/otp/.test(pathname)) return 'I need help verifying my email address on TaskHub.';
   if (/verif|nin|kyc/.test(pathname)) return 'I need help verifying my identity on TaskHub.';
+  if (/forgot-password|create-new-password|change-password/.test(pathname)) return 'I need help resetting or changing my TaskHub password.';
+  if (/login|link-role|connected-accounts/.test(pathname)) return 'I need help signing in or switching accounts on TaskHub.';
+  if (/create-account|google-complete-signup|signup/.test(pathname)) return 'I need help creating my TaskHub account.';
+  if (/edit-profile|tasker-details|location-permission/.test(pathname)) return 'I need help completing or updating my TaskHub profile.';
+  if (/post-category|post-service|post-details|edit-task/.test(pathname)) return 'I need help posting or editing a task on TaskHub.';
+  if (/choose-existing-task|task-agreement/.test(pathname)) return 'I need help hiring a Tasker for my task.';
+  if (/portfolio/.test(pathname)) return 'I need help updating my Tasker portfolio.';
+  if (/tasker-services|purpose-selection|location-university/.test(pathname)) return 'I need help choosing my services or institution on TaskHub.';
+  if (/tasker-profile|taskers|saved-taskers/.test(pathname)) return 'I need help finding or viewing a Tasker on TaskHub.';
+  if (/chat|messages/.test(pathname)) return 'I need help with my TaskHub messages.';
+  if (/reviews|post-review/.test(pathname)) return 'I need help with reviews and ratings on TaskHub.';
+  if (/referral/.test(pathname)) return 'I need help with my TaskHub referral code or invitations.';
   if (/task|history|discover|feed/.test(pathname)) return 'I need help with a task on TaskHub.';
   if (/profile|settings/.test(pathname)) return 'I need help with my TaskHub account.';
   return 'I need help using TaskHub.';
@@ -79,6 +98,8 @@ export function buildSupportMessage(user?: Identity | null, issue?: SupportIssue
 type Snapshot = { issue: SupportIssue; scope: string; key: string; at: number } | null;
 let scope = '';
 let snapshot: Snapshot = null;
+type SupportOrigin = { scope: string; sourceScope: string; pathname: string; issue?: SupportIssue; key?: string; at: number };
+let supportOrigin: SupportOrigin | null = null;
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach(listener => listener());
 export const getSupportScope = () => scope;
@@ -86,13 +107,33 @@ export const getSupportSnapshot = () => snapshot;
 export const getServerSupportSnapshot = () => null;
 export const subscribeSupport = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 export const supportScope = (id: string | undefined, pathname: string) => `${id || 'guest'}:${pathname}`;
-export function setSupportScope(next: string) { if (scope !== next) { scope = next; snapshot = null; emit(); } }
+export function setSupportScope(next: string) {
+  if (scope === next) return;
+  const separator = scope.indexOf(':');
+  const owner = scope.slice(0, separator);
+  const previousPath = scope.slice(separator + 1);
+  // Help is a continuation of the preceding screen, not a new support topic.
+  if (separator > 0 && next === `${owner}:/help-support` && previousPath !== '/help-support') {
+    supportOrigin = {
+      scope: next, sourceScope: scope, pathname: previousPath,
+      issue: previousPath === '/home' ? undefined : currentSupportIssue(snapshot, scope),
+      key: snapshot?.key, at: snapshot?.at ?? Date.now(),
+    };
+  } else supportOrigin = null;
+  scope = next; snapshot = null; emit();
+}
+export function getSupportOrigin(currentScope: string) {
+  return supportOrigin?.scope === currentScope && Date.now() - supportOrigin.at < 10 * 60_000 ? supportOrigin : undefined;
+}
 export function recordSupportIssue(issue: SupportIssue, key: string = issue.action, requestScope = scope) {
   if (!requestScope || requestScope !== scope || (issue.scope && issue.scope !== requestScope)) return;
   snapshot = { issue, scope, key, at: Date.now() }; emit();
 }
 export function clearSupportIssue(key: string, requestScope = scope) {
   if (snapshot?.scope === requestScope && snapshot.key === key) { snapshot = null; emit(); }
+  if (supportOrigin?.sourceScope === requestScope && supportOrigin.key === key) {
+    supportOrigin = { ...supportOrigin, issue: undefined, key: undefined }; emit();
+  }
 }
 export function currentSupportIssue(value: Snapshot, currentScope: string): SupportIssue | undefined {
   return value && value.scope === currentScope && Date.now() - value.at < 10 * 60_000 ? value.issue : undefined;
@@ -102,6 +143,7 @@ export function supportRequestAction(endpoint: string, method: string): SupportA
   const path = endpoint.split('?')[0].toLowerCase();
   if (/refresh|kyc-failure|notification|presence|heartbeat|online-status/.test(path)) return null;
   if (/bank|payout/.test(path)) return method === 'GET' ? 'bank-view' : 'bank-edit';
+  if (/biometric/.test(path)) return 'biometrics';
   if (/verify-email|email-verification/.test(path)) return 'email-verification';
   if (/withdraw/.test(path)) return 'withdrawal';
   if (/verify.*fund|verify.*payment|fund.*verify|payment.*verify|wallet.*verify|verify.*wallet/.test(path)) return 'check-payment';

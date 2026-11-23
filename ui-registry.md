@@ -585,3 +585,10 @@ Show Pending for both pending and in-progress KYC. Keep the existing provider co
 Files: `components/taskhub/captcha-provider.tsx`, `components/taskhub/turnstile-challenge.tsx`, `components/taskhub/download-my-data.tsx`
 
 Security checks open a centered white modal with 24-point corners, 20-point padding, a dimmed backdrop, 21-point semibold heading and gray 14-point description. Keep Cancel separate, with an outlined 12-point-radius control and purple text. The embedded browser shows only the hosted challenge; load it on demand, validate the source URL, and unmount it after completion or cancellation. Settings data export uses the existing Privacy card, purple download icon and a disabled preparing state. Save/share the authenticated JSON through the system sheet; remove the temporary file afterwards and cancel requests on account changes or unmount. Display Error ID references in readable text. Hide unavailable earnings statistics and keep a legitimate zero visible.
+
+
+### Biometric code entry and contextual help - 2026-11-21
+
+Files: `components/taskhub/biometric-setting.tsx`, `components/taskhub/biometric-dialog.tsx`, `hooks/use-support-message.ts`, `lib/support-context.ts`
+
+Keep the existing white biometric modal and five 54-point digit cells with 12-point corners, 8-point gaps, 23-point Geist semibold digits, neutral borders and purple active outline. The native OTP input stays fully transparent (view opacity zero) so Android composing text cannot paint over the digit cells; tapping the row refocuses it. Preserve numeric entry, leading zeros and one-time-code autofill. Blur on confirmation or dismissal, and avoid the keyboard on both platforms with scrollable content. Help retains its white channel cards and green WhatsApp accent. Drafts use the current page or readable failure, including the page that opened Help, plus the current name and email. Clear inherited failures on successful retries, leaving Help or account changes; Home uses general help unless an explicit issue is supplied.

@@ -34,6 +34,7 @@ function harness() {
   const storage = new Map();
   const auth = { accountType: 'user', user: { _id: 'test-user', fullName: 'Test Person', emailAddress: 'test@example.invalid', isEmailVerified: true } };
   let rejectLink = false;
+  let pathname = '/wallet';
   const router = { canGoBack: () => true, back: () => routes.push(['back']), push: value => routes.push(['push', value]), replace: value => routes.push(['replace', value]) };
   const queryClient = { refetchQueries: async () => {}, invalidateQueries: async () => {} };
   const categories = ['campus_tasks', 'local_services', 'errands_deliveries', 'digital_remote'].map((name, index) => ({ _id: `category-${index}`, name, displayName: name }));
@@ -43,7 +44,7 @@ function harness() {
     'react-native': { View: 'View', Text: 'Text', Pressable: 'Pressable', ScrollView: 'ScrollView', Modal: 'Modal', RefreshControl: 'RefreshControl', ActivityIndicator: 'ActivityIndicator',
       Platform: { OS: 'android' }, AppState: { addEventListener: () => ({ remove() {} }) }, StyleSheet: { create: value => value },
       Alert: { alert: (...args) => alerts.push(args) }, Linking: { openURL: async url => { links.push(url); if (rejectLink) throw new Error('Unavailable'); } } },
-    'expo-router': { useRouter: () => router, usePathname: () => '/wallet' },
+    'expo-router': { useRouter: () => router, usePathname: () => pathname },
     'expo-status-bar': { StatusBar: 'StatusBar' },
     'expo-image': { Image: 'Image' },
     'expo-web-browser': {},
@@ -65,7 +66,7 @@ function harness() {
     '@/components/taskhub/fund-wallet-modal': { FundWalletModal: () => null },
   };
   const cache = new Map();
-  return { links, alerts, routes, storage, auth, categories, categoriesQuery, balanceQuery, router, load: file => load(file, mocks, cache), failLink: value => { rejectLink = value; } };
+  return { links, alerts, routes, storage, auth, setPathname: value => { pathname = value; }, categories, categoriesQuery, balanceQuery, router, load: file => load(file, mocks, cache), failLink: value => { rejectLink = value; } };
 }
 
 test('support chooser routes Chat with Us to WhatsApp and Call Us to the dialer, with retry and payment context', async () => {
@@ -267,4 +268,67 @@ test('wallet skeleton resolves to real balances or an error and back preserves o
   await act(async () => renderer.update(React.createElement(Wallet)));
   assert.ok(renderer.root.findAllByType('Text').some(node => node.props.children === 'Couldn’t load balance'));
   await act(async () => renderer.unmount());
+});
+
+
+test('mobile WhatsApp messages use the current page and preserve its context when opening Help', async () => {
+  const cases=[['/wallet',/TaskHub wallet/],['/taskers',/viewing a Tasker/],['/post-details',/posting or editing a task/],['/nin-verification',/verifying my identity/],['/chat',/TaskHub messages/],['/referrals',/referral code/],['/settings',/TaskHub account/]];
+  for(const [pathname,expected] of cases){
+    const h=harness();const context=h.load('lib/support-context.ts');h.setPathname(pathname);context.setSupportScope(context.supportScope('test-user',pathname));
+    const {SupportContactButton}=h.load('components/taskhub/support-contact.tsx');let tree;
+    const render=()=>React.createElement(SupportContactButton,{label:'Need help?'});
+    await act(async()=>{tree=create(render())});
+    const chat=()=>tree.root.findAllByProps({accessibilityRole:'link'})[0].props.onPress();
+    await act(async()=>chat());
+    let message=new URL(h.links.at(-1)).searchParams.get('text');assert.match(message,expected);assert.match(message,/Test Person/);assert.match(message,/test@example.invalid/);
+    h.setPathname('/help-support');context.setSupportScope('test-user:/help-support');await act(async()=>tree.update(render()));
+    await act(async()=>chat());message=new URL(h.links.at(-1)).searchParams.get('text');assert.match(message,expected);
+    await act(async()=>tree.unmount());
+  }
+});
+
+test('support uses the latest readable failure, carries it into Help, and clears it after retry or leaving Help', async () => {
+  const h=harness();const context=h.load('lib/support-context.ts');const scope='test-user:/wallet';context.setSupportScope(scope);
+  const {SupportContactButton}=h.load('components/taskhub/support-contact.tsx');let tree;
+  const render=()=>React.createElement(SupportContactButton,{label:'Need help?'});await act(async()=>{tree=create(render())});
+  context.captureSupportRequest('/api/wallet/tasker/bank-account','GET',new Error('NETWORK_ERROR'),scope);
+  h.setPathname('/help-support');context.setSupportScope('test-user:/help-support');await act(async()=>tree.update(render()));
+  const chat=()=>tree.root.findAllByProps({accessibilityRole:'link'})[0].props.onPress();await act(async()=>chat());
+  assert.match(new URL(h.links.at(-1)).searchParams.get('text'),/payout bank details/);
+  context.clearSupportIssue('GET:/api/wallet/tasker/bank-account',scope);await act(async()=>chat());
+  assert.doesNotMatch(new URL(h.links.at(-1)).searchParams.get('text'),/could not be loaded|NETWORK_ERROR/);
+  h.setPathname('/profile');context.setSupportScope('test-user:/profile');await act(async()=>tree.update(render()));await act(async()=>chat());
+  const message=new URL(h.links.at(-1)).searchParams.get('text');assert.match(message,/TaskHub account/);assert.doesNotMatch(message,/bank|wallet/);
+  await act(async()=>tree.unmount());
+});
+
+test('identity refresh cannot send the previous account or page after support navigation changes', async () => {
+  const h=harness();const context=h.load('lib/support-context.ts');context.setSupportScope('test-user:/wallet');
+  h.auth.user={_id:'test-user'};h.auth.isAuthenticated=true;let resolveProfile;
+  h.auth.refreshProfile=()=>new Promise(resolve=>{resolveProfile=resolve});
+  const {SupportContactButton}=h.load('components/taskhub/support-contact.tsx');let tree;const render=()=>React.createElement(SupportContactButton);
+  await act(async()=>{tree=create(render())});await act(async()=>tree.root.findAllByProps({accessibilityRole:'link'})[0].props.onPress());
+  h.auth.user={_id:'new-user',fullName:'New Person',emailAddress:'new@example.invalid'};context.setSupportScope('new-user:/wallet');
+  await act(async()=>tree.update(render()));
+  await act(async()=>resolveProfile({_id:'test-user',fullName:'Old Person',emailAddress:'old@example.invalid'}));
+  assert.equal(h.links.length,0);
+  await act(async()=>tree.root.findAllByProps({accessibilityRole:'link'})[0].props.onPress());
+  const message=new URL(h.links.at(-1)).searchParams.get('text');assert.match(message,/New Person/);assert.doesNotMatch(message,/Old Person|old@example/);
+  await act(async()=>tree.unmount());
+});
+
+
+test('leaving support while profile details load does not open an outdated WhatsApp draft', async () => {
+  const h = harness();
+  h.auth.user = { _id: 'test-user' };
+  h.auth.isAuthenticated = true;
+  let resolveProfile;
+  h.auth.refreshProfile = () => new Promise(resolve => { resolveProfile = resolve; });
+  const { SupportContactButton } = h.load('components/taskhub/support-contact.tsx');
+  let tree;
+  await act(async () => { tree = create(React.createElement(SupportContactButton)); });
+  await act(async () => tree.root.findAllByProps({ accessibilityRole: 'link' })[0].props.onPress());
+  await act(async () => tree.unmount());
+  await act(async () => resolveProfile({ _id: 'test-user', fullName: 'Test Person', emailAddress: 'test@example.invalid' }));
+  assert.equal(h.links.length, 0);
 });

@@ -25,7 +25,7 @@ export function BiometricDialog({ visible, label, title, description, onClose, d
   const insets = useSafeAreaInsets();
   const close = () => { if (dismissible) onClose(); };
   return <Modal visible={visible} transparent animationType="fade" onRequestClose={close} statusBarTranslucent>
-    <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <Pressable accessibilityLabel="Dismiss biometric dialog" accessible={false} style={StyleSheet.absoluteFill} onPress={close} />
       <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scroll, { paddingTop: Math.max(insets.top, 24), paddingBottom: Math.max(insets.bottom, 24) }]}>
