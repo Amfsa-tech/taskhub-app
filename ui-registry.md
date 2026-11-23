@@ -592,3 +592,10 @@ Security checks open a centered white modal with 24-point corners, 20-point padd
 Files: `components/taskhub/biometric-setting.tsx`, `components/taskhub/biometric-dialog.tsx`, `hooks/use-support-message.ts`, `lib/support-context.ts`
 
 Keep the existing white biometric modal and five 54-point digit cells with 12-point corners, 8-point gaps, 23-point Geist semibold digits, neutral borders and purple active outline. The native OTP input stays fully transparent (view opacity zero) so Android composing text cannot paint over the digit cells; tapping the row refocuses it. Preserve numeric entry, leading zeros and one-time-code autofill. Blur on confirmation or dismissal, and avoid the keyboard on both platforms with scrollable content. Help retains its white channel cards and green WhatsApp accent. Drafts use the current page or readable failure, including the page that opened Help, plus the current name and email. Clear inherited failures on successful retries, leaving Help or account changes; Home uses general help unless an explicit issue is supplied.
+
+
+### Rate-limited chat and invitations - 2026-11-23
+
+Files: `app/chat.tsx`, `components/taskhub/invite-to-bid-modal.tsx`
+
+Keep the existing chat composer and invitation sheet styling. Display the server's rate-limit explanation through the existing native error alert; retain unsent chat text and the invitation note. Disable duplicate sends while pending and enable manual retry after rejection. Clear a chat draft only after a successful send, preserving a different draft typed in flight. The invitation sheet uses its existing purple send button with a Sending state; the parent closes it and confirms success only after the backend accepts the request. Do not show a premature sent screen or add retry timers.

@@ -160,10 +160,11 @@ export default function ChatScreen() {
   }, []);
 
   const sendMutation = useMutation({
+    retry: false,
     mutationFn: (payload: { text?: string; attachments?: PickedImage[] }) =>
       sendMessage(conversationId as string, payload.text ?? '', payload.attachments),
     onSuccess: (_data, variables) => {
-      if (variables.text) setDraft((current) => current === variables.text ? '' : current);
+      if (variables.text) setDraft((current) => current.trim() === variables.text ? '' : current);
       queryClient.invalidateQueries({ queryKey: ['chat'] });
     },
     onError: (err) =>
@@ -172,19 +173,19 @@ export default function ChatScreen() {
 
   const send = (text: string) => {
     const body = text.trim();
-    if (!body || !conversationId) return;
+    if (!body || !conversationId || sendMutation.isPending) return;
     sendMutation.mutate({ text: body });
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
   };
 
   const sendPhoto = async () => {
-    if (!conversationId) return;
+    if (!conversationId || sendMutation.isPending) return;
     const picked = await pickImages(1);
     if (picked.length) sendMutation.mutate({ attachments: picked });
   };
 
   const sendDocument = async () => {
-    if (!conversationId) return;
+    if (!conversationId || sendMutation.isPending) return;
     const result = await DocumentPicker.getDocumentAsync({
       multiple: true,
       copyToCacheDirectory: true,

@@ -1294,8 +1294,8 @@ export default function TaskDetailsScreen() {
             visible={invite !== null}
             taskerName={invite?.name ?? ''}
             onClose={() => setInvite(null)}
-            onSend={() => {
-              if (invite) inviteMutation.mutate(invite.taskerId);
+            onSend={async () => {
+              if (invite) await inviteMutation.mutateAsync(invite.taskerId);
             }}
           />
           <ReadyToHireModal
