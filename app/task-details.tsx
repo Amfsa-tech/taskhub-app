@@ -1,3 +1,4 @@
+import { canReopenTask, taskIsAvailable } from '@/lib/task-deadline';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams, useRouter } from 'expo-router';
@@ -236,10 +237,12 @@ function MatchedCard({
 function BidCard({
   bid,
   onAccept,
+  closed = false,
   onChat,
 }: {
   bid: BidView;
   onAccept: () => void;
+  closed?: boolean;
   onChat: () => void;
 }) {
   return (
@@ -277,8 +280,8 @@ function BidCard({
             Profile
           </Text>
         </Pressable>
-        <Pressable accessibilityRole="button" disabled={bid.status !== 'pending' || (bid.isHireRequest && !bid.taskerConfirmed)}
-          style={[styles.actionButton, styles.primaryButton, (bid.status !== 'pending' || (bid.isHireRequest && !bid.taskerConfirmed)) && { opacity: 0.5 }]} onPress={onAccept} >
+        <Pressable accessibilityRole="button"
+          style={[styles.actionButton, styles.primaryButton, (closed || bid.status !== 'pending' || (bid.isHireRequest && !bid.taskerConfirmed)) && { opacity: 0.5 }]} onPress={onAccept} disabled={closed || bid.status !== 'pending' || Boolean(bid.isHireRequest && !bid.taskerConfirmed)} >
           <Text style={styles.primaryLabel} numberOfLines={1}>
             {bid.status !== 'pending' ? bid.status : bid.isHireRequest ? bid.taskerConfirmed ? 'Confirm Hire' : 'Awaiting response' : 'Accept Bid'}
           </Text>
@@ -427,11 +430,11 @@ export default function TaskDetailsScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: queryKeys.task(id as string) });
-      Alert.alert('Task reopened', 'The budget is reserved from your wallet again.');
+      Alert.alert('Task reopened', 'Your task is open for bids again.');
     },
     onError: (err) => Alert.alert('Could not reopen task', errorMessage(err)),
   });
-  const chooseReopen = () => Alert.alert('Reopen task', 'The task budget will be reserved from your wallet again. Choose a new bidding deadline or keep bidding open.', [
+  const chooseReopen = () => task && canReopenTask(task) && Alert.alert('Reopen task', 'Choose a new bidding deadline or keep bidding open. Your task budget will be held in escrow.', [
     { text: 'Cancel', style: 'cancel' },
     { text: 'No deadline', onPress: () => reopenMutation.mutate(undefined) },
     { text: 'Choose date', onPress: () => setShowReopenDatePicker(true) },
@@ -575,6 +578,14 @@ export default function TaskDetailsScreen() {
 
   const clientRef = task && typeof task.user === 'object' ? task.user : null;
   const clientName = clientRef?.fullName || 'the client';
+
+  if (isTasker && task && ['closed', 'cancelled'].includes(task.status)) {
+    return <View style={[styles.container, { paddingTop: insets.top + 24, paddingHorizontal: 20 }]}>
+      <Pressable accessibilityRole="button" onPress={() => router.back()}><Text style={styles.actionsLink}>Back</Text></Pressable>
+      <Text style={[styles.headerTitle, { marginTop: 24 }]}>Task unavailable</Text>
+      <Text style={styles.stateText}>This task is closed. Bids, invitations and hiring are unavailable.</Text>
+    </View>;
+  }
 
   if (isTasker) {
     return (
@@ -1199,7 +1210,7 @@ export default function TaskDetailsScreen() {
               <Text style={styles.budgetText}>Budget</Text>
               <Text style={styles.priceText}>{budgetText}</Text>
             </View>
-            {task.status === 'closed' ? (
+            {task.status === 'closed' && canReopenTask(task) ? (
               <Pressable onPress={chooseReopen} disabled={reopenMutation.isPending}
                 style={{ backgroundColor: COLORS.brand, borderRadius: 12, padding: 14, alignItems: 'center', marginHorizontal: 16 }}>
                 <Text style={{ color: '#ffffff', fontWeight: '600' }}>{reopenMutation.isPending ? 'Reopening…' : 'Reopen task'}</Text>
@@ -1283,7 +1294,7 @@ export default function TaskDetailsScreen() {
               showsVerticalScrollIndicator={false}>
               {hireRequests.length > 0 ? <Text style={styles.name}>Hire requests ({hireRequests.length})</Text> : null}
               {hireRequests.map((b) => (
-                <BidCard key={b.id} bid={b} onChat={() => openChatMutation.mutate(b.id)}
+                <BidCard closed={!taskIsAvailable(task)} key={b.id} bid={b} onChat={() => openChatMutation.mutate(b.id)}
                   onAccept={() => setHire({ kind: 'accept', bidId: b.id, name: b.name, avatar: b.avatar, price: b.price })} />
               ))}
               <Text style={styles.name}>Bids ({bids.length})</Text>
@@ -1293,7 +1304,7 @@ export default function TaskDetailsScreen() {
                 </View>
               ) : (
                 bids.map((b) => (
-                  <BidCard
+                  <BidCard closed={!taskIsAvailable(task)}
                     key={b.id}
                     bid={b}
                     onChat={() => openChatMutation.mutate(b.id)}

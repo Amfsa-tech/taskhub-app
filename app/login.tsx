@@ -1,3 +1,5 @@
+import { AccountTypeSelector } from '@/components/taskhub/account-type-selector';
+import type { AccountType } from '@/lib/auth/types';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -28,7 +30,8 @@ export default function LoginScreen() {
   const router = useRouter();
   const { type, ref } = useLocalSearchParams<{ type?: string; ref?: string }>();
   // Set by the purpose screen ("I want to Earn" → tasker). Defaults to user.
-  const accountType = type === 'tasker' ? 'tasker' : 'user';
+  const [accountType, setAccountType] = useState<AccountType>(type === 'tasker' ? 'tasker' : 'user');
+  useEffect(() => { if (type === 'user' || type === 'tasker') setAccountType(type); }, [type]);
   const { signInWithApple, signInWithGoogle } = useAuth();
   const [googleBusy, setGoogleBusy] = useState(false);
   const [appleBusy, setAppleBusy] = useState(false);
@@ -39,7 +42,7 @@ export default function LoginScreen() {
   }, []);
 
   const handleGoogle = async () => {
-    if (googleBusy) return;
+    if (googleBusy || appleBusy) return;
     setGoogleBusy(true);
     try {
       const outcome = await signInWithGoogle(accountType);
@@ -74,7 +77,7 @@ export default function LoginScreen() {
   };
 
   const handleApple = async () => {
-    if (appleBusy) return;
+    if (appleBusy || googleBusy) return;
     setAppleBusy(true);
     try {
       const outcome = await signInWithApple(accountType);
@@ -132,6 +135,10 @@ export default function LoginScreen() {
       {/* Bottom content */}
       <View style={[styles.bottom, { paddingBottom: insets.bottom + 16 }]}>
         <Text style={styles.title}>Sign up or Log in</Text>
+        <AccountTypeSelector value={accountType} disabled={googleBusy || appleBusy} onChange={setAccountType} />
+        <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/login-form', params: { type: accountType, ref: referralCodeValue(ref) } })}>
+          <Text style={[styles.title, { fontSize: 15 }]}>Already have an account? Log in</Text>
+        </Pressable>
 
         <View style={styles.buttons}>
           <Pressable

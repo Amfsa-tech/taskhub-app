@@ -65,7 +65,7 @@ function taskCategory(task: Task): TaskCategory {
   if (name.includes('campus')) return 'Campus';
   if (name.includes('errand')) return 'Errand';
   // No coordinates on the task means nothing to travel to.
-  if (!task.location) return 'Remote';
+  if (/remote|digital|online/.test(name) || !task.location) return 'Remote';
   return 'Local';
 }
 

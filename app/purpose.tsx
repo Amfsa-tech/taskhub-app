@@ -126,7 +126,7 @@ export default function PurposeScreen() {
           onPress={() =>
             router.push({
               pathname: '/login-form',
-              params: { type: role === 'earn' ? 'tasker' : 'user' },
+              params: role ? { type: role === 'earn' ? 'tasker' : 'user' } : {},
             })
           }
           style={styles.loginRow}>

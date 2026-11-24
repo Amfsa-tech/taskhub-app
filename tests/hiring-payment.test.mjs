@@ -15,10 +15,11 @@ function load(file, mocks) {
   const module = { exports: {} };
   new Function('require', 'module', 'exports', code)(name => {
     if (name in mocks) return mocks[name];
+    if (name === '@/lib/task-deadline') return load('lib/task-deadline.ts', {});
     if (/\.(png|svg)$/.test(name)) return { __esModule: true, default: 'Icon' };
     return require(name);
   }, module, module.exports);
-  return module.exports.default;
+  return module.exports.default || module.exports;
 }
 function harness() {
   const summary = { taskTitle: 'Content writing', total: 1000, taskAmount: 1000, platformFee: 100, feeRate: .1, alreadyHeld: 1000, additionalCharge: 0, refundDue: 0, walletBalance: 0, sufficientBalance: true, canConfirm: true, tasker: { firstName: 'Ada' } };

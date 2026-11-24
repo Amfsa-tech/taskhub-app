@@ -319,7 +319,7 @@ export default function TasksScreen() {
           {closed.isLoading ? <StateView mode="loading" /> : closed.isError ? (
             <StateView mode="error" onRetry={closed.refetch} isRetrying={closed.isRefetching} />
           ) : (closed.data?.tasks ?? []).length === 0 ? (
-            <StateView mode="empty" emptyText="No tasks have closed without bids. Your refunded budget appears in your wallet." />
+            <StateView mode="empty" emptyText="Tasks appear here when their bidding deadline passes. You can reopen them within 30 days." />
           ) : (closed.data?.tasks ?? []).map((task) => (
             <TaskCard key={task._id} task={taskToCard(task)} onPress={() => openTask(task._id)} />
           ))}

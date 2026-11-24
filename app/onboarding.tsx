@@ -124,31 +124,20 @@ export default function OnboardingScreen() {
     router.replace('/purpose');
   };
 
-  const handleNext = () => {
-    if (index < SLIDES.length - 1) {
-      listRef.current?.scrollToIndex({ index: index + 1, animated: true });
-    } else {
-      finish();
-    }
-  };
-
   const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const next = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
     if (next !== index) setIndex(next);
   };
 
   // Auto-advance every slide after AUTO_ADVANCE_MS. The timer is keyed on the
-  // current index, so a manual swipe resets it; the last slide finishes.
+  // current index, so a manual swipe resets it; the last slide stays visible.
   useEffect(() => {
     const timer = setTimeout(() => {
       if (index < SLIDES.length - 1) {
         listRef.current?.scrollToIndex({ index: index + 1, animated: true });
-      } else {
-        finish();
       }
     }, AUTO_ADVANCE_MS);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index]);
 
   return (
@@ -178,7 +167,7 @@ export default function OnboardingScreen() {
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
         <Pressable
           style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
-          onPress={handleNext}>
+          onPress={finish}>
           <Text style={styles.buttonLabel}>Let’s Get Started</Text>
           <ArrowRight size={18} color={COLORS.onBrand} />
         </Pressable>

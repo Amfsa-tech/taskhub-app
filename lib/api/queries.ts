@@ -1,3 +1,4 @@
+import { nextTaskExpiryDelay } from '@/lib/task-deadline';
 // React Query hooks + query keys for the TaskHub API.
 
 import { useInfiniteQuery, useQueries, useQuery } from '@tanstack/react-query';
@@ -89,6 +90,8 @@ export const queryKeys = {
 export function useUserTasks(params?: TaskListParams, enabled = true) {
   return useQuery({
     queryKey: queryKeys.userTasks(params),
+    refetchInterval: (query: { state: { data: unknown } }) => nextTaskExpiryDelay(query.state.data),
+    refetchOnWindowFocus: 'always',
     queryFn: ({ signal }) => getUserTasks(params, signal),
     enabled,
   });
@@ -103,6 +106,8 @@ export function useUserTasksByStatuses(statuses: TaskStatus[], enabled = true) {
   const results = useQueries({
     queries: statuses.map((status) => ({
       queryKey: queryKeys.userTasks({ status }),
+    refetchInterval: (query: { state: { data: unknown } }) => nextTaskExpiryDelay(query.state.data),
+    refetchOnWindowFocus: 'always',
       queryFn: ({ signal }: { signal: AbortSignal }) => getUserTasks({ status }, signal),
       enabled,
     })),
@@ -122,6 +127,8 @@ export function useUserTasksByStatuses(statuses: TaskStatus[], enabled = true) {
 export function useTasks(params?: TaskListParams) {
   return useQuery({
     queryKey: queryKeys.tasks(params),
+    refetchInterval: (query: { state: { data: unknown } }) => nextTaskExpiryDelay(query.state.data),
+    refetchOnWindowFocus: 'always',
     queryFn: ({ signal }) => getTasks(params, signal),
   });
 }
@@ -130,8 +137,9 @@ export function useTasks(params?: TaskListParams) {
 export function useTask(id?: string) {
   return useQuery({
     staleTime: 0,
-    refetchOnWindowFocus: 'always',
     queryKey: queryKeys.task(id ?? ''),
+    refetchInterval: (query: { state: { data: unknown } }) => nextTaskExpiryDelay(query.state.data),
+    refetchOnWindowFocus: 'always',
     queryFn: ({ signal }) => getTaskById(id as string, signal),
     enabled: Boolean(id),
   });
@@ -418,6 +426,8 @@ export function useWalletTransactionsPaged(
 export function useTaskerFeed(enabled = true) {
   return useInfiniteQuery({
     queryKey: queryKeys.taskerFeed(),
+    refetchInterval: (query: { state: { data: unknown } }) => nextTaskExpiryDelay(query.state.data),
+    refetchOnWindowFocus: 'always',
     queryFn: ({ pageParam, signal }) =>
       getTaskerFeed({ limit: 10, cursor: pageParam as string | undefined }, signal),
     initialPageParam: undefined as string | undefined,
@@ -440,8 +450,9 @@ export function useTaskerTasks(status?: TaskStatus, enabled = true) {
 export function useTaskerBids(status?: BidStatus, enabled = true) {
   return useQuery({
     staleTime: 0,
-    refetchOnWindowFocus: 'always',
     queryKey: queryKeys.taskerBids(status),
+    refetchInterval: (query: { state: { data: unknown } }) => nextTaskExpiryDelay(query.state.data),
+    refetchOnWindowFocus: 'always',
     queryFn: ({ signal }) => getTaskerBids({ status, limit: 50 }, signal),
     enabled,
   });

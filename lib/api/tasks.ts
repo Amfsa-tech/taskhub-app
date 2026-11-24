@@ -1,3 +1,4 @@
+import { canReopenTask, requireAvailableTask, taskIsAvailable, withTaskDeadline } from '@/lib/task-deadline';
 // Tasks API bindings + view mappers for the TaskHub backend.
 //
 // The list endpoints return `{ status, count, totalPages, currentPage, tasks }`.
@@ -111,6 +112,7 @@ export interface Task {
   images?: TaskImage[];
   location?: TaskLocation | null;
   deadline?: string | null;
+  serverStatus?: TaskStatus;
   cancellationReason?: string | null;
   user?: TaskUserRef | string;
   assignedTasker?: TaskTaskerRef | null;
@@ -166,18 +168,26 @@ function toQuery(params: object): string {
 }
 
 /** Tasks posted by the authenticated user. Requires a bearer token. */
-export function getUserTasks(params: TaskListParams = {}, signal?: AbortSignal) {
-  return api.get<TasksListResponse>(`/api/tasks/user/tasks${toQuery(params)}`, { signal });
+export async function getUserTasks(params: TaskListParams = {}, signal?: AbortSignal) {
+  const result = await api.get<TasksListResponse>(`/api/tasks/user/tasks${toQuery(params)}`, { signal });
+  const tasks = result.tasks.map((task) => withTaskDeadline(task));
+  if (params.status === 'closed') {
+    const pending = await api.get<TasksListResponse>(`/api/tasks/user/tasks${toQuery({ ...params, status: 'open' })}`, { signal });
+    tasks.push(...pending.tasks.map((task) => withTaskDeadline(task)).filter((task) => task.status === 'closed'));
+  }
+  return { ...result, tasks: [...new Map(tasks.filter((task) => !params.status || task.status === params.status).map((task) => [task._id, task])).values()] };
 }
 
 /** Public list of open tasks. */
-export function getTasks(params: TaskListParams = {}, signal?: AbortSignal) {
-  return api.get<TasksListResponse>(`/api/tasks${toQuery(params)}`, { signal, auth: false });
+export async function getTasks(params: TaskListParams = {}, signal?: AbortSignal) {
+  const result = await api.get<TasksListResponse>(`/api/tasks${toQuery(params)}`, { signal, auth: false });
+  return { ...result, tasks: result.tasks.filter((task) => taskIsAvailable(task)) };
 }
 
 /** Single task by id. Public, but returns bids when the caller owns the task. */
-export function getTaskById(id: string, signal?: AbortSignal) {
-  return api.get<{ status: string; task: Task }>(`/api/tasks/${id}`, { signal });
+export async function getTaskById(id: string, signal?: AbortSignal) {
+  const result = await api.get<{ status: string; task: Task }>(`/api/tasks/${id}`, { signal });
+  return { ...result, task: withTaskDeadline(result.task) };
 }
 
 export interface UpdateTaskPayload {
@@ -192,7 +202,8 @@ export interface UpdateTaskPayload {
  * Edit a posted task (owner only). Only the simple fields the post flow
  * collects — category, images, and location changes remain cancel-and-repost.
  */
-export function updateTask(id: string, payload: UpdateTaskPayload) {
+export async function updateTask(id: string, payload: UpdateTaskPayload) {
+  requireAvailableTask((await getTaskById(id)).task);
   return api.put<{ status: string; message: string; task: Task }>(`/api/tasks/${id}`, payload);
 }
 
@@ -493,11 +504,21 @@ export interface TaskerFeedResponse {
  *    `/tasker-services` rather than showing "no tasks nearby".
  *  - Task location is shown for bidding decisions, not used to hide matches.
  */
-export function getTaskerFeed(
+export async function getTaskerFeed(
   params: { limit?: number; cursor?: string; maxDistance?: number; biddingOnly?: boolean } = {},
   signal?: AbortSignal,
 ) {
-  return api.get<TaskerFeedResponse>(`/api/tasks/tasker/feed${toQuery(params)}`, { signal });
+  const visited = new Set<string>();
+  let cursor = params.cursor;
+  while (true) {
+    if (cursor) visited.add(cursor);
+    const result = await api.get<TaskerFeedResponse>(`/api/tasks/tasker/feed${toQuery({ ...params, cursor })}`, { signal });
+    const tasks = result.tasks.filter((task) => taskIsAvailable(task));
+    const next = result.pagination?.hasNextPage ? result.pagination.nextCursor : null;
+    if (tasks.length || !next || visited.has(next)) return { ...result, tasks };
+    // A page of expired legacy tasks must not conceal available jobs further on.
+    cursor = next;
+  }
 }
 
 /** Tasks assigned to the signed-in tasker. `status` filters to one bucket. */
@@ -578,10 +599,13 @@ export function deleteTask(id: string) {
   return api.delete<{ status: string; message: string }>(`/api/tasks/${id}`);
 }
 
-export function reopenTask(id: string, deadline?: string) {
-  return api.post<{ status: string; message: string; task: Task }>(
-    `/api/tasks/${id}/reopen`, { deadline: deadline || null },
-  );
+export async function reopenTask(id: string, deadline?: string) {
+  const { task } = await getTaskById(id);
+  if (!canReopenTask(task)) throw new Error('The 30-day reopening period has ended. Please post a new task.');
+  // An expired legacy task may still hold its original escrow. Updating its
+  // deadline reopens it without reserving the budget a second time.
+  if (task.serverStatus === 'open') return api.put<{ status: string; message: string; task: Task }>(`/api/tasks/${id}`, { deadline: deadline || null });
+  return api.post<{ status: string; message: string; task: Task }>(`/api/tasks/${id}/reopen`, { deadline: deadline || null });
 }
 
 export interface CompletionCodeResponse {

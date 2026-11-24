@@ -229,6 +229,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const finishLogin = useCallback(
     async (res: LoginResponse, type: AccountType) => {
       const accountType = res.user_type ?? type;
+      if (accountType !== 'user' && accountType !== 'tasker') throw new Error('The sign-in response did not identify your account type. Please try again.');
       if (!res.token) throw new Error('Sign-in did not complete. Please try again.');
       setApiToken(res.token);
       try {

@@ -611,3 +611,9 @@ Payment summaries reuse white rounded cards, muted labels, purple actions and th
 ### Notification metadata regression — 2026-11-24
 
 The mobile inbox shows the notification title, message, readable timestamp and unread state. Keep internal type/action values and task/bid/conversation IDs out of rendered content. Metadata drives navigation only: a chat action opens its conversation when available and otherwise opens the related task.
+
+### Marketplace account selection and closed tasks — 2026-11-24
+
+Sign-in shows a two-option radio group: User · Hire a tasker and Tasker · Find work. Reuse Geist labels, 8px corners, white surface and #e0e0ea border; selection uses #f3eeff with #6c3bff border/text. Disable selection during sign-in; preserve credentials and explain corrected role inline. Get Started exits the intro on every slide.
+
+Unavailable task screens keep the existing Back action, heading and muted explanation. Owner reopening uses the existing purple action only during the 30-day grace period. Notification content shrinks within the row while timestamps retain their width; long titles and messages wrap.

@@ -196,16 +196,18 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    minWidth: 0,
     gap: 8,
   },
   topRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 8,
   },
   title: {
     flex: 1,
+    minWidth: 0,
     fontFamily: 'Geist_500Medium',
     fontSize: 17,
     lineHeight: 22,
@@ -213,6 +215,7 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
   },
   timeInfo: {
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,

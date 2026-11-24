@@ -33,6 +33,9 @@ function minimalUser(user: AuthUser): Partial<AuthUser> {
     phoneNumber: user.phoneNumber,
     profilePicture: user.profilePicture,
     isEmailVerified: user.isEmailVerified,
+    city: user.city,
+    residentState: user.residentState,
+    profileCompletion: user.profileCompletion,
   };
 }
 
@@ -79,7 +82,7 @@ export async function loadSession(): Promise<StoredSession | null> {
     SecureStore.getItemAsync(USER_KEY),
   ]);
 
-  if (!token || !accountType) return null;
+  if (!token || (accountType !== 'user' && accountType !== 'tasker')) return null;
 
   let user: AuthUser | null = null;
   if (userJson) {

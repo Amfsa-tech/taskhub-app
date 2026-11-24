@@ -1,3 +1,5 @@
+import { AccountTypeSelector } from '@/components/taskhub/account-type-selector';
+import type { AccountType } from '@/lib/auth/types';
 import { CaptchaNotice } from "@/components/taskhub/captcha-notice";
 import { useMutation } from '@tanstack/react-query';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -10,7 +12,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -49,7 +50,8 @@ export default function LoginFormScreen() {
   const { type, ref } = useLocalSearchParams<{ type?: string; ref?: string }>();
   // Carried from the purpose/login screens; picks between the user and tasker
   // backend endpoints (same payload either way).
-  const accountType = type === 'tasker' ? 'tasker' : 'user';
+  const [accountType, setAccountType] = useState<AccountType>(type === 'tasker' ? 'tasker' : 'user');
+  useEffect(() => { if (type === 'user' || type === 'tasker') setAccountType(type); }, [type]);
   const { signIn, signInWithApple, signInWithGoogle } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -75,11 +77,20 @@ export default function LoginFormScreen() {
         router.push({ pathname: '/otp', params: { email: address, type, retryAfter: String(details.retryAfter ?? 0) } });
         return;
       }
+      if (err instanceof ApiError && err.code === 'ACCOUNT_ROLE_MISMATCH') {
+        const next = /Tasker account/i.test(err.message) ? 'tasker' : /User account/i.test(err.message) ? 'user' : null;
+        if (next) {
+          setAccountType(next);
+          setError(`${next === 'tasker' ? 'Tasker' : 'User'} sign-in is now selected for this account. Tap Login to continue.`);
+          return;
+        }
+      }
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
     },
   });
 
   const submit = () => {
+    if (loginMutation.isPending || googleBusy || appleBusy) return;
     setError(null);
     if (!email.trim() || !password) {
       setError('Please enter your email and password.');
@@ -89,7 +100,7 @@ export default function LoginFormScreen() {
   };
 
   const handleGoogle = async () => {
-    if (googleBusy) return;
+    if (googleBusy || appleBusy || loginMutation.isPending) return;
     setError(null);
     setGoogleBusy(true);
     try {
@@ -123,7 +134,7 @@ export default function LoginFormScreen() {
   };
 
   const handleApple = async () => {
-    if (appleBusy) return;
+    if (appleBusy || googleBusy || loginMutation.isPending) return;
     setError(null);
     setAppleBusy(true);
     try {
@@ -180,6 +191,9 @@ export default function LoginFormScreen() {
             </Text>
           </View>
 
+          <AccountTypeSelector value={accountType} disabled={isSubmitting || googleBusy || appleBusy}
+            onChange={(next) => { setAccountType(next); setError(null); }} />
+
           {/* Inputs */}
           <View style={styles.inputs}>
             <View style={styles.field}>
@@ -235,7 +249,7 @@ export default function LoginFormScreen() {
               isSubmitting && styles.buttonDisabled,
             ]}
             onPress={submit}
-            disabled={isSubmitting}>
+            disabled={isSubmitting || googleBusy || appleBusy}>
             {isSubmitting ? (
               <ActivityIndicator color={COLORS.onBrand} />
             ) : (

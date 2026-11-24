@@ -160,7 +160,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const startNewPost = useNewPost();
-  const { user, accountType } = useAuth();
+  const { user, accountType, refreshProfile } = useAuth();
   const { data: notifData } = useNotifications();
   const unreadCount = notifData?.data?.unreadCount ?? 0;
 
@@ -179,6 +179,8 @@ export default function HomeScreen() {
     setRefreshing(true);
     try {
       await Promise.all([
+        refreshProfile(),
+        queryClient.refetchQueries({ queryKey: queryKeys.kycStatus() }),
         queryClient.refetchQueries({ queryKey: ['tasks'] }),
         queryClient.refetchQueries({ queryKey: ['categories'] }),
         queryClient.refetchQueries({ queryKey: queryKeys.notifications() }),
@@ -187,7 +189,7 @@ export default function HomeScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, [queryClient]);
+  }, [queryClient, refreshProfile]);
 
   // Users have `fullName`; taskers have `firstName`. Fall back gracefully.
   const firstName =
@@ -289,13 +291,13 @@ export default function HomeScreen() {
             <Text style={styles.sectionTitle}>Quick Category</Text>
             <View style={styles.categoryCard}>
               {CATEGORIES.map((cat) => {
-                const terms = cat.key === 'remote' ? ['remote', 'digital'] : cat.key === 'errands' ? ['errand', 'deliver'] : [cat.key];
+                const terms = cat.key === 'remote' ? ['remote', 'digital', 'online'] : cat.key === 'errands' ? ['errand', 'deliver'] : [cat.key];
                 const mainCategory = categories.data?.categories.find((main) => !main.parentCategory &&
                   terms.some((term) => `${main.name} ${main.displayName}`.toLowerCase().includes(term)));
                 return <Pressable key={cat.key} accessibilityRole="button" accessibilityLabel={`Post a ${cat.label} task`}
-                  disabled={!mainCategory} accessibilityState={{ disabled: !mainCategory }}
-                  style={[styles.categoryItem, !mainCategory && { opacity: 0.5 }]}
-                  onPress={() => mainCategory && startNewPost({ mainCategory })}>
+                  disabled={false} accessibilityState={{ disabled: false }}
+                  style={styles.categoryItem}
+                  onPress={() => startNewPost({ mainCategory })}>
                   <View style={[styles.categoryIcon, { backgroundColor: cat.bg }]}>{cat.icon}</View>
                   <Text style={styles.categoryLabel}>{cat.label}</Text>
                 </Pressable>;

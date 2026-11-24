@@ -6,7 +6,22 @@
 //     request. Every tasker path is `protectTasker` and 401s for a user token.
 
 import { api } from './client';
-import type { Task } from './tasks';
+import { getTaskById, type Task } from './tasks';
+import { requireAvailableTask, taskIsAvailable } from '@/lib/task-deadline';
+
+async function mapPendingTasks<T, R>(items: T[], mapper: (item: T) => Promise<R>): Promise<R[]> {
+  const result: R[] = [];
+  for (let index = 0; index < items.length; index += 4) {
+    result.push(...await Promise.all(items.slice(index, index + 4).map(mapper)));
+  }
+  return result;
+}
+async function checkTask(taskId: string) { requireAvailableTask((await getTaskById(taskId)).task); }
+async function checkBid(bidId: string) {
+  const { bid } = await api.get<{ bid: { task: string | { _id: string } } }>(`/api/bids/${bidId}`);
+  await checkTask(typeof bid.task === 'string' ? bid.task : bid.task._id);
+}
+
 
 export interface InvitePayload {
   taskId: string;
@@ -32,12 +47,14 @@ export interface BidActionResponse {
 }
 
 /** Invite a chosen tasker to bid on a task (also opens a conversation). */
-export function inviteTasker(payload: InvitePayload) {
+export async function inviteTasker(payload: InvitePayload) {
+  await checkTask(payload.taskId);
   return api.post<BidActionResponse>('/api/bids/invite', payload);
 }
 
 /** Send a direct hire request (offer) to a tasker. */
-export function sendHireRequest(payload: HireRequestPayload) {
+export async function sendHireRequest(payload: HireRequestPayload) {
+  await checkTask(payload.taskId);
   return api.post<BidActionResponse>('/api/bids/hire-request', payload);
 }
 
@@ -48,7 +65,8 @@ export function sendHireRequest(payload: HireRequestPayload) {
  * This single call *is* the hire: there is no separate "send agreement" or
  * "pay" step on the backend. Accept = pay = assign, atomically.
  */
-export function acceptBid(bidId: string) {
+export async function acceptBid(bidId: string) {
+  await checkBid(bidId);
   return api.post<BidActionResponse>(`/api/bids/${bidId}/accept`);
 }
 
@@ -92,8 +110,11 @@ export interface PaymentSummaryResponse {
 }
 
 /** Owner-only cost breakdown for a bid, used before accepting it. */
-export function getBidPaymentSummary(bidId: string, signal?: AbortSignal) {
-  return api.get<PaymentSummaryResponse>(`/api/bids/${bidId}/payment-summary`, { signal });
+export async function getBidPaymentSummary(bidId: string, signal?: AbortSignal) {
+  const result = await api.get<PaymentSummaryResponse>(`/api/bids/${bidId}/payment-summary`, { signal });
+  const { task } = await getTaskById(result.summary.taskId, signal);
+  if (!taskIsAvailable(task)) result.summary = { ...result.summary, canConfirm: false, blockingReason: 'This task is closed. Reopen it before hiring.' };
+  return result;
 }
 
 /* ------------------------------------------------------------------ *
@@ -105,7 +126,7 @@ export type BidStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
 /** A bid as returned by `GET /api/bids/tasker/bids` (task is partially populated). */
 export interface TaskerBid {
   _id: string;
-  task: Pick<Task, '_id' | 'title' | 'description' | 'budget' | 'status' | 'createdAt'> | null;
+  task: Pick<Task, '_id' | 'title' | 'description' | 'budget' | 'status' | 'createdAt' | 'deadline'> | null;
   amount: number;
   message?: string;
   status: BidStatus;
@@ -142,22 +163,25 @@ export interface CreateBidPayload {
  * 400s on a second attempt ("You have already applied for this task") — there's
  * a unique index behind it, so treat duplicates as an update, not a retry.
  */
-export function createBid(payload: CreateBidPayload) {
+export async function createBid(payload: CreateBidPayload) {
+  await checkTask(payload.taskId);
   return api.post<BidActionResponse>('/api/bids', payload);
 }
 
 /** Revise an existing pending bid. Only `amount` and `message` are editable. */
-export function updateBid(bidId: string, payload: { amount?: number; message?: string }) {
+export async function updateBid(bidId: string, payload: { amount?: number; message?: string }) {
+  await checkBid(bidId);
   return api.put<BidActionResponse>(`/api/bids/${bidId}`, payload);
 }
 
 /** Withdraw a bid entirely. */
-export function deleteBid(bidId: string) {
+export async function deleteBid(bidId: string) {
+  await checkBid(bidId);
   return api.delete<BidActionResponse>(`/api/bids/${bidId}`);
 }
 
 /** The signed-in tasker's own bids, newest first. */
-export function getTaskerBids(
+export async function getTaskerBids(
   params: { page?: number; limit?: number; status?: BidStatus } = {},
   signal?: AbortSignal,
 ) {
@@ -166,7 +190,17 @@ export function getTaskerBids(
   if (params.limit) usp.append('limit', String(params.limit));
   if (params.status) usp.append('status', params.status);
   const qs = usp.toString();
-  return api.get<TaskerBidsResponse>(`/api/bids/tasker/bids${qs ? `?${qs}` : ''}`, { signal });
+  const result = await api.get<TaskerBidsResponse>(`/api/bids/tasker/bids${qs ? `?${qs}` : ''}`, { signal });
+  const bids = await mapPendingTasks(result.bids, async (bid) => {
+    if (bid.status !== 'pending') return bid;
+    if (!bid.task?._id) return null;
+    try {
+      const { task } = await getTaskById(bid.task._id, signal);
+      return taskIsAvailable(task) ? { ...bid, task } : null;
+    } catch { return null; }
+  });
+  return { ...result, bids: bids.filter((bid): bid is TaskerBid => bid !== null) };
+
 }
 
 /**
@@ -179,6 +213,7 @@ export function getTaskerBids(
  *
  * Only valid on a bid with `invitedByUser`, still `pending`, on an `open` task.
  */
-export function respondToHireRequest(bidId: string, action: 'accept' | 'decline') {
+export async function respondToHireRequest(bidId: string, action: 'accept' | 'decline') {
+  await checkBid(bidId);
   return api.post<BidActionResponse>(`/api/bids/${bidId}/hire-response`, { action });
 }
