@@ -46,13 +46,11 @@ export default function PostDetailsScreen() {
   useEffect(() => {
     if (addressPrefilled || !user) return;
     setAddressPrefilled(true);
-    if (draft.location || draft.locationCity || draft.locationState) return;
+    if (draft.location) return;
     patch({
-      location: typeof user.address === 'string' ? user.address : '',
-      locationCity: typeof user.city === 'string' ? user.city : '',
-      locationState: typeof user.residentState === 'string' ? user.residentState : '',
+      location: [user.address, user.city, user.residentState].filter((value) => typeof value === 'string' && value.trim()).join(', '),
     });
-  }, [addressPrefilled, draft.location, draft.locationCity, draft.locationState, patch, user]);
+  }, [addressPrefilled, draft.location, patch, user]);
   const [showImages, setShowImages] = useState(draft.images.length > 0);
   const [tagInput, setTagInput] = useState('');
   const budget = Number(draft.budget);
@@ -68,7 +66,7 @@ export default function PostDetailsScreen() {
     draft.title.trim().length >= 5 &&
     draft.description.trim().length >= 20 &&
     validBudget &&
-    (isRemoteTask || (Boolean(draft.location.trim()) && Boolean(draft.locationCity.trim()) && Boolean(draft.locationState.trim()))) &&
+    (isRemoteTask || Boolean(draft.location.trim())) &&
     (!isCampus || draft.university !== null);
 
   const addTag = () => {
@@ -197,25 +195,13 @@ export default function PostDetailsScreen() {
                 <TextInput
                   accessibilityLabel="Task address"
                   style={styles.inlineInput}
-                  placeholder="Street, building, or landmark"
+                  placeholder="Enter the full task address"
                   placeholderTextColor={COLORS.placeholder}
                   value={draft.location}
                   onChangeText={(location) => patch({ location })}
                 />
               </View>
-              <View style={styles.inlineRow}>
-                <View style={[styles.field, styles.flex]}>
-                  <Text style={styles.label}>City</Text>
-                  <TextInput accessibilityLabel="City" style={styles.input} placeholder="City" placeholderTextColor={COLORS.placeholder}
-                    value={draft.locationCity} onChangeText={(locationCity) => patch({ locationCity })} />
-                </View>
-                <View style={[styles.field, styles.flex]}>
-                  <Text style={styles.label}>State</Text>
-                  <TextInput accessibilityLabel="State" style={styles.input} placeholder="State" placeholderTextColor={COLORS.placeholder}
-                    value={draft.locationState} onChangeText={(locationState) => patch({ locationState })} />
-                </View>
-              </View>
-              {!isRemoteTask && (!draft.location.trim() || !draft.locationCity.trim() || !draft.locationState.trim()) ? <Text style={styles.helper}>Enter the address, city and state for this task.</Text> : null}
+              <Text style={styles.helper}>Include a city or state if you choose.</Text>
             </View>
 
             {isCampus ? (

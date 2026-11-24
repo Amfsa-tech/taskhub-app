@@ -599,3 +599,15 @@ Keep the existing white biometric modal and five 54-point digit cells with 12-po
 Files: `app/chat.tsx`, `components/taskhub/invite-to-bid-modal.tsx`
 
 Keep the existing chat composer and invitation sheet styling. Display the server's rate-limit explanation through the existing native error alert; retain unsent chat text and the invitation note. Disable duplicate sends while pending and enable manual retry after rejection. Clear a chat draft only after a successful send, preserving a different draft typed in flight. The invitation sheet uses its existing purple send button with a Sending state; the parent closes it and confirms success only after the backend accepts the request. Do not show a premature sent screen or add retry timers.
+
+### Task address and escrow confirmation — 2026-11-24
+
+Task create/edit forms use one labeled free-form Task address input, retaining the existing white surface, gray border, input radius, purple focus state and helper typography. City and state are optional address content. Preserve entered punctuation, accents and landmarks; require only non-blank text for local tasks.
+
+Hire requests appear in their own labeled section and do not contribute to Bids counts. Pending invitations expose a waiting state; accepted invitations expose confirmation, and completed/rejected/cancelled offers never expose an active Accept Bid button. A tasker who accepted a hire sees Awaiting client confirmation before assignment.
+
+Payment summaries reuse white rounded cards, muted labels, purple actions and the green escrow notice. Show task total, fee included in that total, already-held task escrow, additional wallet charge and any refund separately. When the wallet charge is zero, label the primary action Confirm hire using escrow and state No additional wallet payment. Use the server's live figures and readiness flags, show recoverable errors/retry, and disable confirmation while refreshing or submitting.
+
+### Notification metadata regression — 2026-11-24
+
+The mobile inbox shows the notification title, message, readable timestamp and unread state. Keep internal type/action values and task/bid/conversation IDs out of rendered content. Metadata drives navigation only: a chat action opens its conversation when available and otherwise opens the related task.

@@ -7,7 +7,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -16,7 +16,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Pressable } from 'react-native';
 
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
@@ -35,7 +34,7 @@ const COLORS = {
 
 /**
  * Edit an open task's simple fields (title / description / budget).
- * Category, images, and location aren't editable — cancel and repost for those.
+ * Category and images aren't editable — cancel and repost for those.
  * Assigned tasks aren't editable here: the escrow was funded off the accepted
  * bid, so changing the budget afterwards would desync money from the task.
  */
@@ -51,6 +50,7 @@ export default function EditTaskScreen() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [budget, setBudget] = useState('');
+  const [address, setAddress] = useState('');
   const [deadline, setDeadline] = useState('');
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
   const [seeded, setSeeded] = useState(false);
@@ -59,6 +59,7 @@ export default function EditTaskScreen() {
   // background refetches.
   useEffect(() => {
     if (task && !seeded) {
+      setAddress(typeof task.location === 'string' ? task.location : [task.location?.address, task.location?.city, task.location?.state].filter(Boolean).join(', '));
       setTitle(task.title);
       setDescription(task.description);
       setBudget(String(task.budget));
@@ -74,6 +75,7 @@ export default function EditTaskScreen() {
         description: description.trim(),
         budget: Number(budget),
         deadline: deadline || null,
+        ...(address.trim() ? { location: { address: address.trim() } } : {}),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.task(id as string) });
@@ -87,8 +89,8 @@ export default function EditTaskScreen() {
   });
 
   const canSave =
-    title.trim().length > 0 &&
-    description.trim().length > 0 &&
+    title.trim().length >= 5 &&
+    description.trim().length >= 20 &&
     Number(budget) > 0 &&
     !saveMutation.isPending;
 
@@ -150,6 +152,11 @@ export default function EditTaskScreen() {
             multiline
           />
 
+          <Text style={styles.fieldLabel}>Task address</Text>
+          <TextInput accessibilityLabel="Task address" style={styles.input} value={address} onChangeText={setAddress}
+            placeholder="Enter the full task address" placeholderTextColor={COLORS.placeholder} />
+          <Text style={styles.note}>Include a city or state if you choose.</Text>
+
           <Text style={styles.fieldLabel}>Budget (₦)</Text>
           <TextInput
             style={styles.input}
@@ -161,7 +168,7 @@ export default function EditTaskScreen() {
           />
 
           <Text style={styles.note}>
-            Budget is locked because funds are already reserved. The bidding deadline is the last day taskers may bid. Leave it blank to keep bidding open. Need to change the budget, category, photos, or location? Delete this task and post it again.
+            Budget is locked because funds are already reserved. The bidding deadline is the last day taskers may bid. Leave it blank to keep bidding open. Need to change the budget, category, or photos? Delete this task and post it again.
           </Text>
           <Text style={styles.fieldLabel}>Bidding deadline (optional)</Text>
           <Pressable style={styles.input} onPress={() => setShowDeadlinePicker(true)}>

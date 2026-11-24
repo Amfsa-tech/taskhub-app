@@ -35,7 +35,7 @@ export default function PostReviewScreen() {
     { label: 'Budget', value: budgetNum > 0 ? formatNaira(budgetNum) : '—', emphasized: true },
     { label: 'Bidding', value: draft.isBiddingEnabled ? 'Enabled' : 'Disabled' },
     { label: 'Bidding deadline', value: draft.biddingDeadline || 'No deadline' },
-    { label: 'Location', value: [draft.location, draft.locationCity, draft.locationState].filter(Boolean).join(', ') || 'Remote' },
+    { label: 'Location', value: draft.location || 'Remote' },
     ...(draft.university ? [{ label: 'University', value: draft.university.name }] : []),
     ...(draft.images.length > 0
       ? [{ label: 'Photos', value: `${draft.images.length} attached` }]
@@ -54,8 +54,8 @@ export default function PostReviewScreen() {
           isBiddingEnabled: draft.isBiddingEnabled,
           tags: draft.tags,
           ...(draft.biddingDeadline ? { deadline: draft.biddingDeadline } : {}),
-          ...(draft.location.trim() && draft.locationCity.trim() && draft.locationState.trim()
-            ? { location: { address: draft.location.trim(), city: draft.locationCity.trim(), state: draft.locationState.trim() } }
+          ...(draft.location.trim()
+            ? { location: { address: draft.location.trim() } }
             : {}),
           ...(draft.university ? { university: draft.university.id } : {}),
         },
@@ -87,8 +87,8 @@ export default function PostReviewScreen() {
       return;
     }
     if (!/digital|remote/i.test(draft.mainCategory?.name ?? '') &&
-      (!draft.location.trim() || !draft.locationCity.trim() || !draft.locationState.trim())) {
-      Alert.alert('Missing location', 'Enter the task address, city and state.');
+      !draft.location.trim()) {
+      Alert.alert('Missing location', 'Enter the task address.');
       return;
     }
     // Email verification is required before posting. Blocking here keeps the

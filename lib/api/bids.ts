@@ -42,8 +42,8 @@ export function sendHireRequest(payload: HireRequestPayload) {
 }
 
 /**
- * Accept an existing bid. Assigns the task and holds the bid amount (+10% fee)
- * in escrow from the user's wallet — returns 402 when the balance is too low.
+ * Assign the task using existing escrow. Only an amount above the held balance
+ * is charged to the wallet; a lower accepted amount refunds the difference.
  *
  * This single call *is* the hire: there is no separate "send agreement" or
  * "pay" step on the backend. Accept = pay = assign, atomically.
@@ -73,8 +73,14 @@ export interface PaymentSummary {
   platformFee: number;
   /** e.g. `0.1` for 10%. */
   feeRate: number;
-  /** `taskAmount + platformFee` — the whole sum is held in escrow. */
+  /** Total task cost; the platform fee is deducted from the tasker payout. */
   total: number;
+  taskerReceives: number;
+  alreadyHeld: number;
+  additionalCharge: number;
+  refundDue: number;
+  canConfirm: boolean;
+  blockingReason: string | null;
   currency: string;
   walletBalance: number;
   sufficientBalance: boolean;
@@ -94,7 +100,7 @@ export function getBidPaymentSummary(bidId: string, signal?: AbortSignal) {
  * Tasker side — `protectTasker`
  * ------------------------------------------------------------------ */
 
-export type BidStatus = 'pending' | 'accepted' | 'rejected';
+export type BidStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
 
 /** A bid as returned by `GET /api/bids/tasker/bids` (task is partially populated). */
 export interface TaskerBid {
@@ -103,7 +109,7 @@ export interface TaskerBid {
   amount: number;
   message?: string;
   status: BidStatus;
-  bidType?: 'custom' | 'fixed';
+  bidType?: 'custom' | 'fixed' | 'invitation' | 'invite';
   /** True when the client initiated this as a hire request rather than the tasker bidding. */
   invitedByUser?: boolean;
   /** Set once the tasker accepts a hire request; the client still has to pay. */

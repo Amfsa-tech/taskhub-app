@@ -129,6 +129,8 @@ export function useTasks(params?: TaskListParams) {
 /** Single task detail (includes bids when the caller owns the task). */
 export function useTask(id?: string) {
   return useQuery({
+    staleTime: 0,
+    refetchOnWindowFocus: 'always',
     queryKey: queryKeys.task(id ?? ''),
     queryFn: ({ signal }) => getTaskById(id as string, signal),
     enabled: Boolean(id),
@@ -136,11 +138,11 @@ export function useTask(id?: string) {
 }
 
 /** Smart-match taskers for a task (owner-only). */
-export function useTaskMatches(id?: string) {
+export function useTaskMatches(id?: string, enabled = true) {
   return useQuery({
     queryKey: queryKeys.taskMatches(id ?? ''),
     queryFn: ({ signal }) => getTaskMatches(id as string, signal),
-    enabled: Boolean(id),
+    enabled: Boolean(id) && enabled,
   });
 }
 
@@ -206,6 +208,7 @@ export function useMyRoleReviews(role: 'user' | 'tasker' | null, enabled = true)
  */
 export function usePaymentSummary(bidId?: string) {
   return useQuery({
+    refetchOnWindowFocus: 'always',
     queryKey: queryKeys.paymentSummary(bidId ?? ''),
     queryFn: ({ signal }) => getBidPaymentSummary(bidId as string, signal),
     enabled: Boolean(bidId),
@@ -436,6 +439,8 @@ export function useTaskerTasks(status?: TaskStatus, enabled = true) {
 /** The tasker's own bids — covers both "bids sent" and incoming hire requests. */
 export function useTaskerBids(status?: BidStatus, enabled = true) {
   return useQuery({
+    staleTime: 0,
+    refetchOnWindowFocus: 'always',
     queryKey: queryKeys.taskerBids(status),
     queryFn: ({ signal }) => getTaskerBids({ status, limit: 50 }, signal),
     enabled,

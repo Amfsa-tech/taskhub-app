@@ -118,6 +118,9 @@ type BidView = {
   rating: string;
   message: string;
   avatar: string;
+  status: TaskBid['status'];
+  isHireRequest: boolean;
+  taskerConfirmed: boolean;
 };
 
 /** `Chioma`, `Amara` -> `Chioma A.` */
@@ -142,6 +145,9 @@ function matchToView(m: TaskerMatch): Match {
 function bidToView(b: TaskBid): BidView {
   return {
     id: b._id,
+    status: b.status,
+    isHireRequest: b.invitedByUser === true || b.bidType === 'invitation' || b.bidType === 'invite',
+    taskerConfirmed: b.taskerConfirmed === true,
     taskerId: b.tasker._id,
     name: shortName(b.tasker.firstName, b.tasker.lastName),
     price: formatNaira(b.amount),
@@ -271,9 +277,10 @@ function BidCard({
             Profile
           </Text>
         </Pressable>
-        <Pressable style={[styles.actionButton, styles.primaryButton]} onPress={onAccept} >
+        <Pressable accessibilityRole="button" disabled={bid.status !== 'pending' || (bid.isHireRequest && !bid.taskerConfirmed)}
+          style={[styles.actionButton, styles.primaryButton, (bid.status !== 'pending' || (bid.isHireRequest && !bid.taskerConfirmed)) && { opacity: 0.5 }]} onPress={onAccept} >
           <Text style={styles.primaryLabel} numberOfLines={1}>
-            Accept Bid
+            {bid.status !== 'pending' ? bid.status : bid.isHireRequest ? bid.taskerConfirmed ? 'Confirm Hire' : 'Awaiting response' : 'Accept Bid'}
           </Text>
         </Pressable>
       </View>
@@ -286,11 +293,11 @@ export default function TaskDetailsScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const taskQ = useTask(id);
-  const matchesQ = useTaskMatches(id);
   const task = taskQ.data?.task;
 
   const { accountType, user } = useAuth();
   const isTasker = accountType === 'tasker';
+  const matchesQ = useTaskMatches(id, !isTasker);
 
   // Email verification is required before a tasker can bid on or accept a task.
   // Returns false (and prompts) when the account's email is unverified.
@@ -316,22 +323,25 @@ export default function TaskDetailsScreen() {
     return true;
   };
 
-  // The detail endpoint returns no tasker-side bid info, so the tasker's own
-  // bid on this task comes from their bids list (same query the Jobs tab uses).
   const taskerBidsQ = useTaskerBids('pending', isTasker);
+  // The task-specific response takes precedence over paginated cached lists.
   const myBid = isTasker
-    ? ((taskerBidsQ.data?.bids ?? []).find((b) => b.task?._id === id) ?? null)
+    ? task?.taskerBidInfo !== undefined
+      ? task.taskerBidInfo.hasBid && task.taskerBidInfo._id
+        ? { ...task.taskerBidInfo, _id: task.taskerBidInfo._id, amount: task.taskerBidInfo.amount ?? task.budget, status: task.taskerBidInfo.status ?? 'pending', createdAt: task.taskerBidInfo.createdAt ?? task.createdAt }
+        : null
+      : ((taskerBidsQ.data?.bids ?? []).find((b) => b.task?._id === id) ?? null)
     : null;
 
   // Derived, not stored: refetching the bids list after a mutation moves the
   // screen between states. Start/complete of assigned work lives in the Jobs
   // tab and track-task, not here — hence no in-progress states.
-  type TaskerViewState = 'open' | 'bid_sent' | 'invitation_received' | 'closed';
-  const taskerState: TaskerViewState = myBid
-    ? myBid.invitedByUser && !myBid.taskerConfirmed
-      ? 'invitation_received'
+  type TaskerViewState = 'open' | 'bid_sent' | 'invitation_received' | 'hire_confirmed' | 'closed';
+  const taskerState: TaskerViewState = myBid && myBid.status === 'pending' && task?.status === 'open'
+    ? myBid.invitedByUser || myBid.bidType === 'invitation' || myBid.bidType === 'invite'
+      ? myBid.taskerConfirmed ? 'hire_confirmed' : 'invitation_received'
       : 'bid_sent'
-    : task?.status === 'open' && (!task.deadline || new Date(task.deadline).getTime() > Date.now())
+    : !myBid && task?.status === 'open' && (!task.deadline || new Date(task.deadline).getTime() > Date.now())
       ? 'open'
       : 'closed';
 
@@ -359,7 +369,10 @@ export default function TaskDetailsScreen() {
   const [showReopenDatePicker, setShowReopenDatePicker] = useState(false);
 
   const matches = (matchesQ.data?.matches ?? []).map(matchToView);
-  const bids = (task?.bids ?? []).map(bidToView);
+  const allOffers = [...(task?.bids ?? []), ...(task?.hireRequests ?? [])].filter((bid) => bid.tasker && bid.status !== 'cancelled');
+  const isHire = (bid: TaskBid) => bid.invitedByUser === true || bid.bidType === 'invitation' || bid.bidType === 'invite';
+  const bids = allOffers.filter((bid) => !isHire(bid)).map(bidToView);
+  const hireRequests = allOffers.filter(isHire).map(bidToView);
   const budgetText = task ? formatNaira(task.budget) : '';
   // Fall back for statuses the palette doesn't know (backend may add new ones).
   const statusColor = (task && STATUS_COLORS[task.status]) || STATUS_COLORS.open;
@@ -368,6 +381,7 @@ export default function TaskDetailsScreen() {
     mutationFn: (taskerId: string) => inviteTasker({ taskId: id as string, taskerId }),
     onSuccess: () => {
       setInvite(null);
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] });
       Alert.alert('Invite sent', 'The tasker has been invited to bid on your task.');
     },
     onError: (err) => Alert.alert('Could not send invite', errorMessage(err)),
@@ -378,6 +392,7 @@ export default function TaskDetailsScreen() {
       sendHireRequest({ taskId: id as string, taskerId: v.taskerId, amount: v.amount }),
     onSuccess: () => {
       setHire(null);
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] });
       Alert.alert('Hire request sent', 'We’ll let you know when the tasker responds.');
     },
     onError: (err) => Alert.alert('Could not send hire request', errorMessage(err)),
@@ -659,11 +674,11 @@ export default function TaskDetailsScreen() {
           )}
 
           {/* Your Bid Card */}
-          {taskerState === 'bid_sent' && myBid && (
+          {(taskerState === 'bid_sent' || taskerState === 'hire_confirmed') && myBid && (
             <View style={styles.yourBidContainer}>
               <View style={styles.yourBidHeader}>
                 <Ionicons name="checkmark-circle" size={18} color="#6c3bff" />
-                <Text style={styles.yourBidTitle}>Your Bid</Text>
+                <Text style={styles.yourBidTitle}>{taskerState === 'hire_confirmed' ? 'Hire request accepted' : 'Your Bid'}</Text>
               </View>
               <View style={styles.yourBidCard}>
                 <View style={styles.yourBidCardHeader}>
@@ -682,7 +697,7 @@ export default function TaskDetailsScreen() {
                     </Text>
                   </View>
                   <View style={styles.yourBidTagPending}>
-                    <Text style={styles.yourBidTagText}>Pending</Text>
+                    <Text style={styles.yourBidTagText}>{taskerState === 'hire_confirmed' ? 'Awaiting client confirmation' : 'Pending'}</Text>
                   </View>
                 </View>
                 {!!myBid.message && (
@@ -725,7 +740,7 @@ export default function TaskDetailsScreen() {
           {taskerState === 'closed' && (
             <View style={styles.taskerBudgetCard}>
               <Text style={styles.taskerBudgetLabel}>
-                This task is no longer open for applications ({statusLabel(task.status)}).
+                {myBid && task.status === 'open' ? `Your application is ${myBid.status}.` : `This task is no longer open for applications (${statusLabel(task.status)}).`}
               </Text>
             </View>
           )}
@@ -745,6 +760,7 @@ export default function TaskDetailsScreen() {
               </>
             )}
 
+            {taskerState === 'hire_confirmed' ? <Text style={styles.taskerBudgetLabel}>You accepted this hire request. The client must confirm the hire before you can start work.</Text> : null}
             {taskerState === 'invitation_received' && (
               <Pressable
                 style={[styles.sheetButton, { backgroundColor: COLORS.brand }]}
@@ -795,7 +811,7 @@ export default function TaskDetailsScreen() {
               <Text style={styles.dialogTitle}>Accept Invitation?</Text>
               <Text style={styles.dialogSubtitle}>
                 You&apos;re accepting &quot;{task.title}&quot; from {clientName}. The job becomes
-                active once the client completes payment.
+                active once the client confirms the hire using task escrow.
               </Text>
 
               <Pressable
@@ -840,7 +856,7 @@ export default function TaskDetailsScreen() {
 
               <Text style={[styles.sheetTitle, { textAlign: 'center', marginTop: 12 }]}>Invitation Accepted!</Text>
               <Text style={[styles.sheetSubtitle, { textAlign: 'center', color: '#5a5a70', marginBottom: 12 }]}>
-                {clientName} has been asked to complete payment for &quot;{task.title}&quot;.
+                {clientName} has been asked to confirm the hire for &quot;{task.title}&quot;.
               </Text>
 
               {/* Steps Container */}
@@ -851,8 +867,8 @@ export default function TaskDetailsScreen() {
                     <Ionicons name="card" size={16} color={COLORS.brand} />
                   </View>
                   <View style={styles.stepInfo}>
-                    <Text style={styles.stepTitle}>The client pays into escrow</Text>
-                    <Text style={styles.stepSubtitle}>The job becomes active only once payment is secured.</Text>
+                    <Text style={styles.stepTitle}>The client confirms the hire</Text>
+                    <Text style={styles.stepSubtitle}>The client confirms using the funds held for this task.</Text>
                   </View>
                 </View>
 
@@ -1265,6 +1281,12 @@ export default function TaskDetailsScreen() {
               style={{ width: SCREEN_WIDTH }}
               contentContainerStyle={[styles.page, { paddingBottom: insets.bottom + 24 }]}
               showsVerticalScrollIndicator={false}>
+              {hireRequests.length > 0 ? <Text style={styles.name}>Hire requests ({hireRequests.length})</Text> : null}
+              {hireRequests.map((b) => (
+                <BidCard key={b.id} bid={b} onChat={() => openChatMutation.mutate(b.id)}
+                  onAccept={() => setHire({ kind: 'accept', bidId: b.id, name: b.name, avatar: b.avatar, price: b.price })} />
+              ))}
+              <Text style={styles.name}>Bids ({bids.length})</Text>
               {bids.length === 0 ? (
                 <View style={styles.pageState}>
                   <Text style={styles.stateText}>No bids yet.</Text>
@@ -1308,9 +1330,7 @@ export default function TaskDetailsScreen() {
             onConfirm={() => {
               if (!hire) return;
               if (hire.kind === 'accept') {
-                // Accepting debits the wallet for bid + platform fee in one call,
-                // so it goes through the confirm-and-pay screen — that's where the
-                // server-computed fee breakdown and balance check are shown.
+                // Review the server-computed escrow adjustment before assigning the task.
                 setHire(null);
                 router.push({ pathname: '/task-agreement', params: { bidId: hire.bidId } });
               } else {

@@ -47,15 +47,7 @@ function taskerLabel(tasker: PaymentSummary['tasker']): string {
   return [first, lastInitial ? `${lastInitial}.` : ''].filter(Boolean).join(' ') || 'Tasker';
 }
 
-/**
- * Confirm-and-pay for a bid.
- *
- * The backend has no "agreement" or separate payment step: `POST /api/bids/:id/accept`
- * atomically assigns the task and moves bid + platform fee into escrow. This
- * screen is therefore a *confirmation* of that one call, and every figure on it
- * comes from `GET /api/bids/:id/payment-summary` — the fee is computed
- * server-side, so it is never re-derived here.
- */
+/** Confirm hiring using the server's live escrow and wallet breakdown. */
 export default function TaskAgreementScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -74,11 +66,15 @@ export default function TaskAgreementScreen() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['tasks'] }),
         queryClient.invalidateQueries({ queryKey: ['wallet'] }),
+        queryClient.invalidateQueries({ queryKey: ['bids'] }),
+        queryClient.invalidateQueries({ queryKey: ['chat'] }),
       ]);
       setStep('hired');
     },
-    onError: (err) =>
-      Alert.alert('Payment failed', err instanceof Error ? err.message : 'Please try again.'),
+    onError: (err) => {
+      void summaryQ.refetch();
+      Alert.alert('Could not confirm hire', err instanceof Error ? err.message : 'Please try again.');
+    },
   });
 
   // ---- Terminal state: hired ----
@@ -144,7 +140,7 @@ export default function TaskAgreementScreen() {
           ) : (
             <>
               <Text style={styles.confirmedSubtitle}>
-                {bidId ? 'Couldn’t load the payment summary.' : 'No bid was selected.'}
+                {summaryQ.error instanceof Error ? summaryQ.error.message : bidId ? 'Couldn’t load the payment summary.' : 'No bid was selected.'}
               </Text>
               {bidId ? (
                 <Pressable hitSlop={8} onPress={() => summaryQ.refetch()}>
@@ -158,7 +154,8 @@ export default function TaskAgreementScreen() {
     );
   }
 
-  const shortfall = summary.total - summary.walletBalance;
+  const shortfall = Math.max(0, summary.additionalCharge - summary.walletBalance);
+  const canConfirm = summary.canConfirm === true;
 
   // ---- Summary ----
   return (
@@ -185,9 +182,13 @@ export default function TaskAgreementScreen() {
             <DetailRow label="Tasker" value={taskerLabel(summary.tasker)} />
             <DetailRow label="Task Amount" value={formatNaira(summary.taskAmount)} />
             <DetailRow
-              label={`Platform Fee (${Math.round(summary.feeRate * 100)}%)`}
+              label={`Fee included (${Math.round(summary.feeRate * 100)}%)`}
               value={formatNaira(summary.platformFee)}
             />
+            <Text style={styles.walletBalance}>The platform fee is deducted from the tasker’s payout, not added to your total.</Text>
+            <DetailRow label="Already in escrow" value={formatNaira(summary.alreadyHeld)} />
+            <DetailRow label="From wallet now" value={formatNaira(summary.additionalCharge)} />
+            {summary.refundDue > 0 ? <DetailRow label="Refund to wallet" value={formatNaira(summary.refundDue)} /> : null}
             <View style={styles.divider} />
             <View style={styles.priceRow}>
               <Text style={styles.priceLabel}>Total</Text>
@@ -203,22 +204,29 @@ export default function TaskAgreementScreen() {
           </View>
         </View>
 
-        {/* Wallet is the only funding source: accept debits the wallet directly. */}
-        <Text style={styles.sectionTitle}>Payment Method</Text>
+        {/* The task escrow is the primary funding source. */}
+        <Text style={styles.sectionTitle}>Payment source</Text>
         <View style={styles.walletRow}>
           <View style={styles.walletIconWrap}>
-            <Ionicons name="wallet-outline" size={20} color={COLORS.brand} />
+            <Ionicons name={summary.alreadyHeld > 0 ? "shield-checkmark-outline" : "wallet-outline"} size={20} color={COLORS.brand} />
           </View>
           <View style={styles.walletInfo}>
-            <Text style={styles.walletLabel}>Wallet</Text>
-            <Text style={styles.walletBalance}>{formatNaira(summary.walletBalance)}</Text>
+            <Text style={styles.walletLabel}>{summary.alreadyHeld > 0 ? 'Task escrow' : 'Wallet'}</Text>
+            <Text style={styles.walletBalance}>{summary.alreadyHeld > 0 ? `${formatNaira(summary.alreadyHeld)} already held for this task` : `Available: ${formatNaira(summary.walletBalance)}`}</Text>
+            {summary.additionalCharge > 0 && summary.alreadyHeld > 0 ? <Text style={styles.walletBalance}>Plus {formatNaira(summary.additionalCharge)} from wallet</Text> : null}
+            {summary.additionalCharge === 0 ? <Text style={styles.walletBalance}>No additional wallet payment.</Text> : null}
           </View>
           <View style={styles.radioOutline}>
             <View style={styles.radioDot} />
           </View>
         </View>
 
-        {!summary.sufficientBalance ? (
+        {!canConfirm ? (
+          <View style={styles.warningBanner}>
+            <Text style={styles.warningText}>{summary.blockingReason || 'Refresh the payment summary before confirming.'}</Text>
+            <Pressable accessibilityRole="button" disabled={summaryQ.isFetching} onPress={() => summaryQ.refetch()}><Text style={styles.editLabel}>Refresh</Text></Pressable>
+          </View>
+        ) : !summary.sufficientBalance ? (
           <View style={styles.warningBanner}>
             <Ionicons name="warning" size={20} color="#d97706" style={styles.warningIcon} />
             <Text style={styles.warningText}>
@@ -230,21 +238,22 @@ export default function TaskAgreementScreen() {
           <View style={styles.warningBanner}>
             <Ionicons name="warning" size={20} color="#d97706" style={styles.warningIcon} />
             <Text style={styles.warningText}>
-              Only continue when both sides understand the task clearly. Paying assigns the task to
-              this tasker straight away.
+              Only continue when both sides understand the task clearly. Confirming assigns the task to
+              this tasker using the funds shown above.
             </Text>
           </View>
         )}
       </ScrollView>
 
       <View style={[styles.bottomPayBar, { paddingBottom: insets.bottom + 16 }]}>
-        {summary.sufficientBalance ? (
-          <PrimaryButton
-            label={`Pay ${formatNaira(summary.total)} from wallet`}
-            onPress={() => pay.mutate()}
-          />
-        ) : (
+        {canConfirm && !summary.sufficientBalance ? (
           <PrimaryButton label="Fund Wallet" onPress={() => router.push('/wallet')} />
+        ) : (
+          <PrimaryButton
+            label={summary.additionalCharge > 0 ? `Pay ${formatNaira(summary.additionalCharge)} from wallet & hire` : 'Confirm hire using escrow'}
+            disabled={!canConfirm || summaryQ.isFetching || pay.isPending}
+            onPress={() => { if (!pay.isPending && canConfirm) pay.mutate(); }}
+          />
         )}
 
         <Pressable

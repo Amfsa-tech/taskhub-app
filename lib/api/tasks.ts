@@ -91,8 +91,10 @@ export interface TaskBid {
   tasker: TaskBidTaskerRef;
   amount: number;
   message?: string;
-  status: 'pending' | 'accepted' | 'rejected';
-  bidType?: 'custom' | 'fixed';
+  status: 'pending' | 'accepted' | 'rejected' | 'cancelled';
+  bidType?: 'custom' | 'fixed' | 'invitation' | 'invite';
+  invitedByUser?: boolean;
+  taskerConfirmed?: boolean;
   createdAt: string;
 }
 
@@ -120,7 +122,7 @@ export interface Task {
   clientReviewText?: string | null;
   clientRatedAt?: string | null;
   escrowStatus?: TaskEscrowStatus;
-  /** Client-borne fee breakdown, stored at bid-accept time. */
+  /** Escrow and tasker-borne fee breakdown, stored at bid acceptance. */
   escrowAmount?: number;
   platformFee?: number;
   taskerPayout?: number;
@@ -132,6 +134,8 @@ export interface Task {
   pendingBidCount?: number;
   // Present on `getTaskById` when the caller owns the task.
   bids?: TaskBid[];
+  hireRequests?: TaskBid[];
+  taskerBidInfo?: Partial<import('./bids').TaskerBid> & { hasBid: boolean };
   createdAt: string;
   updatedAt: string;
 }
@@ -177,6 +181,7 @@ export function getTaskById(id: string, signal?: AbortSignal) {
 }
 
 export interface UpdateTaskPayload {
+  location?: { address: string };
   title?: string;
   description?: string;
   budget?: number;
@@ -452,8 +457,10 @@ export interface TaskApplicationInfo {
 export interface TaskerBidInfo {
   hasBid: boolean;
   amount?: number;
-  bidType?: 'custom' | 'fixed';
-  status?: 'pending' | 'accepted' | 'rejected';
+  bidType?: 'custom' | 'fixed' | 'invitation' | 'invite';
+  invitedByUser?: boolean;
+  taskerConfirmed?: boolean;
+  status?: 'pending' | 'accepted' | 'rejected' | 'cancelled';
 }
 
 /** A feed task carries the tasker's own bid state alongside the task. */

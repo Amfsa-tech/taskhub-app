@@ -18,8 +18,6 @@ export interface PostTaskDraft {
   tags: string[];
   biddingDeadline: string; // YYYY-MM-DD in Nigeria, or empty for no cutoff
   location: string;
-  locationCity: string;
-  locationState: string;
   university: { id: string; name: string } | null;
   images: PickedImage[];
 }
@@ -34,8 +32,6 @@ const EMPTY: PostTaskDraft = {
   tags: [],
   biddingDeadline: '',
   location: '',
-  locationCity: '',
-  locationState: '',
   university: null,
   images: [],
 };
