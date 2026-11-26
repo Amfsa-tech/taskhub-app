@@ -1,3 +1,5 @@
+import { taskCategoryLabel, taskPostedDate } from '@/lib/task-presentation';
+import { UrgentBadge } from '@/components/taskhub/urgent-badge';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -7,7 +9,7 @@ import Clock from '@/assets/icons/clock.svg';
 import MapPin from '@/assets/icons/map-pin.svg';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
 import { useTaskerFeed } from '@/lib/api/queries';
-import { formatNaira, formatRelativeTime, locationLabel, type TaskerFeedTask } from '@/lib/api/tasks';
+import { formatNaira, locationLabel, type TaskerFeedTask } from '@/lib/api/tasks';
 import { useAuth } from '@/lib/auth/auth-context';
 
 const COLORS = {
@@ -25,9 +27,10 @@ function NearbyTaskCard({ task, onPress }: { task: TaskerFeedTask; onPress: () =
   return (
     <Pressable style={({ pressed }) => [styles.card, pressed && styles.pressed]} onPress={onPress}>
       <View style={styles.cardTop}>
+        <UrgentBadge task={task} />
         <View style={styles.modeBadge}>
           <Text style={styles.modeText}>
-            {task.applicationInfo?.applicationMode === 'bidding' ? 'Bidding' : 'Fixed'}
+            {taskCategoryLabel(task)}
           </Text>
         </View>
         <Text style={styles.price}>{formatNaira(task.budget)}</Text>
@@ -40,7 +43,7 @@ function NearbyTaskCard({ task, onPress }: { task: TaskerFeedTask; onPress: () =
         </View>
         <View style={styles.metaItem}>
           <Clock width={14} height={14} color={COLORS.textSecondary} />
-          <Text style={styles.metaText}>{formatRelativeTime(task.createdAt)}</Text>
+          <Text style={styles.metaText}>{taskPostedDate(task.createdAt)}</Text>
         </View>
       </View>
       {task.taskerBidInfo?.hasBid ? <Text style={styles.applied}>Applied</Text> : null}

@@ -1,3 +1,4 @@
+import { StoreUpdateCheck } from '@/components/taskhub/store-update-check';
 import { DownloadMyData } from "@/components/taskhub/download-my-data";
 import * as WebBrowser from 'expo-web-browser';
 import { BiometricSetting } from '@/components/taskhub/biometric-setting';
@@ -293,6 +294,7 @@ export default function SettingsScreen() {
             />
           </View>
         </View>
+        <StoreUpdateCheck />
       </ScrollView>
     </View>
   );

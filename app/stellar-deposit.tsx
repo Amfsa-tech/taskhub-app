@@ -30,7 +30,7 @@ export default function StellarDepositScreen() {
         <View style={styles.content}>
           <View style={styles.network}><Ionicons name="planet-outline" size={22} color={COLORS.brand} /><View><Text style={styles.title}>Deposit via Stellar</Text><Text style={styles.body}>Network: {info.network}</Text></View></View>
           <CopyRow label="WALLET ADDRESS" value={info.walletAddress} />
-          <CopyRow label="MEMO ID — REQUIRED" value={info.memoId} />
+          <CopyRow label="TRANSFER MEMO, REQUIRED" value={info.memoId} />
           <View style={styles.notice}><Ionicons name="warning-outline" size={20} color={COLORS.warning} /><Text style={styles.noticeText}>Include this exact memo with every transfer. A missing or incorrect memo can prevent automatic crediting.</Text></View>
           {info.exchangeRate ? <Text style={styles.body}>Current server rate: {info.exchangeRate}</Text> : null}
         </View>

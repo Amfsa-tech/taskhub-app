@@ -16,7 +16,7 @@ import type { GoogleProfile } from './types';
 
 export class GoogleSignInUnavailableError extends Error {
   constructor(
-    message = 'Google Sign-In needs a development build — it is not available in Expo Go yet.',
+    message = 'Google Sign-In needs a development build, it is not available in Expo Go yet.',
   ) {
     super(message);
     this.name = 'GoogleSignInUnavailableError';
@@ -46,7 +46,7 @@ export async function getGoogleIdToken(options: { chooseAccount?: boolean } = {}
   }
   if (!GOOGLE_WEB_CLIENT_ID) {
     throw new GoogleSignInUnavailableError(
-      'Missing EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID — set it to the backend GOOGLE_CLIENT_ID.',
+      'Missing EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID, set it to the backend GOOGLE_CLIENT_ID.',
     );
   }
 

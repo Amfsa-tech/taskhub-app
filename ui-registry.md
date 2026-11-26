@@ -617,3 +617,32 @@ The mobile inbox shows the notification title, message, readable timestamp and u
 Sign-in shows a two-option radio group: User · Hire a tasker and Tasker · Find work. Reuse Geist labels, 8px corners, white surface and #e0e0ea border; selection uses #f3eeff with #6c3bff border/text. Disable selection during sign-in; preserve credentials and explain corrected role inline. Get Started exits the intro on every slide.
 
 Unavailable task screens keep the existing Back action, heading and muted explanation. Owner reopening uses the existing purple action only during the 30-day grace period. Notification content shrinks within the row while timestamps retain their width; long titles and messages wrap.
+
+### Task discovery, sharing and lifecycle corrections, 2026-11-25
+
+Quick category controls represent active categories with actual child services and navigate directly to that category's service step. Hide unavailable shortcuts. Urgent badges reuse the red/pink pill and lightning icon on both sides, with a 72-hour bidding window and a local timer for visible cards. Do not show closed tasks as urgent.
+
+Show each tasker invitation once and replace Accept with awaiting-customer confirmation immediately after consent. Completed acceptance/payment milestones stay checked in later lifecycle states. Submitted work stays in In Progress and exposes Review Work for the customer. Nudge uses a pending/disabled action, real chat delivery, and success only after delivery is accepted.
+
+Profile shares use descriptive hiring copy plus the direct profile link, without raw identifiers or attached photos. Link metadata uses the public profile photo and a purple TaskHub-logo fallback. Preserve the profile destination through registration, verification and sign-in. Use real profile photos or neutral branded/initial fallbacks. Interface copy uses normal punctuation and short N/A placeholders instead of em dashes.
+
+### Verified content and masked email - 2026-11-26
+
+Task cards show the saved category/service, address (including optional city/state), and a complete posted date with year. Missing data uses a readable unavailable label; missing coordinates never imply Remote. Category IDs and application modes are not category labels. Account presence and verification badges require actual API flags. Public landing panels explain product workflows without invented customer records, ratings, testimonials or campaign counts. Receipts require a loaded authenticated transaction.
+
+OTP email hints are masked by default, including short local parts. Use one page-level visibility state for every repeated hint, a small purple eye button, a 32px minimum control with extra hit area on mobile, and Show/Hide email address accessibility labels. Reset visibility when the address or verification challenge changes; keep the full address only in request data.
+
+The bottom Settings row opens a centered 24px-radius update modal with a purple gradient, white headings/body text, a spinner while checking and the TaskHub logo on resolved states. Use 23px semibold headings, 14px/22px body text, 48px purple primary actions, and a separate Close/Cancel action. Store checks distinguish available, current and unavailable; preserve retry and failed store-opening feedback. Dismissed requests cannot reopen the modal.
+
+### Current work and history filters - 2026-11-26
+
+Keep only two equal-width tabs in the neutral rounded segmented control: Posted/In progress for customers and Pending/In progress for taskers. Link to Task history or Job history directly underneath with a purple clock and arrow. Historical records retain their existing cards and actions. Work awaiting customer confirmation remains in progress.
+
+History controls use compact 36px rounded chips with calendar/category/status icons, a chevron and an applied-selection count. Selected chips use pale purple, purple borders and purple text. Pending jobs expose one Type control for invitations and bids sent. Choices are drafts until Apply filters; dismissing discards them, Reset selection clears only that draft section and Clear filters resets all applied fields. Date ranges use inclusive task-posting days in Nigeria.
+
+Mobile filters use a dimmed backdrop, white sheet with 24px top corners, a short gray handle, 19px semibold title, light neutral checkbox rows and a full-width purple Apply button. Desktop uses an anchored white 340px panel with a subtle border and shadow; narrow web uses the bottom sheet. Preserve keyboard dismissal, focus return, accessible checkbox states and inline reversed-date errors.
+
+
+### Bidding choice window - 2026-11-26
+
+Task cards and task details show purple 13px notices for bidding-ended and owner choose-by information, with 19px line height. The Posted tab retains server-open tasks during the 48-hour offer selection window. Tasker Pending retains waiting offers but disables new applications and invitation acceptance after bidding closes. Use a neutral Expired history state for selection-window expiry, distinct from Not selected. Display choice deadlines in Nigeria time. Reuse the existing alert with Close and Reopen task actions for selection expiry, and direct reminders to the Bids tab.

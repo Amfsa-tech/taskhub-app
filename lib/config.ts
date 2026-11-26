@@ -6,7 +6,7 @@ const rawApiUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
 
 if (!rawApiUrl && __DEV__) {
   console.warn(
-    '[config] EXPO_PUBLIC_API_URL is not set — falling back to the deployed default. ' +
+    '[config] EXPO_PUBLIC_API_URL is not set, falling back to the deployed default. ' +
       'Create a .env file (see .env.example) to override.',
   );
 }

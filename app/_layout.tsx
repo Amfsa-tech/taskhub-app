@@ -46,7 +46,6 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
       <Text style={errorStyles.message}>
         An unexpected error occurred. Please try again.
       </Text>
-      {'requestId' in error && typeof error.requestId === 'string' && <Text selectable style={errorStyles.message}>Error ID: {error.requestId}</Text>}
       <Pressable
         style={({ pressed }) => [errorStyles.button, pressed && errorStyles.buttonPressed]}
         onPress={retry}>
@@ -182,6 +181,7 @@ function RootNavigator() {
                     <Stack.Screen name="edit-task" options={{ headerShown: false }} />
                     <Stack.Screen name="track-task" options={{ headerShown: false }} />
                     <Stack.Screen name="my-reviews" options={{ headerShown: false }} />
+                    <Stack.Screen name="task-history" options={{ headerShown: false }} />
                     <Stack.Screen name="settings" options={{ headerShown: false }} />
                     <Stack.Screen name="connected-accounts" options={{ headerShown: false }} />
                     <Stack.Screen name="link-role-account" options={{ headerShown: false }} />

@@ -1,3 +1,5 @@
+import { Ionicons } from '@expo/vector-icons';
+import { maskEmail } from '@/lib/mask-email';
 import { CaptchaNotice } from "@/components/taskhub/captcha-notice";
 import { useMutation } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -32,16 +34,6 @@ const COLORS = {
 
 const CODE_LENGTH = 5;
 
-// "jacelee1407@gmail.com" → "jac********@gmail.com". Keeps the first 3
-// characters of the local part (fewer for very short addresses) and the domain.
-function maskEmail(email: string): string {
-  const at = email.indexOf('@');
-  if (at <= 0) return email;
-  const local = email.slice(0, at);
-  const keep = Math.min(3, Math.max(1, local.length - 1));
-  return `${local.slice(0, keep)}${'*'.repeat(local.length - keep)}${email.slice(at)}`;
-}
-
 export default function OtpScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -54,6 +46,8 @@ export default function OtpScreen() {
   const { isAuthenticated, refreshProfile, signIn } = useAuth();
   const inputRef = useRef<TextInput>(null);
   const [code, setCode] = useState('');
+  const [emailVisible, setEmailVisible] = useState(false);
+  useEffect(() => setEmailVisible(false), [email]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [resendSeconds, setResendSeconds] = useState(() => Math.min(60, Math.max(0, Number(retryAfter) || 0)));
@@ -162,9 +156,14 @@ export default function OtpScreen() {
         {/* Heading */}
         <View style={styles.heading}>
           <Text style={styles.title}>Verify your email</Text>
-          <Text style={styles.subtitle}>
-            Enter the {CODE_LENGTH}-digit code for {email ? maskEmail(email) : 'your email'}.
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={[styles.subtitle, { flex: 1 }]}>
+            Enter the {CODE_LENGTH}-digit code for {email ? (emailVisible ? email : maskEmail(email)) : 'your email'}.
           </Text>
+          {email ? <Pressable accessibilityRole="button" accessibilityLabel={emailVisible ? 'Hide email address' : 'Show email address'} accessibilityState={{ expanded: emailVisible }} hitSlop={8} onPress={() => setEmailVisible((value) => !value)} style={{ alignSelf: 'flex-start', padding: 8 }}>
+          <Ionicons name={emailVisible ? 'eye-off-outline' : 'eye-outline'} size={19} color={COLORS.primary} />
+        </Pressable> : null}
+          </View>
         </View>
 
         {/* Code input */}

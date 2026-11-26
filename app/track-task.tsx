@@ -1,3 +1,6 @@
+import { buildTimeline } from '@/lib/task-timeline';
+import TaskHubLogo from '@/assets/images/taskhub-logo.svg';
+import { taskMilestones } from '@/lib/task-lifecycle';
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { RateTaskerModal } from '@/components/taskhub/rate-tasker-modal';
 import { queryKeys, useTask } from '@/lib/api/queries';
@@ -9,7 +12,6 @@ import {
   submitTaskerCompletion,
   rateTask,
   type Task,
-  type TaskStatus,
 } from '@/lib/api/tasks';
 import { useAuth } from '@/lib/auth/auth-context';
 import { pickImages, type PickedImage } from '@/lib/image-picker';
@@ -36,7 +38,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 
 const PopperImage = require('@/assets/images/party_popper_3d.png');
-const AVATAR = require('@/assets/images/taskers/tasker-1.png');
 const CANCELLATION_REASONS = [
   'Changed my mind',
   'Found Someone else',
@@ -58,74 +59,6 @@ const COLORS = {
   successText: '#0d6639',
   dangerText: '#b01515',
 };
-
-type TimelineItem = {
-  title: string;
-  time?: string;
-  status: 'checked' | 'active' | 'future';
-};
-
-/** Order the backend actually moves a task through. */
-const STATUS_ORDER: TaskStatus[] = [
-  'open',
-  'assigned',
-  'in-progress',
-  'awaiting-confirmation',
-  'completed',
-];
-
-function clockTime(iso?: string | null): string | undefined {
-  if (!iso) return undefined;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return undefined;
-  const hours = d.getHours();
-  const minutes = d.getMinutes().toString().padStart(2, '0');
-  const suffix = hours >= 12 ? 'PM' : 'AM';
-  const twelve = hours % 12 === 0 ? 12 : hours % 12;
-  return `${twelve}:${minutes}${suffix}`;
-}
-
-/**
- * Build the timeline from the task itself.
- *
- * The backend stores no per-step history — only `status` plus `createdAt` /
- * `completedAt` / `updatedAt` — so intermediate steps are shown as reached or
- * not, and only the stamps that genuinely exist carry a time. The design's
- * "Tasker On the Way" step has no backend equivalent and is dropped rather than
- * invented.
- */
-function buildTimeline(task: Task): TimelineItem[] {
-  if (task.status === 'cancelled') {
-    return [
-      { title: 'Task posted', time: clockTime(task.createdAt), status: 'checked' },
-      { title: 'Cancelled', time: clockTime(task.updatedAt), status: 'active' },
-    ];
-  }
-
-  const reached = STATUS_ORDER.indexOf(task.status);
-  const mark = (index: number): TimelineItem['status'] =>
-    index < reached ? 'checked' : index === reached ? 'active' : 'future';
-
-  return [
-    { title: 'Task posted', time: clockTime(task.createdAt), status: mark(0) },
-    { title: 'Tasker hired', status: mark(1) },
-    {
-      title: 'Payment secured',
-      status: task.escrowStatus && task.escrowStatus !== 'not_held' ? 'checked' : mark(1),
-    },
-    { title: 'In progress', status: mark(2) },
-    {
-      title: 'Submitted for confirmation',
-      time: clockTime(task.completionSubmittedAt),
-      status: mark(3),
-    },
-    {
-      title: 'Completed',
-      time: clockTime(task.completedAt),
-      status: mark(4),
-    },
-  ];
-}
 
 function taskerDisplayName(task: Task): string {
   const t = task.assignedTasker;
@@ -164,7 +97,7 @@ export default function TrackTaskScreen() {
    * backend, and the old local `escrowStatus` invented one.
    */
   const escrowStatus: 'pending' | 'secured' =
-    task?.escrowStatus === 'held' || task?.status === 'completed' ? 'secured' : 'pending';
+    task && taskMilestones(task).secured ? 'secured' : 'pending';
 
   const taskStatusStep: 'start_task' | 'started' | 'awaiting' | 'completed' =
     task?.status === 'completed'
@@ -345,15 +278,7 @@ export default function TrackTaskScreen() {
           <View style={styles.card}>
             <View style={styles.taskerRow}>
               <View style={styles.avatarWrap}>
-                <Image
-                  source={
-                    task.assignedTasker.profilePicture
-                      ? { uri: task.assignedTasker.profilePicture }
-                      : AVATAR
-                  }
-                  style={styles.avatar}
-                  contentFit="cover"
-                />
+                {task.assignedTasker.profilePicture ? <Image source={{ uri: task.assignedTasker.profilePicture }} style={styles.avatar} contentFit="cover" /> : <TaskHubLogo width={48} height={32} />}
               </View>
               <View style={styles.taskerInfo}>
                 <Text style={styles.taskerName}>{taskerName}</Text>
@@ -393,7 +318,7 @@ export default function TrackTaskScreen() {
               <View style={styles.securedInfo}>
                 <Text style={[styles.securedTitle, { color: '#b45309' }]}>Escrow not held</Text>
                 <Text style={[styles.securedSubtitle, { color: '#b45309' }]}>
-                  {formatNaira(task.budget)} — payment is not secured yet
+                  {formatNaira(task.budget)}, payment is not secured yet
                 </Text>
               </View>
             </View>

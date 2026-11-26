@@ -69,7 +69,7 @@ test('mobile duplicate state replaces loading and blocks both existing and newly
   await act(async()=>retry().props.onPress());
   assert.equal(creates,1);assert.deepEqual(opened,['https://verification.example.invalid/session']);
   await act(async()=>renderer.unmount());
-  const Settings=load('app/settings.tsx',mocks).default;
+  const Settings=load('app/settings.tsx',{...mocks,'@/components/taskhub/store-update-check':{StoreUpdateCheck:()=>null}}).default;
   await act(async()=>{renderer=create(React.createElement(Settings))});
   const campaign=renderer.root.findAllByType('Pressable').find(node=>node.findAllByType('Text').some(text=>text.props.children==='Brand Campaign'));
   assert.ok(campaign);

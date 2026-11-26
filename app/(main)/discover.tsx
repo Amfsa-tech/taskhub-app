@@ -1,3 +1,5 @@
+import { taskCategoryLabel, taskPostedDate } from '@/lib/task-presentation';
+import { UrgentBadge } from '@/components/taskhub/urgent-badge';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -23,7 +25,6 @@ import { MagnifyingGlass } from '@/components/icons/magnifying-glass';
 import { useTasks } from '@/lib/api/queries';
 import {
   formatNaira,
-  formatRelativeTime,
   isUrgent,
   locationLabel,
   type Task,
@@ -41,15 +42,17 @@ const COLORS = {
   onBrand: '#ffffff',
 };
 
-type TaskCategory = 'Local' | 'Errand' | 'Remote' | 'Campus';
+type TaskCategory = 'Local' | 'Errand' | 'Remote' | 'Campus' | 'Unknown';
 
 type TaskItem = {
   id: string;
   title: string;
   category: TaskCategory;
+  categoryLabel: string;
   price: string;
   budget: number;
   urgent: boolean;
+  urgency: Task;
   location: string;
   timeAgo: string;
 };
@@ -64,9 +67,9 @@ function taskCategory(task: Task): TaskCategory {
 
   if (name.includes('campus')) return 'Campus';
   if (name.includes('errand')) return 'Errand';
-  // No coordinates on the task means nothing to travel to.
-  if (/remote|digital|online/.test(name) || !task.location) return 'Remote';
-  return 'Local';
+  // Classify only from the saved category, not missing location data.
+  if (/remote|digital|online/.test(name)) return 'Remote';
+  return /local|service/i.test(name) ? 'Local' : 'Unknown';
 }
 
 function toTaskItem(task: Task): TaskItem {
@@ -74,11 +77,13 @@ function toTaskItem(task: Task): TaskItem {
     id: task._id,
     title: task.title,
     category: taskCategory(task),
+    categoryLabel: taskCategoryLabel(task),
     price: formatNaira(task.budget),
     budget: task.budget,
     urgent: isUrgent(task),
+    urgency: task,
     location: locationLabel(task),
-    timeAgo: formatRelativeTime(task.createdAt),
+    timeAgo: taskPostedDate(task.createdAt),
   };
 }
 
@@ -184,34 +189,35 @@ export default function DiscoverScreen() {
     }
   };
 
-  const renderTag = (category: TaskItem['category']) => {
+  const renderTag = (category: TaskItem['category'], label: string) => {
     switch (category) {
+      default:
       case 'Local':
         return (
           <View style={[styles.tag, styles.tagLocal]}>
             <Ionicons name="home" size={12} color="#1e88e5" style={{ marginRight: 4 }} />
-            <Text style={styles.tagLocalText}>Local</Text>
+            <Text style={styles.tagLocalText}>{label}</Text>
           </View>
         );
       case 'Errand':
         return (
           <View style={[styles.tag, styles.tagErrand]}>
             <Ionicons name="cube" size={12} color="#b45309" style={{ marginRight: 4 }} />
-            <Text style={styles.tagErrandText}>Errand</Text>
+            <Text style={styles.tagErrandText}>{label}</Text>
           </View>
         );
       case 'Remote':
         return (
           <View style={[styles.tag, styles.tagRemote]}>
             <Ionicons name="laptop" size={12} color="#0d6639" style={{ marginRight: 4 }} />
-            <Text style={styles.tagRemoteText}>Remote</Text>
+            <Text style={styles.tagRemoteText}>{label}</Text>
           </View>
         );
       case 'Campus':
         return (
           <View style={[styles.tag, styles.tagCampus]}>
             <Ionicons name="school" size={12} color={COLORS.primary} style={{ marginRight: 4 }} />
-            <Text style={styles.tagCampusText}>Campus</Text>
+            <Text style={styles.tagCampusText}>{label}</Text>
           </View>
         );
     }
@@ -318,7 +324,8 @@ export default function DiscoverScreen() {
         renderItem={({ item }) => (
           <Pressable style={styles.taskCard} onPress={() => router.push({ pathname: '/task-details', params: { id: item.id } })}>
             <View style={styles.taskCardTop}>
-              {renderTag(item.category)}
+              {renderTag(item.category, item.categoryLabel)}
+              <UrgentBadge task={item.urgency} />
               <Text style={styles.taskCardPrice}>{item.price}</Text>
             </View>
             {/*

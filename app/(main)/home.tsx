@@ -1,3 +1,7 @@
+import { taskCategoryLabel, taskPostedDate } from '@/lib/task-presentation';
+import { categoryShortcut } from '@/lib/category-shortcuts';
+import { invitationNeedsResponse, uniqueTaskerOffers, activeWorkStatuses } from '@/lib/task-lifecycle';
+import { UrgentBadge } from '@/components/taskhub/urgent-badge';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
@@ -291,9 +295,8 @@ export default function HomeScreen() {
             <Text style={styles.sectionTitle}>Quick Category</Text>
             <View style={styles.categoryCard}>
               {CATEGORIES.map((cat) => {
-                const terms = cat.key === 'remote' ? ['remote', 'digital', 'online'] : cat.key === 'errands' ? ['errand', 'deliver'] : [cat.key];
-                const mainCategory = categories.data?.categories.find((main) => !main.parentCategory &&
-                  terms.some((term) => `${main.name} ${main.displayName}`.toLowerCase().includes(term)));
+                const mainCategory = categoryShortcut(categories.data?.categories || [], cat.key);
+                if (!mainCategory) return null;
                 return <Pressable key={cat.key} accessibilityRole="button" accessibilityLabel={`Post a ${cat.label} task`}
                   disabled={false} accessibilityState={{ disabled: false }}
                   style={styles.categoryItem}
@@ -846,10 +849,10 @@ function TaskerHomeView({ refreshing, onRefresh, insets, router }: TaskerHomeVie
     })
     .reduce((sum, t) => sum + t.amount, 0);
 
-  const pendingInvites = (invitations.data?.bids ?? []).filter((b) => b.invitedByUser && b.task);
+  const pendingInvites = uniqueTaskerOffers(invitations.data?.bids ?? []).filter(invitationNeedsResponse).filter((offer) => !(activeJobs.data?.tasks ?? []).some((task) => task._id === offer.task?._id));
   const recommended = (feed.data?.pages ?? []).flatMap((p) => p?.tasks ?? []).slice(0, 5);
   const inProgress = (activeJobs.data?.tasks ?? []).filter(
-    (t) => t.status === 'assigned' || t.status === 'in-progress',
+    (t) => activeWorkStatuses.includes(t.status),
   );
 
   const openTask = (id: string) => router.push({ pathname: '/task-details', params: { id } });
@@ -961,9 +964,10 @@ function TaskerHomeView({ refreshing, onRefresh, insets, router }: TaskerHomeVie
               style={styles.taskerJobCard}
               onPress={() => openTask(task._id)}>
               <View style={styles.taskerJobCardTop}>
+                <UrgentBadge task={task} />
                 <View style={[styles.tag, styles.tagLocal]}>
                   <Text style={styles.tagLocalText}>
-                    {task.applicationInfo?.applicationMode === 'bidding' ? 'Bidding' : 'Fixed'}
+                    {taskCategoryLabel(task)}
                   </Text>
                 </View>
                 <Text style={styles.taskerJobCardPrice}>{formatNaira(task.budget)}</Text>
@@ -985,7 +989,7 @@ function TaskerHomeView({ refreshing, onRefresh, insets, router }: TaskerHomeVie
                 </View>
                 <View style={styles.taskerJobMetaItem}>
                   <Clock width={14} height={14} color={COLORS.textSecondary} />
-                  <Text style={styles.taskerJobMetaText}>{formatRelativeTime(task.createdAt)}</Text>
+                  <Text style={styles.taskerJobMetaText}>{taskPostedDate(task.createdAt)}</Text>
                 </View>
               </View>
             </Pressable>

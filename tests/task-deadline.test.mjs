@@ -8,7 +8,7 @@ function load(file,mocks={}) {
   const module={exports:{}};
   const source=readFileSync(new URL('../'+file,import.meta.url),'utf8');
   const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
-  new Function('require','module','exports',code)(name=>name in mocks?mocks[name]:require(name),module,module.exports);
+  new Function('require','module','exports',code)(name=>name in mocks?mocks[name]:name.startsWith('@/lib/')?load(name.slice(2)+'.ts',mocks):require(name),module,module.exports);
   return module.exports;
 }
 const deadline=load('lib/task-deadline.ts');
@@ -84,4 +84,50 @@ test('current tasks permit a single mutation, and reopening legacy escrow does n
 test('an expired-only page does not conceal available jobs on later pages',async()=>{
  const {state,tasks}=harness();state.task.deadline=new Date(Date.now()-1000).toISOString();state.pagedFeed=true;
  const feed=await tasks.getTaskerFeed();assert.deepEqual(feed.tasks.map(task=>task._id),['fresh']);assert.equal(state.calls.length,2);
+});
+
+
+test('server-open tasks retain the choice window without accepting new bids', async () => {
+  const {state,tasks,bids}=harness();
+  state.task={...state.task,deadline:new Date(Date.now()-1000).toISOString(),biddingClosed:true,bidSelectionEndsAt:new Date(Date.now()+48*3600000).toISOString()};
+  const detail=native?(await tasks.getTaskById('task-1')).task:await tasks.getTask('task-1');
+  assert.equal(detail.status,'open');
+  assert.equal(deadline.taskIsAvailable(detail),false);
+  assert.equal(deadline.canSelectOffer(detail),true);
+  assert.match(deadline.biddingNotice(detail,true),/Choose an offer by .*Nigeria time/);
+  assert.equal(deadline.biddingNotice(detail,false),'Bidding ended');
+  assert.equal((await tasks.getTaskerFeed()).tasks.length,0);
+  await bids.acceptBid('offer-1');
+  assert.equal(state.calls.filter(call=>call.url.endsWith('/accept')&&call.method==='POST').length,1);
+  await assert.rejects(()=>bids.createBid({taskId:'task-1',message:'Ready'}),/closed/);
+  const summary=native?(await bids.getBidPaymentSummary('offer-1')).summary:await bids.getPaymentSummary('offer-1');
+  assert.equal(summary.canConfirm,true);
+  state.task.bidSelectionEndsAt=new Date(Date.now()-1).toISOString();
+  await assert.rejects(()=>bids.acceptBid('offer-1'),error=>error.data?.code==='BID_SELECTION_EXPIRED');
+  assert.equal(deadline.canReopenTask(state.task),false,'only a server-closed task may be reopened');
+  await assert.rejects(()=>tasks.reopenTask('task-1'),/Only closed tasks/);
+});
+test('create, edit and reopen send calendar dates without a timezone shift',async()=>{
+  const {state,tasks}=harness();
+  const chosen='2026-12-10';
+  await tasks.createTask({title:'Task',deadline:chosen});
+  let body=state.calls.at(-1).body;
+  assert.equal((typeof body==='string'?JSON.parse(body):body).deadline,chosen);
+  await tasks.updateTask('task-1',{deadline:chosen});
+  body=state.calls.at(-1).body;
+  assert.equal((typeof body==='string'?JSON.parse(body):body).deadline,chosen);
+  state.task={...state.task,status:'closed',biddingClosed:true,deadline:new Date(Date.now()-1000).toISOString()};
+  await tasks.reopenTask('task-1',chosen);
+  const last=state.calls.at(-1);body=last.body;
+  assert.equal(last.method,'POST');
+  assert.match(last.url,/reopen$/);
+  assert.equal((typeof body==='string'?JSON.parse(body):body).deadline,chosen);
+  assert.equal(deadline.taskDeadlineDate('2026-12-10T22:59:59.999Z'),chosen);
+});
+
+
+test('deadline labels use the Nigeria calendar day rather than device-local midnight',()=>{
+ assert.equal(deadline.taskDeadlineLabel('2026-11-26T22:59:59.999Z'),'26 Nov 2026');
+ assert.equal(deadline.taskDeadlineLabel('2026-11-26'),'26 Nov 2026');
+ assert.equal(deadline.taskDeadlineLabel(null),'No bidding deadline');
 });

@@ -99,8 +99,8 @@ export function useUserTasks(params?: TaskListParams, enabled = true) {
 
 /**
  * User tasks across several statuses (e.g. the "In progress" tab spans
- * `assigned` + `in-progress`). Runs one query per status and merges the
- * first page of each. Returns combined loading/error flags.
+ * assigned, in-progress and awaiting-confirmation work. Runs one query per
+ * status and deduplicates cache transitions. Returns combined loading/error flags.
  */
 export function useUserTasksByStatuses(statuses: TaskStatus[], enabled = true) {
   const results = useQueries({
@@ -113,7 +113,7 @@ export function useUserTasksByStatuses(statuses: TaskStatus[], enabled = true) {
     })),
   });
 
-  const tasks: Task[] = results.flatMap((r) => r.data?.tasks ?? []);
+  const tasks: Task[] = [...new Map(results.flatMap((r) => r.data?.tasks ?? []).map((task) => [task._id, task])).values()];
   return {
     tasks,
     isLoading: results.some((r) => r.isLoading),
@@ -441,6 +441,8 @@ export function useTaskerFeed(enabled = true) {
 export function useTaskerTasks(status?: TaskStatus, enabled = true) {
   return useQuery({
     queryKey: queryKeys.taskerTasks(status),
+    staleTime: 0,
+    refetchOnWindowFocus: 'always',
     queryFn: ({ signal }) => getTaskerTasks({ status, limit: 50 }, signal),
     enabled,
   });

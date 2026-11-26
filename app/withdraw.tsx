@@ -299,7 +299,7 @@ export default function WithdrawScreen() {
                   editable={!hasPendingWithdrawal && (payoutMethod === 'stellar_crypto' || hasPayoutAccount)}
                 />
                 <Text style={styles.hint}>
-                  Requests are reviewed before payout — the amount is reserved from your balance
+                  Requests are reviewed before payout, the amount is reserved from your balance
                   right away.
                 </Text>
               </View>

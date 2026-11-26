@@ -123,21 +123,21 @@ export default function PerformanceScreen() {
   const stats = [
     {
       label: 'Jobs completed',
-      value: performance ? String(performance.kpis.jobsCompleted) : '—',
+      value: performance ? String(performance.kpis.jobsCompleted) : 'N/A',
       icon: 'briefcase-outline',
       iconColor: COLORS.brand,
       bg: COLORS.brandSubtle,
     },
     {
       label: 'Completion rate',
-      value: performance ? `${Math.round(performance.kpis.completionRate)}%` : '—',
+      value: performance ? `${Math.round(performance.kpis.completionRate)}%` : 'N/A',
       icon: 'trending-up',
       iconColor: COLORS.brand,
       bg: COLORS.brandSubtle,
     },
     {
       label: 'Acceptance rate',
-      value: performance && performance.kpis.bidsPlaced > 0 ? `${Math.round(performance.kpis.acceptanceRate)}%` : '—',
+      value: performance && performance.kpis.bidsPlaced > 0 ? `${Math.round(performance.kpis.acceptanceRate)}%` : 'N/A',
       icon: 'check-circle-outline',
       iconColor: COLORS.successText,
       bg: COLORS.successBg,

@@ -1,4 +1,6 @@
-import { canReopenTask, requireAvailableTask, taskIsAvailable, withTaskDeadline } from '@/lib/task-deadline';
+import { taskCategoryLabel, taskLocationLabel } from '@/lib/task-presentation';
+import { isUrgent } from '@/lib/task-urgency';
+import { canReopenTask, taskDeadlineDate, requireAvailableTask, taskIsAvailable, withTaskDeadline, biddingNotice, taskDeadlineLabel } from '@/lib/task-deadline';
 // Tasks API bindings + view mappers for the TaskHub backend.
 //
 // The list endpoints return `{ status, count, totalPages, currentPage, tasks }`.
@@ -93,6 +95,7 @@ export interface TaskBid {
   amount: number;
   message?: string;
   status: 'pending' | 'accepted' | 'rejected' | 'cancelled';
+  closedReason?: string;
   bidType?: 'custom' | 'fixed' | 'invitation' | 'invite';
   invitedByUser?: boolean;
   taskerConfirmed?: boolean;
@@ -112,6 +115,8 @@ export interface Task {
   images?: TaskImage[];
   location?: TaskLocation | null;
   deadline?: string | null;
+  biddingClosed?: boolean;
+  bidSelectionEndsAt?: string | null;
   serverStatus?: TaskStatus;
   cancellationReason?: string | null;
   user?: TaskUserRef | string;
@@ -167,12 +172,23 @@ function toQuery(params: object): string {
   return qs ? `?${qs}` : '';
 }
 
+async function taskHistoryPages(path: string, params: TaskListParams, signal?: AbortSignal): Promise<TasksListResponse> {
+  const first = await api.get<TasksListResponse>(`${path}${toQuery({ ...params, limit: params.limit || 100 })}`, { signal });
+  if (params.page) return first;
+  const tasks = [...first.tasks];
+  for (let page = 2; page <= (first.totalPages || 1); page++) {
+    const next = await api.get<TasksListResponse>(`${path}${toQuery({ ...params, limit: params.limit || 100, page })}`, { signal });
+    tasks.push(...next.tasks);
+  }
+  return { ...first, tasks: [...new Map(tasks.map((task) => [task._id, task])).values()] };
+}
+
 /** Tasks posted by the authenticated user. Requires a bearer token. */
 export async function getUserTasks(params: TaskListParams = {}, signal?: AbortSignal) {
-  const result = await api.get<TasksListResponse>(`/api/tasks/user/tasks${toQuery(params)}`, { signal });
+  const result = await taskHistoryPages('/api/tasks/user/tasks', params, signal);
   const tasks = result.tasks.map((task) => withTaskDeadline(task));
   if (params.status === 'closed') {
-    const pending = await api.get<TasksListResponse>(`/api/tasks/user/tasks${toQuery({ ...params, status: 'open' })}`, { signal });
+    const pending = await taskHistoryPages('/api/tasks/user/tasks', { ...params, status: 'open' }, signal);
     tasks.push(...pending.tasks.map((task) => withTaskDeadline(task)).filter((task) => task.status === 'closed'));
   }
   return { ...result, tasks: [...new Map(tasks.filter((task) => !params.status || task.status === params.status).map((task) => [task._id, task])).values()] };
@@ -204,7 +220,7 @@ export interface UpdateTaskPayload {
  */
 export async function updateTask(id: string, payload: UpdateTaskPayload) {
   requireAvailableTask((await getTaskById(id)).task);
-  return api.put<{ status: string; message: string; task: Task }>(`/api/tasks/${id}`, payload);
+  return api.put<{ status: string; message: string; task: Task }>(`/api/tasks/${id}`, { ...payload, ...(payload.deadline !== undefined ? { deadline: taskDeadlineDate(payload.deadline) } : {}) });
 }
 
 export interface TaskerMatch {
@@ -339,7 +355,7 @@ export interface CreateTaskPayload {
   mainCategory: string; // a Category id whose parentCategory is null
   categories: string[]; // subcategory Category ids belonging to mainCategory
   budget: number;
-  deadline?: string; // ISO date, future
+  deadline?: string; // YYYY-MM-DD, future Nigeria calendar date
   isBiddingEnabled?: boolean;
   tags?: string[];
   location?: { latitude?: number; longitude?: number; address?: string; city?: string; state?: string };
@@ -353,6 +369,7 @@ export interface CreateTaskPayload {
  * Location/university fall back to the poster's profile when omitted.
  */
 export function createTask(payload: CreateTaskPayload, images?: PickedImage[]) {
+  payload = { ...payload, ...(payload.deadline ? { deadline: taskDeadlineDate(payload.deadline)! } : {}) };
   if (!images || images.length === 0) {
     return api.post<{ status: string; message: string; task: Task }>('/api/tasks', payload);
   }
@@ -523,7 +540,7 @@ export async function getTaskerFeed(
 
 /** Tasks assigned to the signed-in tasker. `status` filters to one bucket. */
 export function getTaskerTasks(params: TaskListParams = {}, signal?: AbortSignal) {
-  return api.get<TasksListResponse>(`/api/tasks/tasker/tasks${toQuery(params)}`, { signal });
+  return taskHistoryPages('/api/tasks/tasker/tasks', params, signal);
 }
 
 /**
@@ -601,10 +618,12 @@ export function deleteTask(id: string) {
 
 export async function reopenTask(id: string, deadline?: string) {
   const { task } = await getTaskById(id);
+  if (task.status !== 'closed') throw new Error('Only closed tasks can be reopened. Refresh the task to check whether closing has finished.');
   if (!canReopenTask(task)) throw new Error('The 30-day reopening period has ended. Please post a new task.');
   // An expired legacy task may still hold its original escrow. Updating its
   // deadline reopens it without reserving the budget a second time.
-  if (task.serverStatus === 'open') return api.put<{ status: string; message: string; task: Task }>(`/api/tasks/${id}`, { deadline: deadline || null });
+  deadline = taskDeadlineDate(deadline) || undefined;
+  if (typeof task.biddingClosed !== 'boolean' && task.serverStatus === 'open') return api.put<{ status: string; message: string; task: Task }>(`/api/tasks/${id}`, { deadline: deadline || null });
   return api.post<{ status: string; message: string; task: Task }>(`/api/tasks/${id}/reopen`, { deadline: deadline || null });
 }
 
@@ -720,15 +739,7 @@ function categoryName(cat?: CategoryRef | string | null): string {
   return (cat.name || cat.displayName || '').toLowerCase();
 }
 
-/** Urgent when the task is tagged so, or when it's due within the next ~48h. */
-export function isUrgent(task: Task): boolean {
-  const hasUrgentTag = (task.tags ?? []).some((t) => t.toLowerCase().includes('urgent'));
-  if (hasUrgentTag) return true;
-  if (!task.deadline) return false;
-  const due = new Date(task.deadline).getTime();
-  const now = Date.now();
-  return !Number.isNaN(due) && due >= now && due - now <= 48 * 60 * 60 * 1000;
-}
+export { isUrgent } from '@/lib/task-urgency';
 
 function toBadges(task: Task): BadgeKind[] {
   const name = categoryName(task.mainCategory);
@@ -743,9 +754,7 @@ function toBadges(task: Task): BadgeKind[] {
 }
 
 export function locationLabel(task: Task): string {
-  const loc = task.location;
-  if (!loc) return 'Remote';
-  return loc.address || loc.state || 'Nearby';
+  return taskLocationLabel(task);
 }
 
 /** Adapt a backend task onto the `TaskCard` view model used across the app. */
@@ -753,11 +762,14 @@ export function taskToCard(task: Task): TaskCardModel {
   const bids = task.bidCount ?? 0;
   return {
     badges: toBadges(task),
+    categoryLabel: taskCategoryLabel(task),
+    biddingNotice: biddingNotice(task, true),
+    urgency: task,
     price: formatNaira(task.budget),
     title: task.title,
     bids: `${bids} ${bids === 1 ? 'Bid' : 'Bids'}`,
     location: locationLabel(task),
-    date: task.deadline ? `Bids close ${formatShortDate(task.deadline)}` : 'No bidding deadline',
+    date: task.deadline ? `Bids close ${taskDeadlineLabel(task.deadline)}` : 'No bidding deadline',
   };
 }
 

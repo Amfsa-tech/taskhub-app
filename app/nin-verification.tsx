@@ -258,7 +258,7 @@ export default function NinVerificationScreen() {
 
             <Text style={styles.instructions}>
               {isPending
-                ? 'Your documents are being reviewed. This usually takes a few minutes — check back shortly.'
+                ? 'Your documents are being reviewed. This usually takes a few minutes, check back shortly.'
                 : 'Choose an available verification option below.'}
             </Text>
 

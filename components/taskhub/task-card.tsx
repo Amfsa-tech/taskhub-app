@@ -1,3 +1,5 @@
+import { UrgentBadge } from '@/components/taskhub/urgent-badge';
+import type { UrgentTask } from '@/lib/task-urgency';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import BadgeGraduation from '@/assets/icons/badge-graduation.svg';
@@ -36,6 +38,9 @@ const BADGES: Record<
 
 export type Task = {
   badges: BadgeKind[];
+  categoryLabel?: string;
+  biddingNotice?: string | null;
+  urgency?: UrgentTask;
   price: string;
   title: string;
   bids: string;
@@ -82,9 +87,10 @@ export function TaskCard({ task, onPress }: { task: Task; onPress?: () => void }
       {/* Badges + price */}
       <View style={styles.row}>
         <View style={styles.badges}>
-          {task.badges.map((kind) => (
+          {task.categoryLabel ? <View style={[styles.badge, { backgroundColor: COLORS.brandLight }]}><Text style={[styles.badgeText, { color: COLORS.brand }]}>{task.categoryLabel}</Text></View> : task.badges.filter((kind) => kind !== 'urgent' || !task.urgency).map((kind) => (
             <Badge key={kind} kind={kind} />
           ))}
+        {task.urgency ? <UrgentBadge task={task.urgency} /> : null}
         </View>
         <Text style={styles.price}>{task.price}</Text>
       </View>
@@ -95,6 +101,7 @@ export function TaskCard({ task, onPress }: { task: Task; onPress?: () => void }
         <Text style={styles.bids}>{task.bids}</Text>
       </View>
 
+      {task.biddingNotice && <Text style={{ color: COLORS.brand, fontSize: 13, lineHeight: 19 }}>{task.biddingNotice}</Text>}
       {/* Location + date + chevron */}
       <View style={styles.row}>
         <View style={styles.meta}>
@@ -121,7 +128,7 @@ export function InProgressTaskCard({ task, onPress }: { task: InProgressTask; on
       <View style={styles.row}>
         <View style={[styles.badge, { backgroundColor: isAwaiting ? COLORS.warningLight : '#eff6ff' }]}>
           <Text style={[styles.badgeText, { color: isAwaiting ? COLORS.warning : '#1d4ed8' }]}>
-            {isAwaiting ? 'Awaiting Payment Release' : 'In Progress'}
+            {isAwaiting ? 'Awaiting Your Review' : 'In Progress'}
           </Text>
         </View>
         <Text style={styles.price}>{task.price}</Text>
@@ -143,7 +150,7 @@ export function InProgressTaskCard({ task, onPress }: { task: InProgressTask; on
           </View>
         </View>
         <View style={styles.trackAction}>
-          <Text style={styles.trackText}>Track</Text>
+          <Text style={styles.trackText}>{isAwaiting ? 'Review Work' : 'Track'}</Text>
           <Text style={{color: COLORS.brand, fontSize: 16, marginTop: -2}}>{'>'}</Text>
         </View>
       </View>
@@ -279,17 +286,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flexWrap: 'wrap',
+    flex: 1,
   },
   metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    flexShrink: 1,
   },
   metaText: {
     fontFamily: 'Geist_500Medium',
     fontSize: 13,
     letterSpacing: -0.08,
     color: COLORS.textSecondary,
+    flexShrink: 1,
   },
   trackAction: {
     flexDirection: 'row',

@@ -171,7 +171,7 @@ export default function ReceiptScreen() {
 
         {/* Reference ID copy block */}
         <View style={styles.refBlock}>
-          <Text style={styles.refLabel}>REFERENCE ID</Text>
+          <Text style={styles.refLabel}>Receipt number</Text>
           <View style={styles.refRow}>
             <Text style={styles.refText}>{reference}</Text>
             <Pressable style={styles.copyBtn} onPress={handleCopy}>

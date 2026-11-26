@@ -1,3 +1,4 @@
+import { taskerShareContent } from '@/lib/tasker-share';
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
@@ -208,7 +209,13 @@ export default function TaskerProfileScreen() {
             {taskerId ? <SaveHeart taskerId={taskerId} tasker={tasker} /> : null}
             <Pressable
               hitSlop={6}
-              onPress={() => NativeShare.share({ message: `View ${tasker?.firstName || 'this tasker'} on TaskHub${taskerId ? ` — tasker ${taskerId}` : ''}` })}>
+              disabled={!taskerId || isLoading}
+              onPress={async () => {
+                if (!taskerId) return;
+                const content = taskerShareContent(tasker || { name }, taskerId);
+                try { await NativeShare.share({ title: content.title, message: `${content.text}\n${content.url}` }); }
+                catch { Alert.alert('Could not share profile', 'Please try again.'); }
+              }}>
               <Share width={24} height={24} />
             </Pressable>
           </View>

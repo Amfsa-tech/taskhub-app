@@ -1,3 +1,4 @@
+import { uniqueTaskerOffers } from '@/lib/task-lifecycle';
 // Bids / hiring API bindings for the TaskHub backend.
 //
 // Two halves, split by who is authenticated:
@@ -7,7 +8,7 @@
 
 import { api } from './client';
 import { getTaskById, type Task } from './tasks';
-import { requireAvailableTask, taskIsAvailable } from '@/lib/task-deadline';
+import { requireAvailableTask, taskIsAvailable, canSelectOffer, requireSelectableOffer } from '@/lib/task-deadline';
 
 async function mapPendingTasks<T, R>(items: T[], mapper: (item: T) => Promise<R>): Promise<R[]> {
   const result: R[] = [];
@@ -66,7 +67,8 @@ export async function sendHireRequest(payload: HireRequestPayload) {
  * "pay" step on the backend. Accept = pay = assign, atomically.
  */
 export async function acceptBid(bidId: string) {
-  await checkBid(bidId);
+  const { bid } = await api.get<{ bid: { task: string | { _id: string } } }>(`/api/bids/${bidId}`);
+  requireSelectableOffer((await getTaskById(typeof bid.task === 'string' ? bid.task : bid.task._id)).task);
   return api.post<BidActionResponse>(`/api/bids/${bidId}/accept`);
 }
 
@@ -113,7 +115,7 @@ export interface PaymentSummaryResponse {
 export async function getBidPaymentSummary(bidId: string, signal?: AbortSignal) {
   const result = await api.get<PaymentSummaryResponse>(`/api/bids/${bidId}/payment-summary`, { signal });
   const { task } = await getTaskById(result.summary.taskId, signal);
-  if (!taskIsAvailable(task)) result.summary = { ...result.summary, canConfirm: false, blockingReason: 'This task is closed. Reopen it before hiring.' };
+  if (!canSelectOffer(task)) result.summary = { ...result.summary, canConfirm: false, blockingReason: 'This task is closed. Reopen it before hiring.' };
   return result;
 }
 
@@ -126,7 +128,7 @@ export type BidStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
 /** A bid as returned by `GET /api/bids/tasker/bids` (task is partially populated). */
 export interface TaskerBid {
   _id: string;
-  task: Pick<Task, '_id' | 'title' | 'description' | 'budget' | 'status' | 'createdAt' | 'deadline'> | null;
+  task: Pick<Task, '_id' | 'title' | 'description' | 'budget' | 'status' | 'createdAt' | 'deadline' | 'mainCategory' | 'subCategory' | 'biddingClosed' | 'bidSelectionEndsAt'> | null;
   amount: number;
   message?: string;
   status: BidStatus;
@@ -135,6 +137,7 @@ export interface TaskerBid {
   invitedByUser?: boolean;
   /** Set once the tasker accepts a hire request; the client still has to pay. */
   taskerConfirmed?: boolean;
+  closedReason?: string;
   createdAt: string;
 }
 
@@ -191,15 +194,22 @@ export async function getTaskerBids(
   if (params.status) usp.append('status', params.status);
   const qs = usp.toString();
   const result = await api.get<TaskerBidsResponse>(`/api/bids/tasker/bids${qs ? `?${qs}` : ''}`, { signal });
-  const bids = await mapPendingTasks(result.bids, async (bid) => {
-    if (bid.status !== 'pending') return bid;
+  if (!params.page) {
+    for (let page = 2; page <= (result.totalPages || 1); page++) {
+      const query = new URLSearchParams(usp); query.set('page', String(page));
+      const next = await api.get<TaskerBidsResponse>(`/api/bids/tasker/bids?${query}`, { signal });
+      result.bids.push(...next.bids);
+    }
+  }
+  const bids = await mapPendingTasks(uniqueTaskerOffers(result.bids), async (bid) => {
+    if (bid.status !== 'pending' && (params.status || bid.task?.mainCategory)) return bid;
     if (!bid.task?._id) return null;
     try {
       const { task } = await getTaskById(bid.task._id, signal);
-      return taskIsAvailable(task) ? { ...bid, task } : null;
-    } catch { return null; }
+      return !params.status || canSelectOffer(task) ? { ...bid, task } : null;
+    } catch { return !params.status ? bid : null; }
   });
-  return { ...result, bids: bids.filter((bid): bid is TaskerBid => bid !== null) };
+  return { ...result, bids: uniqueTaskerOffers(bids.filter((bid): bid is TaskerBid => bid !== null)) };
 
 }
 

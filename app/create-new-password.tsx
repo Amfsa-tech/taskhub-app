@@ -1,7 +1,9 @@
+import { Ionicons } from '@expo/vector-icons';
+import { maskEmail } from '@/lib/mask-email';
 import { useMutation } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -73,6 +75,8 @@ export default function CreateNewPasswordScreen() {
   const { email, type } = useLocalSearchParams<{ email?: string; type?: string }>();
   const accountType = type === 'tasker' ? 'tasker' : 'user';
   const [code, setCode] = useState('');
+  const [emailVisible, setEmailVisible] = useState(false);
+  useEffect(() => setEmailVisible(false), [email]);
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -146,8 +150,11 @@ export default function CreateNewPasswordScreen() {
           {/* Confirmation that the code was sent */}
           {email ? (
             <View style={styles.banner}>
+              <Pressable accessibilityRole="button" accessibilityLabel={emailVisible ? 'Hide email address' : 'Show email address'} hitSlop={8} onPress={() => setEmailVisible((value) => !value)} style={{ alignSelf: 'flex-end', padding: 8 }}>
+                <Ionicons name={emailVisible ? 'eye-off-outline' : 'eye-outline'} size={19} color="#6c3bff" />
+              </Pressable>
               <Text style={styles.bannerText}>
-                A reset code was sent to <Text style={styles.bannerEmail}>{email}</Text>. Check your
+                A reset code was sent to <Text style={styles.bannerEmail}>{emailVisible ? email : maskEmail(email)}</Text>. Check your
                 inbox (and spam), then enter it below.
               </Text>
             </View>

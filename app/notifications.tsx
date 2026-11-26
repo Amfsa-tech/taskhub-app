@@ -97,7 +97,7 @@ export default function NotificationsScreen() {
 
     if ((action === 'open_conversation' || action === 'view_chat') && conversationId) {
       router.push({ pathname: '/chat', params: { id: conversationId } });
-    } else if (action === 'view_wallet') {
+    } else if (action === 'view_wallet' || n.type === 'escrow_refund') {
       router.push('/wallet');
     } else if (action === 'view_reviews') {
       router.push('/my-reviews');
@@ -106,7 +106,7 @@ export default function NotificationsScreen() {
     } else if (action === 'review_completion' && taskId) {
       router.push({ pathname: '/track-task', params: { id: taskId } });
     } else if (taskId) {
-      router.push({ pathname: '/task-details', params: { id: taskId } });
+      router.push({ pathname: '/task-details', params: { id: taskId, ...(action === 'view_task_bids' || n.type === 'bid_selection_reminder' ? { tab: 'bids' } : {}) } });
     } else if (conversationId) {
       router.push({ pathname: '/chat', params: { id: conversationId } });
     }

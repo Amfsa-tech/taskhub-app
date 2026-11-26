@@ -7,6 +7,10 @@ import { api } from './client';
 export interface NotificationMetadata {
   taskId?: string;
   bidId?: string;
+  offerCount?: number;
+  decideBy?: string;
+  closedReason?: string;
+  refundReason?: string;
   conversationId?: string;
   externalLink?: string;
   action?: string;

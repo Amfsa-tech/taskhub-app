@@ -1,9 +1,11 @@
-import { canReopenTask, taskIsAvailable } from '@/lib/task-deadline';
+import { confirmHireInData } from '@/lib/task-lifecycle';
+import { UrgentBadge } from '@/components/taskhub/urgent-badge';
+import { canReopenTask, taskIsAvailable, canSelectOffer, biddingNotice, taskDeadlineLabel } from '@/lib/task-deadline';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -49,7 +51,6 @@ import {
   reopenTask,
   formatNaira,
   formatRelativeTime,
-  formatShortDate,
   locationLabel,
   statusLabel,
   type TaskBid,
@@ -294,7 +295,7 @@ function BidCard({
 export default function TaskDetailsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { id, tab: initialTab } = useLocalSearchParams<{ id?: string; tab?: string }>();
   const taskQ = useTask(id);
   const task = taskQ.data?.task;
 
@@ -326,12 +327,12 @@ export default function TaskDetailsScreen() {
     return true;
   };
 
-  const taskerBidsQ = useTaskerBids('pending', isTasker);
+  const taskerBidsQ = useTaskerBids(undefined, isTasker);
   // The task-specific response takes precedence over paginated cached lists.
   const myBid = isTasker
     ? task?.taskerBidInfo !== undefined
       ? task.taskerBidInfo.hasBid && task.taskerBidInfo._id
-        ? { ...task.taskerBidInfo, _id: task.taskerBidInfo._id, amount: task.taskerBidInfo.amount ?? task.budget, status: task.taskerBidInfo.status ?? 'pending', createdAt: task.taskerBidInfo.createdAt ?? task.createdAt }
+        ? { ...(taskerBidsQ.data?.bids ?? []).find((b) => b._id === task.taskerBidInfo?._id), ...task.taskerBidInfo, _id: task.taskerBidInfo._id, amount: task.taskerBidInfo.amount ?? task.budget, status: task.taskerBidInfo.status ?? 'pending', createdAt: task.taskerBidInfo.createdAt ?? task.createdAt }
         : null
       : ((taskerBidsQ.data?.bids ?? []).find((b) => b.task?._id === id) ?? null)
     : null;
@@ -342,9 +343,9 @@ export default function TaskDetailsScreen() {
   type TaskerViewState = 'open' | 'bid_sent' | 'invitation_received' | 'hire_confirmed' | 'closed';
   const taskerState: TaskerViewState = myBid && myBid.status === 'pending' && task?.status === 'open'
     ? myBid.invitedByUser || myBid.bidType === 'invitation' || myBid.bidType === 'invite'
-      ? myBid.taskerConfirmed ? 'hire_confirmed' : 'invitation_received'
+      ? myBid.taskerConfirmed ? 'hire_confirmed' : task && taskIsAvailable(task) ? 'invitation_received' : 'closed'
       : 'bid_sent'
-    : !myBid && task?.status === 'open' && (!task.deadline || new Date(task.deadline).getTime() > Date.now())
+    : !myBid && task && taskIsAvailable(task)
       ? 'open'
       : 'closed';
 
@@ -365,7 +366,12 @@ export default function TaskDetailsScreen() {
 
   const queryClient = useQueryClient();
   const pagerRef = useRef<ScrollView>(null);
-  const [tab, setTab] = useState<'matches' | 'bids'>('matches');
+  const [tab, setTab] = useState<'matches' | 'bids'>(initialTab === 'bids' ? 'bids' : 'matches');
+  const positionedBids = useRef(false);
+  useEffect(() => {
+    positionedBids.current = false;
+    if (initialTab === 'bids') { setTab('bids'); pagerRef.current?.scrollTo({ x: SCREEN_WIDTH, animated: false }); }
+  }, [id, initialTab]);
   const [invite, setInvite] = useState<{ taskerId: string; name: string } | null>(null);
   const [hire, setHire] = useState<HireContext | null>(null);
   const [actionsVisible, setActionsVisible] = useState(false);
@@ -556,6 +562,10 @@ export default function TaskDetailsScreen() {
     mutationFn: (v: { bidId: string; action: 'accept' | 'decline' }) =>
       respondToHireRequest(v.bidId, v.action),
     onSuccess: (_res, v) => {
+      if (v.action === 'accept') {
+        queryClient.setQueriesData({ queryKey: ['bids', 'tasker'] }, (data: unknown) => confirmHireInData(data, v.bidId, task?._id));
+        queryClient.setQueryData(queryKeys.task(id as string), (data: unknown) => confirmHireInData(data, v.bidId, task?._id));
+      }
       refetchBidState();
       if (v.action === 'accept') {
         setAcceptSheetVisible(false);
@@ -635,6 +645,7 @@ export default function TaskDetailsScreen() {
 
           {/* Title */}
           <Text style={styles.taskerTitleText}>{task.title}</Text>
+          <UrgentBadge task={task} />
 
           {/* Meta items */}
           <View style={styles.taskerMetaRow}>
@@ -645,7 +656,7 @@ export default function TaskDetailsScreen() {
             <View style={styles.taskerMetaItem}>
               <Clock width={14} height={14} color="#5a5a70" />
               <Text style={styles.taskerMetaText}>
-                {task.deadline ? `Bids close ${formatShortDate(task.deadline)}` : 'No bidding deadline'}
+                {biddingNotice(task) || (task.deadline ? `Bids close ${taskDeadlineLabel(task.deadline)}` : 'No bidding deadline')}
               </Text>
             </View>
             <View style={styles.taskerMetaItem}>
@@ -751,12 +762,12 @@ export default function TaskDetailsScreen() {
           {taskerState === 'closed' && (
             <View style={styles.taskerBudgetCard}>
               <Text style={styles.taskerBudgetLabel}>
-                {myBid && task.status === 'open' ? `Your application is ${myBid.status}.` : `This task is no longer open for applications (${statusLabel(task.status)}).`}
+                {myBid?.closedReason === 'bid_selection_expired' ? 'Expired. The poster did not choose an offer in time.' : biddingNotice(task) || (myBid && task.status === 'open' ? `Your application is ${myBid.status}.` : `This task is no longer open for applications (${statusLabel(task.status)}).`)}
               </Text>
             </View>
           )}
 
-            {taskerState === 'bid_sent' && (
+            {taskerState === 'bid_sent' && taskIsAvailable(task) && (
               <>
                 <Pressable
                   style={[styles.sheetButton, { backgroundColor: '#ef4444' }]}
@@ -1187,6 +1198,7 @@ export default function TaskDetailsScreen() {
             </View>
 
             <Text style={styles.title}>{task.title}</Text>
+            <UrgentBadge task={task} />
 
             <View style={styles.meta}>
               <View style={styles.metaItem}>
@@ -1196,7 +1208,7 @@ export default function TaskDetailsScreen() {
               <View style={styles.metaItem}>
                 <Clock width={16} height={16} />
                 <Text style={styles.metaText}>
-                  {task.deadline ? `Bids close ${formatShortDate(task.deadline)}` : 'No bidding deadline'}
+                  {biddingNotice(task) || (task.deadline ? `Bids close ${taskDeadlineLabel(task.deadline)}` : 'No bidding deadline')}
                 </Text>
               </View>
               <View style={styles.metaItem}>
@@ -1205,6 +1217,7 @@ export default function TaskDetailsScreen() {
               </View>
             </View>
 
+            {biddingNotice(task, true) && <Text style={{ color: COLORS.brand, fontSize: 13, lineHeight: 19, marginTop: 8 }}>{biddingNotice(task, true)}</Text>}
             {/* Budget */}
             <View style={styles.tabBudget}>
               <Text style={styles.budgetText}>Budget</Text>
@@ -1250,6 +1263,7 @@ export default function TaskDetailsScreen() {
           {/* Swipeable pages */}
           <ScrollView
             ref={pagerRef}
+            onLayout={() => { if (initialTab === 'bids' && !positionedBids.current) { positionedBids.current = true; pagerRef.current?.scrollTo({ x: SCREEN_WIDTH, animated: false }); } }}
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
@@ -1272,16 +1286,16 @@ export default function TaskDetailsScreen() {
                   <MatchedCard
                     key={m.id}
                     match={m}
-                    onInvite={() => setInvite({ taskerId: m.id, name: m.name })}
+                    onInvite={() => taskIsAvailable(task) ? setInvite({ taskerId: m.id, name: m.name }) : Alert.alert('Bidding ended', 'New invitations are unavailable. Choose an existing offer instead.')}
                     onHire={() =>
-                      setHire({
+                      taskIsAvailable(task) ? setHire({
                         kind: 'hire',
                         taskerId: m.id,
                         name: m.name,
                         avatar: m.avatar,
                         price: budgetText,
                         amount: task.budget,
-                      })
+                      }) : Alert.alert('Bidding ended', 'New hire requests are unavailable. Choose an existing offer instead.')
                     }
                   />
                 ))
@@ -1294,7 +1308,7 @@ export default function TaskDetailsScreen() {
               showsVerticalScrollIndicator={false}>
               {hireRequests.length > 0 ? <Text style={styles.name}>Hire requests ({hireRequests.length})</Text> : null}
               {hireRequests.map((b) => (
-                <BidCard closed={!taskIsAvailable(task)} key={b.id} bid={b} onChat={() => openChatMutation.mutate(b.id)}
+                <BidCard closed={!canSelectOffer(task)} key={b.id} bid={b} onChat={() => openChatMutation.mutate(b.id)}
                   onAccept={() => setHire({ kind: 'accept', bidId: b.id, name: b.name, avatar: b.avatar, price: b.price })} />
               ))}
               <Text style={styles.name}>Bids ({bids.length})</Text>
@@ -1304,7 +1318,7 @@ export default function TaskDetailsScreen() {
                 </View>
               ) : (
                 bids.map((b) => (
-                  <BidCard closed={!taskIsAvailable(task)}
+                  <BidCard closed={!canSelectOffer(task)}
                     key={b.id}
                     bid={b}
                     onChat={() => openChatMutation.mutate(b.id)}
@@ -1542,17 +1556,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flexWrap: 'wrap',
   },
   metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    flexShrink: 1,
   },
   metaText: {
     fontFamily: 'Geist_500Medium',
     fontSize: 13,
     letterSpacing: -0.08,
     color: COLORS.textSecondary,
+    flexShrink: 1,
   },
   tabBudget: {
     marginTop: 24,
@@ -1775,11 +1792,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexShrink: 1,
   },
   taskerMetaText: {
     fontFamily: 'Geist_500Medium',
     fontSize: 14,
     color: COLORS.textSecondary,
+    flexShrink: 1,
   },
   taskerSecuredBanner: {
     flexDirection: 'row',

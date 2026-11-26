@@ -71,8 +71,14 @@ export default function TaskAgreementScreen() {
       ]);
       setStep('hired');
     },
-    onError: (err) => {
+    onError: (err: any) => {
       void summaryQ.refetch();
+      void queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      void queryClient.invalidateQueries({ queryKey: ['bids'] });
+      if ((err?.code || err?.body?.code || err?.data?.code) === 'BID_SELECTION_EXPIRED') {
+        Alert.alert('Offer selection ended', err.message, [{ text: 'Close', style: 'cancel' }, { text: 'Reopen task', onPress: () => summary?.taskId ? router.replace({ pathname: '/task-details', params: { id: summary.taskId } }) : router.replace('/task-history') }]);
+        return;
+      }
       Alert.alert('Could not confirm hire', err instanceof Error ? err.message : 'Please try again.');
     },
   });
@@ -199,7 +205,7 @@ export default function TaskAgreementScreen() {
           <View style={styles.escrowBanner}>
             <Ionicons name="shield-checkmark" size={20} color="#0d6639" />
             <Text style={styles.escrowText}>
-              Escrow Protected — your payment is only released when the task is complete.
+              Escrow Protected, your payment is only released when the task is complete.
             </Text>
           </View>
         </View>

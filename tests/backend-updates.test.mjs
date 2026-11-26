@@ -38,7 +38,7 @@ test('provider switches have no retained cache or polling and launch always rech
 
 test('nullable balances display unknown without hiding a legitimate zero', () => {
   const { formatBalance } = load('lib/money.ts');
-  assert.equal(formatBalance(null), '—'); assert.equal(formatBalance(undefined), '—'); assert.equal(formatBalance(null,0), '—');
+  assert.equal(formatBalance(null), 'N/A'); assert.equal(formatBalance(undefined), 'N/A'); assert.equal(formatBalance(null,0), 'N/A');
   assert.equal(formatBalance(0,0), '₦0.00'); assert.equal(formatBalance(20,123456), '₦1,234.56');
 });
 

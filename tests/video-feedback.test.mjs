@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import React from 'react';
@@ -20,7 +20,10 @@ function load(relative, mocks, cache = new Map()) {
   new Function('require', 'module', 'exports', javascript)((name) => {
     if (name in mocks) return mocks[name];
     if (name.endsWith('.svg')) return { __esModule: true, default: 'Icon' };
-    if (name.startsWith('@/')) return load(name.slice(2) + (name.includes('PostTaskContext') || name.includes('support-contact') && name.includes('components/') ? '.tsx' : '.ts'), mocks, cache);
+    if (name.startsWith('@/')) {
+      const file = ['.ts', '.tsx'].map(ext => name.slice(2) + ext).find(file => existsSync(path.join(root, file)));
+      return load(file, mocks, cache);
+    }
     return require(name);
   }, module, module.exports);
   cache.set(relative, module.exports);
@@ -38,7 +41,7 @@ function harness() {
   const router = { canGoBack: () => true, back: () => routes.push(['back']), push: value => routes.push(['push', value]), replace: value => routes.push(['replace', value]) };
   const queryClient = { refetchQueries: async () => {}, invalidateQueries: async () => {} };
   const categories = ['campus_tasks', 'local_services', 'errands_deliveries', 'digital_remote'].map((name, index) => ({ _id: `category-${index}`, name, displayName: name }));
-  const categoriesQuery = { data: { categories }, isError: false, isLoading: false };
+  const categoriesQuery = { data: { categories: [...categories, ...categories.map((main, index) => ({ _id: `service-${index}`, name: `service-${index}`, displayName: `Service ${index}`, parentCategory: main._id }))] }, isError: false, isLoading: false };
   const balanceQuery = { data: { data: { availableBalance: 1000 }, transactions: [] }, isLoading: false, isError: false };
   const mocks = {
     'react-native': { View: 'View', Text: 'Text', Pressable: 'Pressable', ScrollView: 'ScrollView', Modal: 'Modal', RefreshControl: 'RefreshControl', ActivityIndicator: 'ActivityIndicator',
@@ -331,4 +334,13 @@ test('leaving support while profile details load does not open an outdated Whats
   await act(async () => tree.unmount());
   await act(async () => resolveProfile({ _id: 'test-user', fullName: 'Test Person', emailAddress: 'test@example.invalid' }));
   assert.equal(h.links.length, 0);
+});
+
+test('quick categories hide Errands without a child service and still open Remote services directly',async()=>{
+ const h=harness();h.categoriesQuery.data.categories=h.categoriesQuery.data.categories.filter(category=>category.parentCategory!==h.categories[2]._id);
+ const {PostTaskProvider}=h.load('context/PostTaskContext.tsx');const Home=h.load('app/(main)/home.tsx').default;let renderer;
+ await act(async()=>{renderer=create(React.createElement(PostTaskProvider,null,React.createElement(Home)));});
+ assert.equal(renderer.root.findAllByProps({accessibilityLabel:'Post a Errands task'}).length,0);
+ await act(async()=>renderer.root.findByProps({accessibilityLabel:'Post a Remote task'}).props.onPress());assert.deepEqual(h.routes.at(-1),['push','/post-service']);
+ await act(async()=>renderer.unmount());
 });

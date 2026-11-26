@@ -56,7 +56,7 @@ function TaskerDirectoryCard({ tasker, onPress }: { tasker: TaskerMatch; onPress
   const name = fullName(tasker);
   const rating = tasker.averageRating ?? 0;
   const jobs = tasker.completedJobs ?? 0;
-  const place = [tasker.city, tasker.residentState].filter(Boolean).join(', ') || 'Nigeria';
+  const place = [tasker.city, tasker.residentState].filter(Boolean).join(', ') || 'Location not provided';
 
   return (
     <Pressable

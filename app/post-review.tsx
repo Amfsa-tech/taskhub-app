@@ -26,13 +26,13 @@ export default function PostReviewScreen() {
   const serviceValue =
     draft.subCategories.map((s) => s.displayName).join(', ') ||
     draft.mainCategory?.displayName ||
-    '—';
+    'Not available';
 
   const summary: { label: string; value: string; emphasized?: boolean }[] = [
-    { label: 'Category', value: draft.mainCategory?.displayName || '—' },
+    { label: 'Category', value: draft.mainCategory?.displayName || 'Not available' },
     { label: 'Service', value: serviceValue },
-    { label: 'Title', value: draft.title.trim() || '—' },
-    { label: 'Budget', value: budgetNum > 0 ? formatNaira(budgetNum) : '—', emphasized: true },
+    { label: 'Title', value: draft.title.trim() || 'Not available' },
+    { label: 'Budget', value: budgetNum > 0 ? formatNaira(budgetNum) : 'Not available', emphasized: true },
     { label: 'Bidding', value: draft.isBiddingEnabled ? 'Enabled' : 'Disabled' },
     { label: 'Bidding deadline', value: draft.biddingDeadline || 'No deadline' },
     { label: 'Location', value: draft.location || 'Remote' },

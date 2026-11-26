@@ -1,5 +1,6 @@
+import { maskEmail } from '@/lib/mask-email';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BiometricDialog, biometricLabel } from './biometric-dialog';
@@ -27,6 +28,8 @@ function AccountBiometricSetting({ user, accountType }: { user: AuthUser; accoun
   const queryClient = useQueryClient();
   const [challenge, setChallenge] = useState<{ challengeId: string; label: string; accountId: string }>();
   const [code, setCode] = useState('');
+  const [emailVisible, setEmailVisible] = useState(false);
+  useEffect(() => setEmailVisible(false), [challenge?.challengeId]);
   const codeInput = useRef<TextInput>(null);
   const [setupOpen, setSetupOpen] = useState(false);
   const [setupComplete, setSetupComplete] = useState(false);
@@ -106,13 +109,14 @@ function AccountBiometricSetting({ user, accountType }: { user: AuthUser; accoun
       <BiometricDialog visible={setupOpen} label={label} onClose={cancel} dismissible={!change.isPending}
         title={setupComplete ? `${label} is ready` : `Set up ${method} sign-in`}
         description={setupComplete ? 'You can now sign in quickly on this device. Your password is still available whenever you need it.'
-          : activeChallenge ? `Confirm it’s you. Enter the 5-digit code sent to ${user.emailAddress}.`
+          : activeChallenge ? `Confirm it’s you. Enter the 5-digit code sent to ${emailVisible ? user.emailAddress : maskEmail(user.emailAddress || '')}.`
             : 'Confirm your email to securely enable biometric sign-in for this profile.'}>
         {setupComplete ? <>
           <View style={styles.success}><MaterialCommunityIcons name="check-circle" size={22} color="#15803d" /><Text style={styles.successText}>Enabled on this device</Text></View>
           <Pressable accessibilityRole="button" style={styles.primary} disabled={change.isPending} onPress={cancel}><Text style={styles.primaryText}>Done</Text></Pressable>
         </> : <>
           {activeChallenge && <View style={styles.codeGroup}>
+            <Pressable accessibilityRole="button" accessibilityLabel={emailVisible ? 'Hide email address' : 'Show email address'} hitSlop={8} onPress={() => setEmailVisible((value) => !value)} style={{ alignSelf: 'flex-end', padding: 8 }}><MaterialCommunityIcons name={emailVisible ? 'eye-off-outline' : 'eye-outline'} size={19} color="#6c3bff" /></Pressable>
             <Text style={styles.codeLabel}>EMAIL VERIFICATION CODE</Text>
             <Pressable accessible={false} testID="biometric-code-entry" style={styles.digits} onPress={() => codeInput.current?.focus()}>
               {[0, 1, 2, 3, 4].map(index => <View key={index} accessible={false} style={[styles.digit, index === code.length && styles.activeDigit]}>

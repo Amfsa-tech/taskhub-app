@@ -38,8 +38,12 @@ type PushData = {
 };
 
 function openFromNotification(data: PushData) {
-  if (data.taskId) {
-    router.push({ pathname: '/task-details', params: { id: data.taskId } });
+  if (data.action === 'view_wallet' || data.type === 'escrow_refund') {
+    router.push('/wallet');
+  } else if ((data.action === 'view_chat' || data.action === 'open_conversation') && data.conversationId) {
+    router.push({ pathname: '/chat', params: { id: data.conversationId } });
+  } else if (data.taskId) {
+    router.push({ pathname: '/task-details', params: { id: data.taskId, ...(data.type === 'bid_selection_reminder' || data.action === 'view_task_bids' ? { tab: 'bids' } : {}) } });
   } else if (data.conversationId) {
     router.push({ pathname: '/chat', params: { id: data.conversationId } });
   } else {
