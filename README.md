@@ -1,5 +1,9 @@
 # Welcome to your Expo app 👋
 
+## Mobile OTA updates
+
+See [the OTA release guide](docs/ota-updates.md) for the initial OTA-enabled store build, update channels, and the preview/production publishing commands. Compatible JavaScript and asset updates can be released without a new binary once users install that build.
+
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
 ## Get started
