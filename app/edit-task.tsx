@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { CalendarOverlay } from '@/components/taskhub/calendar-overlay';
 
 import { PrimaryButton } from '@/components/taskhub/primary-button';
 import { ScreenHeader } from '@/components/taskhub/screen-header';
@@ -180,11 +180,8 @@ export default function EditTaskScreen() {
             </Pressable>
           ) : null}
           {showDeadlinePicker ? (
-            <DateTimePicker mode="date" value={deadline ? new Date(`${deadline}T12:00:00`) : new Date()}
-              display={Platform.OS === 'ios' ? 'inline' : 'calendar'} themeVariant="light"
-              minimumDate={new Date()} onChange={(event, date) => {
-                setShowDeadlinePicker(false);
-                if (event.type !== 'set' || !date) return;
+            <CalendarOverlay value={deadline ? new Date(`${deadline}T12:00:00`) : new Date()}
+              minimumDate={new Date()} onDismiss={() => setShowDeadlinePicker(false)} onSelect={(date) => {
                 setDeadline(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`);
               }} />
           ) : null}

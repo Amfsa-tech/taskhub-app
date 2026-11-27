@@ -12,7 +12,6 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -24,7 +23,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { CalendarOverlay } from '@/components/taskhub/calendar-overlay';
 import { useAuth } from '@/lib/auth/auth-context';
 
 import ArrowLeft from '@/assets/icons/arrow-left.svg';
@@ -1231,11 +1230,9 @@ export default function TaskDetailsScreen() {
               </Pressable>
             ) : null}
             {showReopenDatePicker ? (
-              <DateTimePicker mode="date" value={new Date()} minimumDate={new Date()}
-                display={Platform.OS === 'ios' ? 'inline' : 'calendar'} themeVariant="light"
-                onChange={(event, date) => {
-                  setShowReopenDatePicker(false);
-                  if (event.type !== 'set' || !date) return;
+              <CalendarOverlay value={new Date()} minimumDate={new Date()}
+                onDismiss={() => setShowReopenDatePicker(false)}
+                onSelect={(date) => {
                   const year = date.getFullYear();
                   const month = String(date.getMonth() + 1).padStart(2, '0');
                   const day = String(date.getDate()).padStart(2, '0');

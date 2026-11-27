@@ -646,7 +646,7 @@ History controls use compact 36px rounded chips with calendar/category/status ic
 
 Mobile filters use a dimmed backdrop, white sheet with 24px top corners, a short gray handle, 19px semibold title, light neutral checkbox rows and a full-width purple Apply button. Desktop uses an anchored white 340px panel with a subtle border and shadow; narrow web uses the bottom sheet. Preserve keyboard dismissal, focus return, accessible checkbox states and inline reversed-date errors.
 
-Calendar actions reveal the full date selector on the first tap: inline calendar on iOS and calendar dialog on Android. Use the light native theme against white form/sheet surfaces. Apply this consistently to task posting, editing, reopening and date-range filters; do not insert the iOS compact date-label step.
+Calendar actions open a floating calendar overlay on the first tap. On iOS, put the native calendar inside a centered white modal card with 16-point continuous corners and a 40% dark backdrop; size it to the native calendar within the viewport and keep it out of the form layout. Android opens its native calendar dialog. Use the light native theme, 44-point Cancel/Use date actions and 15-point purple Geist semibold labels. Day selection applies automatically after native dismissal; Use date also accepts the current highlighted date. Preserve drafts when dismissed, and use this consistently for posting, editing, reopening and date-range filters. Never insert the compact iOS date-label step.
 
 
 ### Bidding choice window - 2026-11-26

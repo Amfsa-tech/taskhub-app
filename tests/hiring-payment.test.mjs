@@ -19,6 +19,7 @@ function load(file, mocks) {
     if (name === '@/components/taskhub/tasks-screen') return { __esModule: true, default: load('components/taskhub/tasks-screen.tsx', mocks) };
     if (name === '@/components/taskhub/task-filters') return { TaskFilters: () => null };
     if (name === '@/components/taskhub/urgent-badge') return load('components/taskhub/urgent-badge.tsx', mocks);
+    if (name === '@/components/taskhub/calendar-overlay') return load('components/taskhub/calendar-overlay.tsx', mocks);
     if (/\.(png|svg)$/.test(name)) return { __esModule: true, default: 'Icon' };
     return require(name);
   }, module, module.exports);
@@ -29,7 +30,7 @@ function harness(platform = 'android') {
   const state = { summary, refreshed: 0, charged: 0, fail: false, alerts: [], routes: [] };
   const draft = { title: 'Write content', description: 'A detailed task description for the writer', budget: '1000', location: 'Heritage Mall', mainCategory: { name: 'local_services' }, subCategories: [], images: [], tags: [], isBiddingEnabled: true, biddingDeadline: '', university: null };
   const mocks = {
-    'react-native': { View: 'View', Text: 'Text', Pressable: 'Pressable', ScrollView: 'ScrollView', TextInput: 'TextInput', Switch: 'Switch', KeyboardAvoidingView: 'KeyboardAvoidingView', ActivityIndicator: 'ActivityIndicator', Platform: { OS: platform }, StyleSheet: { create: x => x }, Alert: { alert: (...args) => state.alerts.push(args) } },
+    'react-native': { View: 'View', Text: 'Text', Modal: 'Modal', Pressable: 'Pressable', ScrollView: 'ScrollView', TextInput: 'TextInput', Switch: 'Switch', KeyboardAvoidingView: 'KeyboardAvoidingView', Keyboard: { dismiss() {} }, ActivityIndicator: 'ActivityIndicator', Platform: { OS: platform }, StyleSheet: { create: x => x }, Alert: { alert: (...args) => state.alerts.push(args) } },
     'expo-router': { useRouter: () => ({ back() {}, push: x => state.routes.push(x), replace: x => state.routes.push(x) }), useLocalSearchParams: () => ({ bidId: 'offer-1' }) },
     'expo-status-bar': { StatusBar: 'StatusBar' }, 'expo-image': { Image: 'Image' }, '@expo/vector-icons': { Ionicons: 'Icon' },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
@@ -111,21 +112,48 @@ test('mobile task creation needs only one free-form address input', async () => 
   await act(async () => renderer.unmount());
 });
 
-test('one deadline tap exposes the calendar on both platforms and keeps date selection and cancellation correct', async () => {
+test('one deadline tap opens a calendar overlay and never expands the iOS calendar into the form', async () => {
   for (const platform of ['ios', 'android']) {
     const h = harness(platform), { renderer } = await h.render('app/post-details.tsx');
     const open = () => renderer.root.findByProps({ accessibilityLabel: 'Bidding deadline' }).props.onPress();
     await act(async () => open());
     let picker = renderer.root.findByType('DateTimePicker');
     assert.equal(picker.props.display, platform === 'ios' ? 'inline' : 'calendar');
+    if (platform === 'ios') {
+      const modal = renderer.root.findByType('Modal');
+      assert.equal(modal.props.visible, true);
+      assert.equal(modal.findByType('DateTimePicker'), picker);
+    }
     await act(async () => picker.props.onChange({ type: 'dismissed' }));
+    if (platform === 'ios') await act(async () => renderer.root.findByType('Modal').props.onDismiss());
     assert.equal(h.draft.biddingDeadline, '');
     await act(async () => open());
     picker = renderer.root.findByType('DateTimePicker');
     await act(async () => picker.props.onChange({ type: 'set' }, new Date(2026, 11, 3)));
+    if (platform === 'ios') {
+      assert.equal(h.draft.biddingDeadline, '');
+      assert.equal(renderer.root.findByType('Modal').props.visible, false);
+      await act(async () => renderer.root.findByType('Modal').props.onDismiss());
+    }
     assert.equal(h.draft.biddingDeadline, '2026-12-03');
     assert.equal(renderer.root.findAllByType('DateTimePicker').length, 0);
     await act(async () => renderer.unmount());
+  }
+});
+
+test('the popup accepts its highlighted date and ignores selection callbacks after leaving the screen', async () => {
+  for (const action of ['use-date', 'leave']) {
+    const h = harness('ios'), { renderer } = await h.render('app/post-details.tsx');
+    await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Bidding deadline' }).props.onPress());
+    const date = renderer.root.findByType('DateTimePicker').props.value;
+    await act(async () => renderer.root.findByProps({ accessibilityLabel: 'Use selected date' }).props.onPress());
+    const finish = renderer.root.findByType('Modal').props.onDismiss;
+    assert.equal(h.draft.biddingDeadline, '');
+    if (action === 'leave') await act(async () => renderer.unmount());
+    await act(async () => { finish(); finish(); });
+    const expected = action === 'leave' ? '' : `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+    assert.equal(h.draft.biddingDeadline, expected);
+    if (action !== 'leave') await act(async () => renderer.unmount());
   }
 });
 
