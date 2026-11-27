@@ -57,6 +57,7 @@ function harness() {
     '@react-native-async-storage/async-storage': { __esModule: true, default: { getItem: async key => storage.get(key) ?? null, removeItem: async key => storage.delete(key) } },
     '@/lib/mobile-web-handoff':{continueOnWebsite:async()=>{}},
     '@/lib/auth/auth-context': { useAuth: () => auth },
+    '@/lib/auth/biometrics': { confirmWalletFundingBiometrics: async () => true },
     '@/lib/api/queries': { useNotifications: () => ({}), useNearbyTaskers: () => ({}), useCategories: () => categoriesQuery,
       useWalletBalance: () => balanceQuery, useWalletTransactions: () => balanceQuery, useTaskerBalance: () => balanceQuery, useTaskerTransactions: () => balanceQuery },
     '@/lib/api/tasks': { formatNaira: value => `N${value}`, formatShortDate: () => '', formatRelativeTime: () => '', locationLabel: () => '' },

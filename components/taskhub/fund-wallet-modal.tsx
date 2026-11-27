@@ -50,7 +50,7 @@ export function FundWalletModal({
 
   const submit = () => {
     const value = Number(amount.replace(/[^\d.]/g, ''));
-    if (!(value >= MIN_AMOUNT)) {
+    if (!Number.isFinite(value) || !(value >= MIN_AMOUNT)) {
       setError(`Enter an amount of ₦${MIN_AMOUNT} or more.`);
       return;
     }
@@ -58,7 +58,7 @@ export function FundWalletModal({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={() => { if (!pending) onClose(); }}>
       <Pressable style={styles.backdrop} onPress={pending ? undefined : onClose}>
         <Pressable style={[styles.sheet, { marginBottom: insets.bottom + 16 }]} onPress={() => {}}>
           <View style={styles.header}>
@@ -71,6 +71,7 @@ export function FundWalletModal({
             <TextInput
               style={styles.amountInput}
               value={amount}
+              editable={!pending}
               onChangeText={(t) => {
                 setAmount(t);
                 if (error) setError(null);
@@ -83,7 +84,7 @@ export function FundWalletModal({
 
           <View style={styles.presets}>
             {PRESETS.map((p) => (
-              <Pressable key={p} style={styles.presetChip} onPress={() => setAmount(String(p))}>
+              <Pressable key={p} style={styles.presetChip} disabled={pending} onPress={() => setAmount(String(p))}>
                 <Text style={styles.presetText}>₦{p.toLocaleString('en-US')}</Text>
               </Pressable>
             ))}

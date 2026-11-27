@@ -19,6 +19,7 @@ import {
   useWalletTransactions,
 } from '@/lib/api/queries';
 import { useAuth } from '@/lib/auth/auth-context';
+import { confirmWalletFundingBiometrics } from '@/lib/auth/biometrics';
 import { formatNaira, formatShortDate } from '@/lib/api/tasks';
 import { initializeFunding, verifyFunding, type WalletTransaction } from '@/lib/api/wallet';
 import { STELLAR_WALLET_ENABLED } from '@/lib/config';
@@ -97,6 +98,14 @@ export default function WalletScreen() {
   const [supportIssue, setSupportIssue] = useState<SupportIssue | null>(null);
   const [fundOpen, setFundOpen] = useState(false);
   const [funding, setFunding] = useState(false);
+  const fundingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const fundingAccountRef = useRef('');
+  fundingAccountRef.current = `${accountType}:${user?._id ?? ''}`;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const [pendingFunding, setPendingFunding] = useState<PendingFunding | null>(null);
   const [checkingFunding, setCheckingFunding] = useState(false);
   const checkingRef = useRef(false);
@@ -211,10 +220,20 @@ export default function WalletScreen() {
   }, [checkFundingStatus]);
 
   const startFunding = async (amount: number) => {
+    if (fundingRef.current) return;
+    fundingRef.current = true;
     const requestScope = getSupportScope();
+    const requestAccount = fundingAccountRef.current;
+    const isCurrentAccount = () => mountedRef.current && requestAccount === fundingAccountRef.current && requestScope === getSupportScope();
+    let confirmingBiometrics = true;
     setFunding(true);
     try {
+      if (!user?._id || accountType !== 'user' || !pendingKey) throw new Error('Your session is not ready. Please sign in again.');
+      const confirmed = await confirmWalletFundingBiometrics(user._id, accountType);
+      if (!confirmed || !isCurrentAccount()) return;
+      confirmingBiometrics = false;
       const init = await initializeFunding(amount);
+      if (!isCurrentAccount()) return;
       const { authorizationUrl, reference } = init.data;
       const payment: PendingFunding = {
         authorizationUrl,
@@ -225,11 +244,17 @@ export default function WalletScreen() {
 
       if (!pendingKey) throw new Error('Your session is not ready. Please sign in again.');
       await AsyncStorage.setItem(pendingKey, JSON.stringify(payment));
+      if (!isCurrentAccount()) return;
       setPendingFunding(payment);
       setFundOpen(false);
       await openFundingCheckout(payment);
       clearSupportIssue("funding", requestScope);
     } catch (err) {
+      if (!isCurrentAccount()) return;
+      if (confirmingBiometrics) {
+        Alert.alert('Payment not started', err instanceof Error ? err.message : 'Could not confirm biometrics. Please try again.');
+        return;
+      }
       const issue = makeSupportIssue('fund-wallet', err, undefined, requestScope);
       recordSupportIssue(issue, 'funding', requestScope);
       if (requestScope !== getSupportScope()) return;
@@ -238,7 +263,8 @@ export default function WalletScreen() {
         { text: 'Contact Support', onPress: () => { setFundOpen(false); setSupportIssue(issue); } },
       ]);
     } finally {
-      setFunding(false);
+      fundingRef.current = false;
+      if (mountedRef.current) setFunding(false);
     }
   };
 

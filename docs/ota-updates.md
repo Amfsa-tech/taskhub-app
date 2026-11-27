@@ -54,4 +54,10 @@ OTA cannot change the Xcode/iOS SDK used to build an installed app, upgrade nati
 
 The app retains its embedded bundle and Expo's normal recovery protections. Do not disable anti-bricking safeguards or force a reload while a user is working on a task. The Settings store-update check continues to handle new native app versions.
 
+## Wallet funding confirmation
+
+The wallet's Continue to Payment action requests a fresh native biometric confirmation when the current account has an active biometric enrollment on this device. Disabled enrollment and enrollment for another profile do not trigger a prompt. Cancellation, lockout, unavailable biometrics and failed enrollment-status requests never start checkout. The amount stays available for retry, and duplicate taps cannot initialize another payment while confirmation is pending.
+
+This uses the biometric module already present in iOS build 29 and Android version code 13, so it can ship through OTA without changing the native runtime. It is a local confirmation before initiating funding, not a server-enforced transaction authentication protocol. The existing signed biometric login and payment-provider authorization remain separate.
+
 For incident recovery, follow the [EAS Update rollback guide](https://docs.expo.dev/eas-update/rollbacks/). No production OTA update or store build is published merely by installing this configuration.

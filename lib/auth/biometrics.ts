@@ -60,6 +60,26 @@ export function getBiometricStatus() {
   return api.get<{ data: { enabled: boolean; deviceCount: number; devices: { credentialId: string }[] } }>(base);
 }
 
+/** Local confirmation only. Payment authorization remains with the payment provider. */
+export async function confirmWalletFundingBiometrics(accountId: string, accountType: AccountType) {
+  const local = await readBiometricCredential();
+  if (!local || local.accountId !== accountId || local.accountType !== accountType) return true;
+
+  // Match Settings: enrollment must belong to this profile and still be active
+  // on this device. A failed status request must never bypass confirmation.
+  const { data } = await getBiometricStatus();
+  if (!data.devices.some(({ credentialId }) => credentialId === local.credentialId)) return true;
+
+  const native = new ReactNativeBiometrics({ allowDeviceCredentials: false });
+  const { available } = await native.isSensorAvailable();
+  if (!available) throw new Error('Biometrics is unavailable. Check your device settings and try again.');
+  const { success } = await native.simplePrompt({
+    promptMessage: 'Confirm wallet funding',
+    cancelButtonText: 'Cancel',
+  });
+  return success;
+}
+
 export async function startBiometricEnrollment() {
   const sensor = await getDeviceBiometricStatus();
   if (!sensor?.available) throw new Error('Set up Face ID or a fingerprint in your device settings first.');

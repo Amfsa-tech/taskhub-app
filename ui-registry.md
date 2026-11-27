@@ -272,6 +272,7 @@ Last updated: 2026-09-28
 - Hosted financial flows must remain recoverable after backgrounding or process loss.
 - Pending cards pair one primary resume action with one outlined server-status action.
 - Payment success is server-authoritative and must invalidate wallet queries before presenting completion.
+- Wallet funding confirmation reuses the native biometric prompt and the existing purple button's white spinner. While pending, lock amount entry, presets and dismissal. Cancellation preserves the draft; verification errors use the existing alert and never open checkout.
 
 ### Precise Location Selector
 
