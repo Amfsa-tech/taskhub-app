@@ -524,6 +524,8 @@ In `app/tasker-services.tsx`, reuse the services screen palette and spacing for 
 
 ### Role Switching and Linking — 2026-10-26
 
+Profile switch cards describe the destination role: user mode uses “Post tasks and get things done”, while tasker mode uses “Earn money by completing tasks”.
+
 Both missing-role prompts offer Start onboarding and Link existing. The link screen keeps its original target role throughout session activation; disable credential editing once linked and offer Retry loading profile after a hydration error. Linked User creation reuses the existing white form, 48-point inputs, and purple primary button, prefilling name and supported country from the current profile. Keep the initial creation intent across role changes so retries refresh the profile instead of registering a separate account. Tasker service creation retries also hydrate the new profile without sending another creation/category update.
 
 ### Support Channels and Home Shortcuts — 2026-11-02

@@ -543,7 +543,7 @@ export default function ProfileScreen() {
             </Text>
             <Text style={styles.taskerSubtitle}>
               {accountType === 'tasker'
-                ? 'Earn money by completing tasks'
+                ? 'Post tasks and get things done'
                 : 'Earn money by completing tasks'}
             </Text>
           </View>
