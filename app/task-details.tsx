@@ -12,6 +12,7 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -1231,6 +1232,7 @@ export default function TaskDetailsScreen() {
             ) : null}
             {showReopenDatePicker ? (
               <DateTimePicker mode="date" value={new Date()} minimumDate={new Date()}
+                display={Platform.OS === 'ios' ? 'inline' : 'calendar'} themeVariant="light"
                 onChange={(event, date) => {
                   setShowReopenDatePicker(false);
                   if (event.type !== 'set' || !date) return;

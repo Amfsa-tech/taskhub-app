@@ -99,13 +99,30 @@ export default function WalletScreen() {
   const [fundOpen, setFundOpen] = useState(false);
   const [funding, setFunding] = useState(false);
   const fundingRef = useRef(false);
+  const fundingDismissRef = useRef<((dismissed: boolean) => void) | null>(null);
+  const checkoutRef = useRef(false);
+  const [checkoutOpening, setCheckoutOpening] = useState(false);
   const mountedRef = useRef(true);
   const fundingAccountRef = useRef('');
   fundingAccountRef.current = `${accountType}:${user?._id ?? ''}`;
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+      fundingDismissRef.current?.(false);
+      fundingDismissRef.current = null;
+    };
   }, []);
+  const onFundingDismiss = useCallback(() => {
+    const resolve = fundingDismissRef.current;
+    fundingDismissRef.current = null;
+    resolve?.(true);
+  }, []);
+  useEffect(() => {
+    // Android checkout uses a separate Activity. Commit the hidden sheet before
+    // launching it; iOS must wait for the native dismissal-completion event.
+    if (!fundOpen && Platform.OS !== 'ios') onFundingDismiss();
+  }, [fundOpen, onFundingDismiss]);
   const [pendingFunding, setPendingFunding] = useState<PendingFunding | null>(null);
   const [checkingFunding, setCheckingFunding] = useState(false);
   const checkingRef = useRef(false);
@@ -208,15 +225,32 @@ export default function WalletScreen() {
   }, [checkFundingStatus, pendingFunding]);
 
   const openFundingCheckout = useCallback(async (payment: PendingFunding) => {
-    await WebBrowser.openBrowserAsync(payment.authorizationUrl, {
-      createTask: true,
-      showInRecents: true,
-      showTitle: true,
-    });
-
-    // Android resolves as soon as the custom tab opens. iOS resolves after it
-    // closes, so only the iOS branch can safely verify at this point.
-    if (Platform.OS === 'ios') await checkFundingStatus(payment, true);
+    if (checkoutRef.current || !mountedRef.current) return;
+    checkoutRef.current = true;
+    const requestScope = getSupportScope();
+    setCheckoutOpening(true);
+    try {
+      await WebBrowser.openBrowserAsync(payment.authorizationUrl, {
+        createTask: true,
+        showInRecents: true,
+        showTitle: true,
+      });
+      if (!mountedRef.current || requestScope !== getSupportScope()) return;
+      clearSupportIssue('funding', requestScope);
+      // Android resolves when its separate Activity opens; iOS resolves on close.
+      if (Platform.OS === 'ios') await checkFundingStatus(payment, true);
+    } catch (error) {
+      if (!mountedRef.current || requestScope !== getSupportScope()) return;
+      const issue = makeSupportIssue('fund-wallet', error, payment.reference, requestScope);
+      recordSupportIssue(issue, 'funding', requestScope);
+      Alert.alert('Could not open payment', 'Your checkout is saved. Tap Return to payment to try again.', [
+        { text: 'Close', style: 'cancel' },
+        { text: 'Contact Support', onPress: () => setSupportIssue(issue) },
+      ]);
+    } finally {
+      checkoutRef.current = false;
+      if (mountedRef.current) setCheckoutOpening(false);
+    }
   }, [checkFundingStatus]);
 
   const startFunding = async (amount: number) => {
@@ -246,9 +280,12 @@ export default function WalletScreen() {
       await AsyncStorage.setItem(pendingKey, JSON.stringify(payment));
       if (!isCurrentAccount()) return;
       setPendingFunding(payment);
-      setFundOpen(false);
+      const dismissed = await new Promise<boolean>((resolve) => {
+        fundingDismissRef.current = resolve;
+        setFundOpen(false);
+      });
+      if (!dismissed || !isCurrentAccount()) return;
       await openFundingCheckout(payment);
-      clearSupportIssue("funding", requestScope);
     } catch (err) {
       if (!isCurrentAccount()) return;
       if (confirmingBiometrics) {
@@ -300,6 +337,7 @@ export default function WalletScreen() {
 
           {!isTasker && (
             <Pressable
+              disabled={funding || checkoutOpening}
               style={({ pressed }) => [styles.fundButton, pressed && styles.pressed]}
               onPress={() => setFundOpen(true)}>
               <Text style={styles.fundLabel}>Fund Wallet</Text>
@@ -329,6 +367,7 @@ export default function WalletScreen() {
             <View style={styles.pendingActions}>
               <Pressable
                 style={({ pressed }) => [styles.pendingPrimary, pressed && styles.pressed]}
+                disabled={funding || checkoutOpening}
                 onPress={() => openFundingCheckout(pendingFunding)}>
                 <Text style={styles.pendingPrimaryLabel}>Return to payment</Text>
               </Pressable>
@@ -389,6 +428,7 @@ export default function WalletScreen() {
         pending={funding}
         onClose={() => setFundOpen(false)}
         onSubmit={startFunding}
+        onDismiss={onFundingDismiss}
       />
     </View>
   );

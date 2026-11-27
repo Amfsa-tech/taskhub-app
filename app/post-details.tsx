@@ -174,6 +174,8 @@ export default function PostDetailsScreen() {
               {showDeadlinePicker ? (
                 <DateTimePicker
                   mode="date"
+                  display={Platform.OS === 'ios' ? 'inline' : 'calendar'}
+                  themeVariant="light"
                   value={draft.biddingDeadline ? new Date(`${draft.biddingDeadline}T12:00:00`) : new Date()}
                   minimumDate={new Date()}
                   onChange={(event, selectedDate) => {

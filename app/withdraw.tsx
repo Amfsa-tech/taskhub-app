@@ -1,16 +1,15 @@
-import { makeSupportIssue } from '@/lib/support-context';
+import { getSupportScope, makeSupportIssue } from '@/lib/support-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -26,6 +25,7 @@ import { ApiError } from '@/lib/api/client';
 import { formatNaira } from '@/lib/api/tasks';
 import { requestWithdrawal } from '@/lib/api/wallet';
 import { useAuth } from '@/lib/auth/auth-context';
+import { confirmWalletWithdrawalBiometrics } from '@/lib/auth/biometrics';
 import { STELLAR_WALLET_ENABLED } from '@/lib/config';
 
 const COLORS = {
@@ -56,8 +56,17 @@ export default function WithdrawScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { accountType } = useAuth();
+  const { accountType, user } = useAuth();
   const isTasker = accountType === 'tasker';
+  const submittingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const accountRef = useRef('');
+  const requestScopeRef = useRef('');
+  accountRef.current = `${accountType}:${user?._id ?? ''}`;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const balanceQ = useTaskerBalance(isTasker);
   const bankQ = useTaskerBankAccount(isTasker);
@@ -89,15 +98,32 @@ export default function WithdrawScreen() {
   const hasPendingWithdrawal = pendingAmount > 0;
 
   const withdrawMutation = useMutation({
-    mutationFn: (amount: number) =>
-      requestWithdrawal({
+    mutationFn: async (amount: number) => {
+      const requestScope = getSupportScope();
+      requestScopeRef.current = requestScope;
+      if (!user?._id || accountType !== 'tasker') throw new Error('Sign in to your tasker account to withdraw.');
+      const requestAccount = accountRef.current;
+      const isCurrent = () => mountedRef.current && requestAccount === accountRef.current && requestScope === getSupportScope();
+      // Freeze the selected amount, destination and PIN for this confirmation.
+      const payload = {
         amount,
         pin: pin || undefined,
         payoutMethod,
         bankId: payoutMethod === 'bank_transfer' ? selectedBank?._id : undefined,
         stellarAddress: payoutMethod === 'stellar_crypto' ? stellarAddress.trim() : undefined,
-      }),
+      };
+      try {
+        const confirmed = await confirmWalletWithdrawalBiometrics(user._id, accountType);
+        if (!confirmed || !isCurrent()) return null;
+        const result = await requestWithdrawal(payload);
+        return isCurrent() ? result : null;
+      } catch (error) {
+        if (!isCurrent()) return null;
+        throw error;
+      }
+    },
     onSuccess: (res) => {
+      if (!res || !mountedRef.current || requestScopeRef.current !== getSupportScope()) return;
       queryClient.invalidateQueries({ queryKey: ['wallet'] });
       Alert.alert(
         'Request submitted',
@@ -106,6 +132,7 @@ export default function WithdrawScreen() {
       );
     },
     onError: (err) => {
+      if (!mountedRef.current || requestScopeRef.current !== getSupportScope()) return;
       const details = err instanceof ApiError ? err.body as { retryAfter?: number; attemptsRemaining?: number; availableAt?: string } : undefined;
       const message = err instanceof Error ? err.message : 'Could not request a withdrawal.';
       if (err instanceof ApiError) {
@@ -129,9 +156,11 @@ export default function WithdrawScreen() {
       }
       setError(message);
     },
+    onSettled: () => { submittingRef.current = false; },
   });
 
   const submit = () => {
+    if (submittingRef.current || loading || hasPendingWithdrawal || (payoutMethod === 'bank_transfer' && !hasPayoutAccount)) return;
     if (pinLockedUntil > Date.now()) {
       setError(`Your PIN is locked. Try again at ${new Date(pinLockedUntil).toLocaleTimeString()}.`);
       return;
@@ -158,6 +187,7 @@ export default function WithdrawScreen() {
       setError('Enter the Stellar destination address.');
       return;
     }
+    submittingRef.current = true;
     withdrawMutation.mutate(amount);
   };
 
@@ -218,8 +248,8 @@ export default function WithdrawScreen() {
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Payout method</Text>
                 <View style={styles.methodRow}>
-                  <Pressable style={[styles.methodButton, method === 'bank_transfer' && styles.methodButtonActive]} onPress={() => setMethod('bank_transfer')}><Text style={[styles.methodText, method === 'bank_transfer' && styles.methodTextActive]}>Bank account</Text></Pressable>
-                  {STELLAR_WALLET_ENABLED && <Pressable style={[styles.methodButton, method === 'stellar_crypto' && styles.methodButtonActive]} onPress={() => setMethod('stellar_crypto')}><Text style={[styles.methodText, method === 'stellar_crypto' && styles.methodTextActive]}>Stellar</Text></Pressable>}
+                  <Pressable disabled={submitting} style={[styles.methodButton, method === 'bank_transfer' && styles.methodButtonActive]} onPress={() => setMethod('bank_transfer')}><Text style={[styles.methodText, method === 'bank_transfer' && styles.methodTextActive]}>Bank account</Text></Pressable>
+                  {STELLAR_WALLET_ENABLED && <Pressable disabled={submitting} style={[styles.methodButton, method === 'stellar_crypto' && styles.methodButtonActive]} onPress={() => setMethod('stellar_crypto')}><Text style={[styles.methodText, method === 'stellar_crypto' && styles.methodTextActive]}>Stellar</Text></Pressable>}
                 </View>
                 {payoutMethod === 'stellar_crypto' ? (
                   <TextInput
@@ -230,12 +260,14 @@ export default function WithdrawScreen() {
                     onChangeText={setStellarAddress}
                     autoCapitalize="characters"
                     autoCorrect={false}
+                    editable={!submitting}
                   />
                 ) : selectedBank ? (
                   <View style={styles.accountList}>
                     {savedBanks.map((bank) => (
                       <Pressable
                         key={bank._id}
+                        disabled={submitting}
                         style={[styles.accountCard, bank._id === selectedBank._id && styles.accountCardSelected]}
                         onPress={() => setSelectedBankId(bank._id)}>
                         <View style={styles.bankIcon}>
@@ -252,7 +284,7 @@ export default function WithdrawScreen() {
                         />
                       </Pressable>
                     ))}
-                    <Pressable hitSlop={8} onPress={() => router.push('/bank-account')}>
+                    <Pressable disabled={submitting} hitSlop={8} onPress={() => router.push('/bank-account')}>
                       <Text style={styles.changeLink}>Manage payout accounts</Text>
                     </Pressable>
                   </View>
@@ -265,7 +297,7 @@ export default function WithdrawScreen() {
                       <Text style={styles.accountName}>{account.accountName}</Text>
                       <Text style={styles.accountMeta}>{account.bankName} • {account.accountNumber}</Text>
                     </View>
-                    <Pressable hitSlop={8} onPress={() => router.push('/bank-account')}>
+                    <Pressable disabled={submitting} hitSlop={8} onPress={() => router.push('/bank-account')}>
                       <Text style={styles.changeLink}>Manage</Text>
                     </Pressable>
                   </View>
@@ -296,7 +328,7 @@ export default function WithdrawScreen() {
                     if (error) setError(null);
                   }}
                   keyboardType="numeric"
-                  editable={!hasPendingWithdrawal && (payoutMethod === 'stellar_crypto' || hasPayoutAccount)}
+                  editable={!submitting && !hasPendingWithdrawal && (payoutMethod === 'stellar_crypto' || hasPayoutAccount)}
                 />
                 <Text style={styles.hint}>
                   Requests are reviewed before payout, the amount is reserved from your balance
@@ -325,6 +357,8 @@ export default function WithdrawScreen() {
                 <SupportContactButton issue={makeSupportIssue("withdrawal", error)} />
               </View> : null}
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Request withdrawal"
                 style={({ pressed }) => [
                   styles.button,
                   pressed && styles.pressed,

@@ -61,7 +61,7 @@ export function getBiometricStatus() {
 }
 
 /** Local confirmation only. Payment authorization remains with the payment provider. */
-export async function confirmWalletFundingBiometrics(accountId: string, accountType: AccountType) {
+async function confirmWalletBiometrics(accountId: string, accountType: AccountType, promptMessage: string) {
   const local = await readBiometricCredential();
   if (!local || local.accountId !== accountId || local.accountType !== accountType) return true;
 
@@ -74,10 +74,18 @@ export async function confirmWalletFundingBiometrics(accountId: string, accountT
   const { available } = await native.isSensorAvailable();
   if (!available) throw new Error('Biometrics is unavailable. Check your device settings and try again.');
   const { success } = await native.simplePrompt({
-    promptMessage: 'Confirm wallet funding',
+    promptMessage,
     cancelButtonText: 'Cancel',
   });
   return success;
+}
+
+export function confirmWalletFundingBiometrics(accountId: string, accountType: AccountType) {
+  return confirmWalletBiometrics(accountId, accountType, 'Confirm wallet funding');
+}
+
+export function confirmWalletWithdrawalBiometrics(accountId: string, accountType: AccountType) {
+  return confirmWalletBiometrics(accountId, accountType, 'Confirm withdrawal');
 }
 
 export async function startBiometricEnrollment() {

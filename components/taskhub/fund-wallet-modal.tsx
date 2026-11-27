@@ -31,11 +31,13 @@ export function FundWalletModal({
   pending,
   onClose,
   onSubmit,
+  onDismiss,
 }: {
   visible: boolean;
   pending?: boolean;
   onClose: () => void;
   onSubmit: (amount: number) => void;
+  onDismiss?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const [amount, setAmount] = useState('');
@@ -58,7 +60,7 @@ export function FundWalletModal({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={() => { if (!pending) onClose(); }}>
+    <Modal visible={visible} transparent animationType="slide" onDismiss={onDismiss} onRequestClose={() => { if (!pending) onClose(); }}>
       <Pressable style={styles.backdrop} onPress={pending ? undefined : onClose}>
         <Pressable style={[styles.sheet, { marginBottom: insets.bottom + 16 }]} onPress={() => {}}>
           <View style={styles.header}>

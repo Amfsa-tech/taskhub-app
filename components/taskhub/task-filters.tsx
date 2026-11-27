@@ -46,7 +46,7 @@ export function TaskFilters({ value, onChange, categories = [], statuses = [], p
             {section === 'date' ? <>
               <Text style={styles.hint}>Filter by task posting date.</Text>
               {(['from', 'to'] as const).map(field => <Pressable key={field} accessibilityRole="button" accessibilityLabel={field === 'from' ? 'Start date' : 'End date'} onPress={() => setDateField(field)} style={styles.option}><Text style={styles.optionText}>{field === 'from' ? 'Start date' : 'End date'}</Text><Text style={styles.purple}>{draft[field] || 'Any date'}</Text></Pressable>)}
-              {dateField && <DateTimePicker value={draft[dateField] ? new Date(`${draft[dateField]}T12:00:00`) : new Date()} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'default'} onChange={(event, date) => {
+              {dateField && <DateTimePicker value={draft[dateField] ? new Date(`${draft[dateField]}T12:00:00`) : new Date()} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'calendar'} themeVariant="light" onChange={(event, date) => {
                 if (Platform.OS !== 'ios') setDateField(null);
                 if (event.type === 'dismissed' || !date) return;
                 const iso = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;

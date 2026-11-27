@@ -273,6 +273,7 @@ Last updated: 2026-09-28
 - Pending cards pair one primary resume action with one outlined server-status action.
 - Payment success is server-authoritative and must invalidate wallet queries before presenting completion.
 - Wallet funding confirmation reuses the native biometric prompt and the existing purple button's white spinner. While pending, lock amount entry, presets and dismissal. Cancellation preserves the draft; verification errors use the existing alert and never open checkout.
+- Native checkout presentation follows funding sheet dismissal completion on iOS; Android launches after the hidden sheet commits. Keep the saved-checkout recovery card usable after browser failures. Withdrawal confirmation reuses the native prompt, existing footer spinner and inline error treatment, with amount, destination and PIN controls disabled while submitting.
 
 ### Precise Location Selector
 
@@ -642,6 +643,8 @@ Keep only two equal-width tabs in the neutral rounded segmented control: Posted/
 History controls use compact 36px rounded chips with calendar/category/status icons, a chevron and an applied-selection count. Selected chips use pale purple, purple borders and purple text. Pending jobs expose one Type control for invitations and bids sent. Choices are drafts until Apply filters; dismissing discards them, Reset selection clears only that draft section and Clear filters resets all applied fields. Date ranges use inclusive task-posting days in Nigeria.
 
 Mobile filters use a dimmed backdrop, white sheet with 24px top corners, a short gray handle, 19px semibold title, light neutral checkbox rows and a full-width purple Apply button. Desktop uses an anchored white 340px panel with a subtle border and shadow; narrow web uses the bottom sheet. Preserve keyboard dismissal, focus return, accessible checkbox states and inline reversed-date errors.
+
+Calendar actions reveal the full date selector on the first tap: inline calendar on iOS and calendar dialog on Android. Use the light native theme against white form/sheet surfaces. Apply this consistently to task posting, editing, reopening and date-range filters; do not insert the iOS compact date-label step.
 
 
 ### Bidding choice window - 2026-11-26

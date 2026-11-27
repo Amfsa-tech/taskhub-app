@@ -24,12 +24,12 @@ function load(file, mocks) {
   }, module, module.exports);
   return module.exports.default || module.exports;
 }
-function harness() {
+function harness(platform = 'android') {
   const summary = { taskTitle: 'Content writing', total: 1000, taskAmount: 1000, platformFee: 100, feeRate: .1, alreadyHeld: 1000, additionalCharge: 0, refundDue: 0, walletBalance: 0, sufficientBalance: true, canConfirm: true, tasker: { firstName: 'Ada' } };
   const state = { summary, refreshed: 0, charged: 0, fail: false, alerts: [], routes: [] };
   const draft = { title: 'Write content', description: 'A detailed task description for the writer', budget: '1000', location: 'Heritage Mall', mainCategory: { name: 'local_services' }, subCategories: [], images: [], tags: [], isBiddingEnabled: true, biddingDeadline: '', university: null };
   const mocks = {
-    'react-native': { View: 'View', Text: 'Text', Pressable: 'Pressable', ScrollView: 'ScrollView', TextInput: 'TextInput', Switch: 'Switch', KeyboardAvoidingView: 'KeyboardAvoidingView', ActivityIndicator: 'ActivityIndicator', Platform: { OS: 'android' }, StyleSheet: { create: x => x }, Alert: { alert: (...args) => state.alerts.push(args) } },
+    'react-native': { View: 'View', Text: 'Text', Pressable: 'Pressable', ScrollView: 'ScrollView', TextInput: 'TextInput', Switch: 'Switch', KeyboardAvoidingView: 'KeyboardAvoidingView', ActivityIndicator: 'ActivityIndicator', Platform: { OS: platform }, StyleSheet: { create: x => x }, Alert: { alert: (...args) => state.alerts.push(args) } },
     'expo-router': { useRouter: () => ({ back() {}, push: x => state.routes.push(x), replace: x => state.routes.push(x) }), useLocalSearchParams: () => ({ bidId: 'offer-1' }) },
     'expo-status-bar': { StatusBar: 'StatusBar' }, 'expo-image': { Image: 'Image' }, '@expo/vector-icons': { Ionicons: 'Icon' },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
@@ -109,6 +109,24 @@ test('mobile task creation needs only one free-form address input', async () => 
   await update();
   assert.equal(renderer.root.findByType('PrimaryButton').props.disabled, true);
   await act(async () => renderer.unmount());
+});
+
+test('one deadline tap exposes the calendar on both platforms and keeps date selection and cancellation correct', async () => {
+  for (const platform of ['ios', 'android']) {
+    const h = harness(platform), { renderer } = await h.render('app/post-details.tsx');
+    const open = () => renderer.root.findByProps({ accessibilityLabel: 'Bidding deadline' }).props.onPress();
+    await act(async () => open());
+    let picker = renderer.root.findByType('DateTimePicker');
+    assert.equal(picker.props.display, platform === 'ios' ? 'inline' : 'calendar');
+    await act(async () => picker.props.onChange({ type: 'dismissed' }));
+    assert.equal(h.draft.biddingDeadline, '');
+    await act(async () => open());
+    picker = renderer.root.findByType('DateTimePicker');
+    await act(async () => picker.props.onChange({ type: 'set' }, new Date(2026, 11, 3)));
+    assert.equal(h.draft.biddingDeadline, '2026-12-03');
+    assert.equal(renderer.root.findAllByType('DateTimePicker').length, 0);
+    await act(async () => renderer.unmount());
+  }
 });
 
 test('mobile separates hire requests from bid counts and waits for confirmed consent', async () => {

@@ -181,6 +181,7 @@ export default function EditTaskScreen() {
           ) : null}
           {showDeadlinePicker ? (
             <DateTimePicker mode="date" value={deadline ? new Date(`${deadline}T12:00:00`) : new Date()}
+              display={Platform.OS === 'ios' ? 'inline' : 'calendar'} themeVariant="light"
               minimumDate={new Date()} onChange={(event, date) => {
                 setShowDeadlinePicker(false);
                 if (event.type !== 'set' || !date) return;
